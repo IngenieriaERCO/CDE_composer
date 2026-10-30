@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "componedor"
+version = "0.1.0"
+description = "Componedor de planos PDF A1 a partir de detalles vectoriales del Exportador Vectorial (ERCO)."
+readme = "README.md"
+requires-python = ">=3.12"
+# Misma versión mayor que el Exportador Vectorial (PyMuPDF>=1.24.0,<2.0.0).
+dependencies = ["pymupdf>=1.24,<2"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,7 @@
+.venv/
+data/
+# Rótulo de ERCO: se decide después si se versiona.
+plantillas/*.pdf
+__pycache__/
+*.egg-info/
+.pytest_cache/

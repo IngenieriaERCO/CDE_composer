@@ -1,0 +1,22 @@
+{
+  "nombre": "A1 ERCO",
+  "referencia": "_01_Rotulo_para_diseños_externos_Pliego_V2.dwg, Layout 01",
+  "unidades": "mm",
+  "origen": "inferior_izquierdo",
+  "orientacion": "horizontal",
+  "plantilla": "../plantillas/rotulo_A1_ERCO.pdf",
+  "hoja": [0, 0, 841, 594],
+  "marco": [12.7, 12.7, 828.3, 581.3],
+  "zonas": {
+    "area_dibujo": [22.7, 22.7, 662.4, 571.3],
+    "rotulo": [672.4, 12.7, 828.3, 581.3],
+    "localizacion": [672.4, 424.4, 828.3, 571.2],
+    "notas": [672.4, 270.5, 828.3, 424.4],
+    "convenciones": [672.4, 137.7, 828.3, 270.5],
+    "cajetin": [672.4, 12.7, 828.3, 137.7]
+  },
+  "grosores_mm": {
+    "marco": 0.5,
+    "guias": 0.13
+  }
+}
