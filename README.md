@@ -23,6 +23,10 @@ papel (origen en la esquina inferior izquierda de la hoja, Y hacia arriba).
 | `hoja-formato` | Hoja del formato: rótulo (plantilla) o marco propio, y guías de zonas. |
 | `colocar` | Coloca un detalle PDF sin escalar: por posición, centrado o anclando un punto CAD. |
 | `referencia` | Compone un detalle de medidas conocidas, mide el PDF y escribe un informe PASA/FALLA. |
+| `leer-manifiesto` | Lee un manifiesto del exportador, valida su estructura y muestra un resumen. |
+| `paquetes` | Localiza los paquetes del exportador en una carpeta y dice si están completos; con `--verificar`, agrega integridad (bytes, SHA-256, que abra, una página) y coherencia (geometría del manifiesto contra el PDF, escala física garantizada). |
+| `verificar-paquete` | Muestra todas las comprobaciones de integridad y coherencia de un paquete y «RESULTADO: PASA / FALLA». |
+| `inventario` | Lista los detalles de una carpeta: aceptados o rechazados (con motivos), tamaños, si caben en la zona y escala sugerida. |
 
 Ejemplos rápidos (uno por comando):
 
@@ -31,7 +35,14 @@ python -m componedor.cli hoja-vacia --orientacion horizontal --salida data/outpu
 python -m componedor.cli hoja-formato --formato formatos/A1_ERCO.json --salida data/output/a1_erco.pdf --guias
 python -m componedor.cli colocar --formato formatos/A1_ERCO.json --detalle data/input/detalle.pdf --salida data/output/a1_detalle.pdf --centrar
 python -m componedor.cli referencia --formato formatos/A1_ERCO.json --salida data/output/referencia_A1.pdf
+python -m componedor.cli leer-manifiesto data/input/detalle.manifest.json
+python -m componedor.cli paquetes data/input --recursivo --verificar
+python -m componedor.cli verificar-paquete data/input/detalle.manifest.json
+python -m componedor.cli inventario data/input --formato formatos/A1_ERCO.json
 ```
+
+El contrato del paquete del exportador (PDF + TXT + manifiesto) está en
+[docs/contrato_paquete.md](docs/contrato_paquete.md).
 
 ## Uso detallado
 
@@ -69,8 +80,10 @@ python -m componedor.cli colocar --formato formatos/A1_ERCO.json --detalle data/
 
 `--ancla-cad X Y` (unidades del dibujo) y `--ancla-papel X Y` (mm de papel) van juntos,
 requieren `--manifiesto` y no se combinan con `--posicion` ni `--centrar`. Con
-`--manifiesto` (en cualquier modo) se imprime además el rectángulo que ocupa el dibujo en
-el papel y una comprobación informativa entre la matriz y los trazos del PDF.
+`--manifiesto` (en cualquier modo) el paquete debe estar completo, íntegro y coherente
+(incluida la escala física garantizada) y `--detalle` debe ser el PDF que indica el
+manifiesto; si no, no se coloca y se listan los problemas. Se imprime además el rectángulo
+que ocupa el dibujo en el papel.
 
 En todos los subcomandos, si el archivo de salida ya existe el programa se niega a
 reemplazarlo; para reemplazarlo, agregue `--sobrescribir`.
@@ -106,6 +119,32 @@ Si el PDF de la plantilla no existe, avisa y sigue sin ella. Con `--detalle` y
 `--manifiesto` agrega la sección «detalle real»: coloca ese detalle centrado en una hoja
 limpia y compara los límites del dibujo con `page_bounds_mm` (±0,2 mm) y el tamaño de
 página con `page_size_mm` (±0,1 mm).
+
+### Paquetes del exportador
+
+Cada detalle llega como paquete: `<prefijo>.pdf`, `<prefijo>.txt` y
+`<prefijo>.manifest.json`. Flujo: localizar → integridad → coherencia → importar →
+inventario (ver [docs/contrato_paquete.md](docs/contrato_paquete.md)).
+
+```powershell
+# Leer un manifiesto y validar su estructura (resumen o lista de problemas):
+python -m componedor.cli leer-manifiesto data/input/detalle.manifest.json
+
+# Localizar los paquetes de una carpeta; con --verificar, integridad y coherencia:
+python -m componedor.cli paquetes data/input --verificar
+
+# Todas las comprobaciones de un paquete, con esperado / medido / tolerancia:
+python -m componedor.cli verificar-paquete data/input/detalle.manifest.json
+
+# Inventario: aceptados / rechazados, si caben en el área de dibujo y escala sugerida:
+python -m componedor.cli inventario data/input --recursivo --formato formatos/A1_ERCO.json
+```
+
+Un paquete solo se acepta si está completo, íntegro (bytes y SHA-256 del PDF), coherente
+(geometría del manifiesto contra el PDF) y con la escala física garantizada. Si no, los
+motivos salen con su categoría: `[manifiesto]`, `[archivos]`, `[integridad]`,
+`[coherencia]` o `[escala]`. `inventario` termina con código 1 solo si hay rechazados; que
+un detalle no quepa en la zona es una nota, no un rechazo.
 
 ## Formatos
 

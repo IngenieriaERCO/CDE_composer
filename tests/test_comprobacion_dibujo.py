@@ -1,19 +1,15 @@
+"""Medición de trazos sin el fondo blanco. La comparación con el manifiesto (rotación,
+tamaño de página, trazos vs page_bounds_mm) se prueba en test_coherencia.py."""
+
 import pymupdf
 import pytest
 
-from componedor.cad_a_papel import ManifiestoInvalido, leer_geometria_manifiesto
 from componedor.comprobacion_dibujo import (
-    comparar_con_manifiesto,
-    exigir_coherencia,
+    es_fondo_de_pagina,
     medir_limites_trazos,
     trazos_sin_fondo,
 )
-from conftest import (
-    LIMITES_RECT_PAGINA_MM,
-    crear_detalle_cad,
-    escribir_json,
-    manifiesto_sintetico,
-)
+from conftest import LIMITES_RECT_PAGINA_MM, crear_detalle_cad
 
 
 @pytest.fixture
@@ -23,42 +19,22 @@ def pagina(tmp_path):
     doc.close()
 
 
-def _geometria(tmp_path, datos=None):
-    return leer_geometria_manifiesto(escribir_json(tmp_path / "m.json",
-                                                   datos or manifiesto_sintetico()))
-
-
 def test_mide_los_trazos_sin_el_fondo_blanco(pagina):
     assert medir_limites_trazos(pagina) == pytest.approx(LIMITES_RECT_PAGINA_MM, abs=0.01)
 
 
-def test_coincide_con_page_bounds(tmp_path, pagina):
-    comparacion = comparar_con_manifiesto(pagina, _geometria(tmp_path))
-    assert comparacion.diferencia_max_mm < 0.01
-    assert not comparacion.advertencia
+def test_reconoce_el_fondo_de_pagina(pagina):
+    fondos = [d for d in pagina.get_drawings() if es_fondo_de_pagina(d, pagina)]
+    assert len(fondos) == 1
+    assert len(trazos_sin_fondo(pagina)) == len(pagina.get_drawings()) - 1
 
 
-def test_diferencia_grande_es_solo_advertencia(tmp_path, pagina):
-    datos = manifiesto_sintetico()
-    datos["pdf"]["drawing"]["page_bounds_mm"]["x1"] += 2.0
-    comparacion = comparar_con_manifiesto(pagina, _geometria(tmp_path, datos))
-    assert comparacion.diferencia_max_mm == pytest.approx(2.0, abs=0.01)
-    assert comparacion.advertencia
-
-
-def test_manifiesto_de_otro_pdf(tmp_path, pagina):
-    datos = manifiesto_sintetico()
-    datos["pdf"]["page_size_mm"] = [300.0, 120.0]
-    with pytest.raises(ManifiestoInvalido, match="no corresponde al PDF del detalle"):
-        exigir_coherencia(pagina, _geometria(tmp_path, datos))
-
-
-def test_detalle_girado_no_soportado_con_manifiesto(tmp_path, pagina):
-    pagina.set_rotation(90)
-    datos = manifiesto_sintetico()
-    datos["pdf"]["page_size_mm"] = [120.0, 260.0]
-    with pytest.raises(ManifiestoInvalido, match="/Rotate 90"):
-        exigir_coherencia(pagina, _geometria(tmp_path, datos))
+def test_pagina_sin_trazos():
+    doc = pymupdf.open()
+    pagina = doc.new_page()
+    pagina.draw_rect(pagina.rect, color=None, fill=(1, 1, 1))  # solo el fondo
+    assert medir_limites_trazos(pagina) is None
+    doc.close()
 
 
 def test_trazos_sin_fondo_en_otra_posicion():

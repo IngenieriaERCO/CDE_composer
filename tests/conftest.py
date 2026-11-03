@@ -4,6 +4,7 @@ Las pruebas NO dependen del rótulo real (plantillas/*.pdf no se versiona): usan
 JSON del formato sin plantilla o con una plantilla sintética.
 """
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -106,37 +107,126 @@ def _cad_a_pagina_mm(x, y):
     return a * x + c * y + e, b * x + d * y + f
 
 
-def crear_detalle_cad(ruta: Path) -> Path:
-    """PDF de 260 x 120 mm con fondo blanco (como el exportador) y el rectángulo RECT_CAD
-    dibujado con MATRIZ_SINTETICA."""
-    doc = pymupdf.open()
-    page = doc.new_page(width=mm_a_pt(PAGINA_CAD_MM[0]), height=mm_a_pt(PAGINA_CAD_MM[1]))
+def _dibujar_detalle_cad(page: pymupdf.Page, desplazar_mm=(0.0, 0.0)) -> None:
+    """Fondo blanco (como el exportador) y el rectángulo RECT_CAD con MATRIZ_SINTETICA.
+
+    `desplazar_mm` mueve el dibujo en la página (solo para provocar incoherencias)."""
     page.draw_rect(page.rect, color=None, fill=(1, 1, 1))  # fondo de página
     x0, y0, x1, y1 = RECT_CAD
+    dx, dy = desplazar_mm
     esquinas = [_cad_a_pagina_mm(x, y) for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1))]
-    puntos = [pymupdf.Point(mm_a_pt(x), mm_a_pt(y)) for x, y in esquinas]
+    puntos = [pymupdf.Point(mm_a_pt(x + dx), mm_a_pt(y + dy)) for x, y in esquinas]
     page.draw_polyline(puntos + [puntos[0]], color=(0, 0, 0), width=0.5)
+
+
+def crear_detalle_cad(ruta: Path) -> Path:
+    """PDF de 260 x 120 mm con el detalle de `_dibujar_detalle_cad` (sin manifiesto)."""
+    doc = pymupdf.open()
+    _dibujar_detalle_cad(doc.new_page(width=mm_a_pt(PAGINA_CAD_MM[0]),
+                                      height=mm_a_pt(PAGINA_CAD_MM[1])))
     doc.save(ruta)
     doc.close()
     return ruta
 
 
-def manifiesto_sintetico(**cambios_cad_to_page) -> dict:
-    """Manifiesto mínimo con la geometría del detalle de `crear_detalle_cad`."""
+SHA256_FICTICIO = "ab" * 32  # 64 hexadecimales; no es el hash de ningún archivo
+
+
+def manifiesto_paquete(quitar=(), cambiar=None, minimo: bool = False) -> dict:
+    """Manifiesto sintético con la forma del exportador (esquema 1.0, modelo "2").
+
+    - `quitar`: rutas con puntos que se eliminan (p. ej. "pdf.page_size_mm").
+    - `cambiar`: {ruta con puntos: valor nuevo}; crea el campo si no existe.
+    - `minimo=True`: solo los campos obligatorios para el componedor.
+    Los nombres y valores son inventados (no son datos de ERCO).
+    """
     x0, y0, x1, y1 = LIMITES_RECT_PAGINA_MM
-    cad_to_page = {"units": "mm", "origin": "top-left", "y_axis": "down",
-                   "matrix": list(MATRIZ_SINTETICA)}
-    cad_to_page.update(cambios_cad_to_page)
-    return {
+    datos = {
         "document_type": "cde-detail-manifest",
+        "schema_version": "1.0",
+        "model_version": "2",
+        "units": {"millimeters_per_unit": 1000.0},
+        "scale": {"denominator": 50.0, "factor_mm_per_cad_unit": 20.0,
+                  "physical_scale_guaranteed": True},
         "pdf": {
+            "file_name": "detalle_prueba.pdf",
+            "bytes": 12345,
+            "sha256": SHA256_FICTICIO,
+            "page_count": 1,
             "page_size_mm": list(PAGINA_CAD_MM),
+            "expected_page_size_mm": list(PAGINA_CAD_MM),
+            "margin_mm": 5.0,
             "drawing": {
+                "cad_bounds": {"min": [RECT_CAD[0], RECT_CAD[1]], "max": [RECT_CAD[2], RECT_CAD[3]]},
                 "page_bounds_mm": {"x0": x0, "y0": y0, "x1": x1, "y1": y1},
-                "cad_to_page": cad_to_page,
+                "cad_to_page": {"units": "mm", "origin": "top-left", "y_axis": "down",
+                                "matrix": list(MATRIZ_SINTETICA)},
             },
         },
+        "validation": {"status": "complete_with_warnings"},
     }
+    if not minimo:
+        datos["generated_at"] = "2026-01-01T00:00:00-05:00"
+        datos["exporter"] = {"version": "0.0.0", "ezdxf": None, "pymupdf": None}
+        datos["source"] = {"dxf_name": "dibujo_prueba.dxf", "dxf_sha256": SHA256_FICTICIO,
+                           "dxf_bytes": 1000, "block_name": "DETALLE_PRUEBA",
+                           "block_definition_handle": None}
+        datos["units"].update(declared_code=6, name="m", status="ficticio", user_override=None)
+        datos["scale"].update(requested="1:50", physical_scale_reason=None)
+        datos["pdf"]["content_size_mm"] = [250.0, 110.0]
+        datos["entities"] = {"total": 1, "by_type": [], "by_layer": [], "not_conserved": []}
+        datos["fonts"] = []
+        datos["dependencies"] = []
+        datos["notices"] = {"counts": {"info": 0, "warning": 1, "critical": 0},
+                            "by_category": {}}
+        datos["validation"]["checks"] = []
+        datos["options"] = {"hatch_mode": "auto", "margin_mm": 5.0}
+
+    for ruta in quitar:
+        *padres, ultimo = ruta.split(".")
+        nodo = datos
+        for parte in padres:
+            nodo = nodo[parte]
+        del nodo[ultimo]
+    for ruta, valor in (cambiar or {}).items():
+        *padres, ultimo = ruta.split(".")
+        nodo = datos
+        for parte in padres:
+            nodo = nodo.setdefault(parte, {})
+        nodo[ultimo] = valor
+    return datos
+
+
+def crear_paquete_real(carpeta: Path, prefijo: str = "detalle", paginas: int = 1,
+                       contenido: bytes | None = None, rotacion: int = 0,
+                       pagina_mm: tuple[float, float] = PAGINA_CAD_MM,
+                       desplazar_dibujo_mm: tuple[float, float] = (0.0, 0.0),
+                       **kw_manifiesto) -> Path:
+    """Paquete sintético COHERENTE: PDF de verdad con el detalle de `_dibujar_detalle_cad` y
+    un manifiesto (`manifiesto_paquete`) cuyos `pdf.bytes` y `pdf.sha256` se calculan del
+    archivo escrito. Devuelve la ruta del PDF.
+
+    Opciones para provocar fallas: `contenido` (bytes en lugar del PDF), `paginas`,
+    `rotacion` (/Rotate), `pagina_mm` (otro tamaño de página, sin tocar el manifiesto),
+    `desplazar_dibujo_mm` y `cambiar`/`quitar` del manifiesto.
+    """
+    carpeta.mkdir(parents=True, exist_ok=True)
+    ruta_pdf = carpeta / f"{prefijo}.pdf"
+    if contenido is None:
+        doc = pymupdf.open()
+        for _ in range(paginas):
+            pagina = doc.new_page(width=mm_a_pt(pagina_mm[0]), height=mm_a_pt(pagina_mm[1]))
+            _dibujar_detalle_cad(pagina, desplazar_dibujo_mm)
+            pagina.set_rotation(rotacion)
+        contenido = doc.tobytes()
+        doc.close()
+    ruta_pdf.write_bytes(contenido)
+    cambiar = {"pdf.file_name": ruta_pdf.name, "pdf.bytes": len(contenido),
+               "pdf.sha256": hashlib.sha256(contenido).hexdigest(),
+               **kw_manifiesto.pop("cambiar", {})}
+    escribir_json(carpeta / f"{prefijo}.manifest.json",
+                  manifiesto_paquete(cambiar=cambiar, **kw_manifiesto))
+    return ruta_pdf
 
 
 def escribir_json(ruta: Path, datos: dict) -> Path:

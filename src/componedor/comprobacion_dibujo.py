@@ -1,49 +1,13 @@
-"""Comprobaciones entre la geometría del manifiesto y el PDF del detalle.
+"""Medición de los trazos de un PDF de detalle, sin el fondo blanco del exportador.
 
-- `exigir_coherencia`: el PDF debe ser el del manifiesto (mismo tamaño de página, sin
-  /Rotate). Si no, la matriz cad_to_page no aplica y el ancla quedaría mal: es error.
-- `comparar_con_manifiesto`: compara los límites reales de los trazos con page_bounds_mm.
-  Es solo informativa: una diferencia mayor que 0,5 mm se reporta como advertencia.
+La usan la coherencia del paquete (coherencia.py, comprobación h: trazos vs
+page_bounds_mm) y la validación con geometría de referencia (validacion.py).
 """
-
-from dataclasses import dataclass
 
 import pymupdf
 
-from componedor.cad_a_papel import GeometriaManifiesto, ManifiestoInvalido
 from componedor.formato import RectMM
 from componedor.unidades import pt_a_mm
-
-TOLERANCIA_TAMANO_MM = 0.5
-UMBRAL_ADVERTENCIA_MM = 0.5
-
-
-@dataclass(frozen=True)
-class ComparacionLimites:
-    limites_trazos_mm: RectMM  # medidos en el PDF: mm de página, Y abajo
-    limites_manifiesto_mm: RectMM  # page_bounds_mm
-    diferencia_max_mm: float
-
-    @property
-    def advertencia(self) -> bool:
-        return self.diferencia_max_mm > UMBRAL_ADVERTENCIA_MM
-
-
-def exigir_coherencia(pagina: pymupdf.Page, geometria: GeometriaManifiesto) -> None:
-    """Lanza `ManifiestoInvalido` si el PDF no corresponde a la geometría del manifiesto."""
-    if pagina.rotation != 0:
-        raise ManifiestoInvalido(
-            f"El detalle tiene /Rotate {pagina.rotation}: la matriz cad_to_page del manifiesto "
-            f"se refiere a la página sin girar y ese caso no está soportado."
-        )
-    ancho, alto = pt_a_mm(pagina.rect.width), pt_a_mm(pagina.rect.height)
-    dif = (ancho - geometria.ancho_pagina_mm, alto - geometria.alto_pagina_mm)
-    if any(abs(d) > TOLERANCIA_TAMANO_MM for d in dif):
-        raise ManifiestoInvalido(
-            f"El manifiesto no corresponde al PDF del detalle: page_size_mm es "
-            f"{geometria.ancho_pagina_mm:.2f} x {geometria.alto_pagina_mm:.2f} mm y el PDF mide "
-            f"{ancho:.2f} x {alto:.2f} mm (diferencia {dif[0]:+.2f} x {dif[1]:+.2f} mm)."
-        )
 
 
 def es_fondo_blanco(trazo: dict, rect: pymupdf.Rect, tolerancia_pt: float = 0.05) -> bool:
@@ -91,13 +55,3 @@ def medir_limites_trazos(pagina: pymupdf.Page) -> RectMM | None:
         pt_a_mm(max(r.x1 for r in rects)),
         pt_a_mm(max(r.y1 for r in rects)),
     )
-
-
-def comparar_con_manifiesto(pagina: pymupdf.Page,
-                            geometria: GeometriaManifiesto) -> ComparacionLimites | None:
-    """Compara los límites de los trazos con page_bounds_mm. None si no hay trazos."""
-    medidos = medir_limites_trazos(pagina)
-    if medidos is None:
-        return None
-    diferencia = max(abs(a - b) for a, b in zip(medidos, geometria.limites_pagina_mm))
-    return ComparacionLimites(medidos, geometria.limites_pagina_mm, diferencia)

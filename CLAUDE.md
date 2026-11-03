@@ -59,6 +59,8 @@ lee sus paquetes de salida (PDF + manifiesto JSON).
   Y abajo (`units "mm"`, `origin "top-left"`, `y_axis "down"`). 1:50 en m → a = 20, d = −20.
 - La matriz ya incluye margen y centrado del dibujo: **nunca suponer un margen fijo**; usar
   la matriz y `page_bounds_mm`.
+- Contrato del paquete (`<prefijo>.pdf/.txt/.manifest.json`): `docs/contrato_paquete.md`.
+  Se lee con `manifiesto.leer_manifiesto` (versión mayor 1; campos desconocidos se ignoran).
 - La hoja se crea en su orientación real (A1 horizontal = 841 × 594 mm, rotación 0).
   No usar el truco de AutoCAD de hoja vertical con `/Rotate`.
 

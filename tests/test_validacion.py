@@ -6,11 +6,9 @@ from componedor import comando_referencia
 from componedor import referencia as ref
 from componedor.cli import main
 from conftest import (
-    crear_detalle_cad,
     crear_plantilla_sintetica,
     escribir_formato,
-    escribir_json,
-    manifiesto_sintetico,
+    crear_paquete_real,
 )
 
 SECCIONES = ("== HOJA ==", "== MARCO ==", "== PLANTILLA ==", "== DETALLE DE REFERENCIA ==",
@@ -96,8 +94,8 @@ def test_reproducible(tmp_path, formato_con_plantilla):
 
 
 def test_detalle_real_con_manifiesto(tmp_path, capsys, formato_con_plantilla):
-    detalle = crear_detalle_cad(tmp_path / "d.pdf")
-    manifiesto = escribir_json(tmp_path / "d.json", manifiesto_sintetico())
+    detalle = crear_paquete_real(tmp_path / "paquete")
+    manifiesto = detalle.with_name("detalle.manifest.json")
     assert _correr(formato_con_plantilla, tmp_path / "ref.pdf", "--detalle", str(detalle),
                    "--manifiesto", str(manifiesto)) == 0
     txt = (tmp_path / "ref.txt").read_text(encoding="utf-8")
@@ -107,10 +105,9 @@ def test_detalle_real_con_manifiesto(tmp_path, capsys, formato_con_plantilla):
 
 
 def test_detalle_real_que_no_coincide_falla(tmp_path, formato_con_plantilla):
-    detalle = crear_detalle_cad(tmp_path / "d.pdf")
-    datos = manifiesto_sintetico()
-    datos["pdf"]["drawing"]["page_bounds_mm"]["x0"] -= 0.5
-    manifiesto = escribir_json(tmp_path / "d.json", datos)
+    detalle = crear_paquete_real(tmp_path / "paquete",
+                                 cambiar={"pdf.drawing.page_bounds_mm.x0": 37.3 - 0.5})
+    manifiesto = detalle.with_name("detalle.manifest.json")
     assert _correr(formato_con_plantilla, tmp_path / "ref.pdf", "--detalle", str(detalle),
                    "--manifiesto", str(manifiesto)) == 1
     txt = (tmp_path / "ref.txt").read_text(encoding="utf-8")

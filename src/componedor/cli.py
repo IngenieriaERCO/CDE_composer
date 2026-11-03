@@ -2,27 +2,32 @@
 
 import argparse
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 
 import pymupdf
 
-from componedor.cad_a_papel import (
-    leer_geometria_manifiesto,
-    limites_dibujo_en_papel,
-    origen_para_ancla,
-)
+from componedor.cad_a_papel import limites_dibujo_en_papel, origen_para_ancla
+from componedor.coherencia import verificar_paquete
+from componedor.importador import importar_paquete
+from componedor.inventario import RECHAZADO, EntradaInventario, construir_inventario
 from componedor.colocar import DetalleInvalido, abrir_pdf, colocar_detalle, tamano_visible_mm
-from componedor.comprobacion_dibujo import (
-    UMBRAL_ADVERTENCIA_MM,
-    ComparacionLimites,
-    comparar_con_manifiesto,
-    exigir_coherencia,
-)
 from componedor.comando_referencia import ejecutar_referencia
 from componedor.composicion import hoja_base
 from componedor.formato import Formato, RectMM, cargar_formato
 from componedor.hoja import ORIENTACIONES, crear_hoja
+from componedor.manifiesto import Manifiesto, leer_manifiesto
+from componedor.paquete import (
+    COMPLETO,
+    INCOMPLETO,
+    INVALIDO,
+    SUFIJO_MANIFIESTO,
+    Paquete,
+    localizar_con_sueltos,
+    paquete_de_manifiesto,
+)
+from componedor.informe import resultado_final
+from componedor.validacion import Comprobacion, ResultadoVerificacion
 from componedor.plantilla import TOLERANCIA_MARCO_MM, TOLERANCIA_TAMANO_MM, InformePlantilla
 from componedor.transformaciones import PuntoMM
 from componedor.unidades import pt_a_mm
@@ -68,7 +73,11 @@ class ResultadoColocar:
     ocupado: RectMM  # rectángulo de la página del detalle en la hoja, mm de papel
     plantilla: InformePlantilla | None
     dibujo_en_papel: RectMM | None = None  # page_bounds_mm en mm de papel (con manifiesto)
-    comparacion: ComparacionLimites | None = None  # trazos del PDF vs page_bounds_mm
+    coherencia: ResultadoVerificacion | None = None  # con manifiesto: verificación del paquete
+
+
+def _texto_falla(c: Comprobacion) -> str:
+    return f"{c.nombre}: {c.detalle or f'esperado {c.esperado}, medido {c.medido}'}"
 
 
 def hoja_con_detalle(ruta_formato: Path, ruta_detalle: Path, salida: Path,
@@ -86,31 +95,28 @@ def hoja_con_detalle(ruta_formato: Path, ruta_detalle: Path, salida: Path,
     if ancla is not None and ruta_manifiesto is None:
         raise ValueError("Para usar un ancla CAD hace falta el manifiesto del detalle.")
     formato = cargar_formato(ruta_formato, usar_plantilla)
+    manifiesto = coherencia = None
+    if ruta_manifiesto is not None:
+        aceptado = importar_paquete(ruta_manifiesto, pdf_esperado=ruta_detalle)
+        manifiesto, coherencia = aceptado.manifiesto, aceptado.coherencia
 
     detalle = abrir_pdf(ruta_detalle, "el detalle", DetalleInvalido)
     try:
-        geometria = comparacion = None
-        if ruta_manifiesto is not None:
-            geometria = leer_geometria_manifiesto(ruta_manifiesto)
-            exigir_coherencia(detalle[0], geometria)
-            # Se usa el tamaño real de la página (coincide con page_size_mm ±0,5 mm): es la
-            # que se coloca en la hoja.
-            ancho, alto = tamano_visible_mm(detalle[0])
-            geometria = replace(geometria, ancho_pagina_mm=ancho, alto_pagina_mm=alto)
-            comparacion = comparar_con_manifiesto(detalle[0], geometria)
+        # Alto real de la página que se coloca (coherente con page_size_mm ±0,1 mm).
+        alto = tamano_visible_mm(detalle[0])[1]
         if ancla is not None:
             punto_cad, punto_papel = ancla
-            posicion_mm = origen_para_ancla(punto_cad, punto_papel, geometria.matriz,
-                                            geometria.alto_pagina_mm)
-
+            posicion_mm = origen_para_ancla(punto_cad, punto_papel,
+                                            manifiesto.pdf.dibujo.matriz, alto)
         doc, informe = hoja_base(formato, guias)
         ocupado = colocar_detalle(doc[0], formato, detalle, posicion_mm, zona=zona)
         _guardar(doc, salida)
     finally:
         detalle.close()
 
-    dibujo = limites_dibujo_en_papel(geometria, ocupado[:2]) if geometria else None
-    return ResultadoColocar(ocupado, informe, dibujo, comparacion)
+    dibujo = (limites_dibujo_en_papel(manifiesto.pdf.dibujo.limites_pagina_mm, alto, ocupado[:2])
+              if manifiesto else None)
+    return ResultadoColocar(ocupado, informe, dibujo, coherencia)
 
 
 def _validar_opciones_colocar(args) -> str | None:
@@ -148,21 +154,177 @@ def texto_informe_plantilla(informe: InformePlantilla | None) -> str:
     )
 
 
-def texto_comparacion(comparacion: ComparacionLimites | None) -> str:
-    if comparacion is None:
-        return "Comprobación matriz vs PDF: el detalle no tiene trazos que medir."
-    texto = (
-        f"Comprobación matriz vs PDF: límites de los trazos "
-        f"{[round(v, 2) for v in comparacion.limites_trazos_mm]} vs page_bounds_mm "
-        f"{[round(v, 2) for v in comparacion.limites_manifiesto_mm]} (mm de página): "
-        f"diferencia máx. {comparacion.diferencia_max_mm:.3f} mm"
-    )
-    if comparacion.advertencia:
-        texto += (
-            f"\nADVERTENCIA: la diferencia supera {UMBRAL_ADVERTENCIA_MM} mm. Revise que el "
-            f"manifiesto corresponda al PDF; el detalle se colocó de todos modos."
-        )
-    return texto
+def texto_verificacion_colocar(coherencia: ResultadoVerificacion) -> str:
+    dif = coherencia.datos.get("diferencia_trazos_mm")
+    return ("Paquete verificado: completo, integridad OK y coherencia OK "
+            f"(trazos del PDF vs page_bounds_mm: diferencia máx. {dif:.3f} mm)")
+
+
+def resumen_manifiesto(m: Manifiesto) -> str:
+    """Resumen legible de un manifiesto ya validado."""
+    ancho, alto = m.pdf.tamano_pagina_mm
+    e_ancho, e_alto = m.pdf.tamano_esperado_mm
+    x0, y0, x1, y1 = m.pdf.dibujo.limites_pagina_mm
+    margen = "no indicado" if m.pdf.margen_mm is None else f"{m.pdf.margen_mm:g} mm"
+    return "\n".join([
+        f"Manifiesto: {m.ruta}",
+        f"  Documento: {m.tipo_documento}, esquema {m.version_esquema}, modelo {m.version_modelo}",
+        f"  Bloque: {m.bloque or '(no indicado)'}",
+        f"  Escala: 1:{m.escala.denominador:g} ({m.escala.factor_mm_por_unidad_cad:g} mm de papel "
+        f"por unidad CAD; {m.unidades.milimetros_por_unidad:g} mm reales por unidad CAD); "
+        f"escala física garantizada: {'sí' if m.escala.fisica_garantizada else 'no'}",
+        f"  PDF: {m.pdf.nombre_archivo}, {m.pdf.paginas} página(s), {m.pdf.bytes} bytes",
+        f"  Tamaño de página: {ancho:.2f} x {alto:.2f} mm (esperado {e_ancho:.2f} x "
+        f"{e_alto:.2f} mm, margen {margen})",
+        f"  Dibujo en la página (page_bounds_mm): X {x0:.2f} a {x1:.2f}, Y {y0:.2f} a {y1:.2f}",
+        f"  Estado de validación del exportador: {m.estado_validacion}",
+        "Estructura del manifiesto: válida",
+    ])
+
+
+def texto_paquetes(paquetes: list[Paquete], carpeta: Path, recursivo: bool,
+                   verificaciones: list[tuple[ResultadoVerificacion, ResultadoVerificacion]]
+                   | None = None, sueltos: list[Path] = ()) -> str:
+    """Tabla de paquetes (prefijo, estado, bloque, escala, página[, integridad, coherencia])
+    y sus problemas.
+
+    `verificaciones` (opción --verificar): (integridad, coherencia) en el mismo orden que
+    `paquetes`. `sueltos`: PDF ignorados (sin manifiesto ni TXT), línea informativa al final.
+    """
+    donde = f"'{carpeta}'" + (" y sus subcarpetas" if recursivo else "")
+    linea_sueltos = []
+    if sueltos:
+        nombres = ", ".join(r.relative_to(carpeta).as_posix() for r in sueltos)
+        linea_sueltos = [f"PDF sin paquete (ignorados): {len(sueltos)} — {nombres}"]
+    if not paquetes:
+        return "\n".join([f"No se encontraron paquetes (<prefijo>{SUFIJO_MANIFIESTO}) en "
+                          f"{donde}.", *(["", *linea_sueltos] if linea_sueltos else [])])
+
+    def nombre(p: Paquete) -> str:
+        relativa = p.carpeta.relative_to(carpeta)
+        return p.prefijo if relativa == Path(".") else f"{relativa.as_posix()}/{p.prefijo}"
+
+    filas = []
+    for i, p in enumerate(paquetes):
+        m = p.manifiesto
+        filas.append((
+            nombre(p), p.estado,
+            (m.bloque or "-") if m else "-",
+            f"1:{m.escala.denominador:g}" if m else "-",
+            "{:.2f} x {:.2f}".format(*m.pdf.tamano_pagina_mm) if m else "-",
+            *([r.etiqueta for r in verificaciones[i]] if verificaciones is not None else []),
+        ))
+    titulos = ("Prefijo", "Estado", "Bloque", "Escala", "Página (mm)",
+               *(["Integridad", "Coherencia"] if verificaciones is not None else []))
+    anchos = [max(len(str(f[i])) for f in [titulos, *filas]) for i in range(len(titulos))]
+    linea = lambda f: "  ".join(str(v).ljust(a) for v, a in zip(f, anchos)).rstrip()  # noqa: E731
+    lineas = [f"Paquetes en {donde}:", "", linea(titulos), "  ".join("-" * a for a in anchos)]
+    lineas += [linea(f) for f in filas]
+
+    con_problemas = [p for p in paquetes if p.problemas]
+    if con_problemas:
+        lineas += ["", "Problemas:"]
+        for p in con_problemas:
+            lineas.append(f"  {nombre(p)} ({p.estado}):")
+            lineas += [f"    - {problema}" for problema in p.problemas]
+
+    resumen = ""
+    for indice, titulo in ((0, "integridad"), (1, "coherencia")):
+        if verificaciones is None:
+            break
+        fallan = [(p, v[indice]) for p, v in zip(paquetes, verificaciones)
+                  if v[indice].verificable and not v[indice].pasa]
+        if fallan:
+            lineas += ["", f"Problemas de {titulo}:"]
+            for p, r in fallan:
+                lineas.append(f"  {nombre(p)}:")
+                lineas += [f"    - {_texto_falla(c)}" for c in r.fallas]
+        ok = sum(1 for v in verificaciones if v[indice].etiqueta == "OK")
+        resumen += f" {titulo.capitalize()}: {ok} OK, {len(fallan)} con falla."
+
+    cuenta = {e: sum(1 for p in paquetes if p.estado == e) for e in (COMPLETO, INCOMPLETO, INVALIDO)}
+    resumen = (f"{len(paquetes)} paquete(s): {cuenta[COMPLETO]} completo(s), "
+               f"{cuenta[INCOMPLETO]} incompleto(s), {cuenta[INVALIDO]} inválido(s)." + resumen)
+    lineas += ["", resumen, *linea_sueltos]
+    return "\n".join(lineas)
+
+
+def texto_verificar_paquete(paquete: Paquete,
+                            verificacion: tuple[ResultadoVerificacion, ResultadoVerificacion]
+                            ) -> str:
+    """Todas las comprobaciones de integridad y coherencia de un paquete, y el resultado."""
+    lineas = [f"Paquete: {paquete.prefijo} ({paquete.carpeta})", f"Estado: {paquete.estado}"]
+    lineas += [f"  - {problema}" for problema in paquete.problemas]
+    comprobaciones = []
+    for titulo, r in zip(("INTEGRIDAD", "COHERENCIA"), verificacion):
+        lineas += ["", f"== {titulo} =="]
+        if not r.verificable:
+            lineas.append(f"  ({r.motivo})")
+            continue
+        for c in r.comprobaciones:
+            lineas.append(f"  [{'PASA' if c.pasa else 'FALLA'}] {c.nombre}")
+            lineas.append(f"      esperado:   {c.esperado}")
+            lineas.append(f"      medido:     {c.medido}")
+            lineas.append(f"      tolerancia: {c.tolerancia}")
+            if c.detalle:
+                lineas.append(f"      detalle:    {c.detalle}")
+        comprobaciones += r.comprobaciones
+    if paquete.estado != COMPLETO:
+        lineas += ["", f"RESULTADO: FALLA (paquete {paquete.estado}: no verificable)"]
+    else:
+        # Si la integridad falla, la coherencia queda sin verificar: cuentan las de integridad.
+        lineas += ["", resultado_final(comprobaciones)]
+    return "\n".join(lineas)
+
+
+def texto_inventario(entradas: list[EntradaInventario], carpeta: Path, recursivo: bool,
+                     zona: str | None) -> str:
+    """Tabla del inventario, motivos de rechazo, notas y resumen. `zona` None: sin formato."""
+    donde = f"'{carpeta}'" + (" y sus subcarpetas" if recursivo else "")
+    if not entradas:
+        return f"No se encontraron paquetes (<prefijo>{SUFIJO_MANIFIESTO}) en {donde}."
+
+    def nombre(e: EntradaInventario) -> str:
+        relativa = e.carpeta.relative_to(carpeta)
+        return e.prefijo if relativa == Path(".") else f"{relativa.as_posix()}/{e.prefijo}"
+
+    def tam(t) -> str:
+        return "-" if t is None else f"{t[0]:.2f} x {t[1]:.2f}"
+
+    titulos = ["Prefijo", "Bloque", "Escala", "Dibujo (mm)", "Página (mm)", "Estado"]
+    if zona is not None:
+        titulos.append("Cabe")
+    filas = []
+    for e in entradas:
+        fila = [nombre(e), e.bloque or "-", f"1:{e.escala:g}" if e.escala else "-",
+                tam(e.tamano_dibujo_mm), tam(e.tamano_pagina_mm), e.estado]
+        if zona is not None:
+            fila.append({True: "sí", False: "no", None: "-"}[e.cabe])
+        filas.append(fila)
+    anchos = [max(len(str(f[i])) for f in [titulos, *filas]) for i in range(len(titulos))]
+    linea = lambda f: "  ".join(str(v).ljust(a) for v, a in zip(f, anchos)).rstrip()  # noqa: E731
+    lineas = [f"Inventario de {donde}:", "", linea(titulos), "  ".join("-" * a for a in anchos)]
+    lineas += [linea(f) for f in filas]
+
+    rechazados = [e for e in entradas if e.estado == RECHAZADO]
+    if rechazados:
+        lineas += ["", "Motivos de rechazo:"]
+        for e in rechazados:
+            lineas.append(f"  {nombre(e)}:")
+            lineas += [f"    - {motivo}" for motivo in e.motivos]
+    con_notas = [e for e in entradas if e.notas]
+    if con_notas:
+        lineas += ["", "Notas:"]
+        for e in con_notas:
+            lineas.append(f"  {nombre(e)}:")
+            lineas += [f"    - {nota}" for nota in e.notas]
+
+    resumen = (f"{len(entradas)} detalle(s): {len(entradas) - len(rechazados)} aceptado(s), "
+               f"{len(rechazados)} rechazado(s)")
+    if zona is not None:
+        resumen += f", {sum(1 for e in entradas if e.cabe is False)} no caben en {zona}"
+    lineas += ["", resumen + "."]
+    return "\n".join(lineas)
 
 
 def tabla_zonas(formato: Formato) -> str:
@@ -246,6 +408,31 @@ def main(argv: list[str] | None = None) -> int:
     p_ref.add_argument("--manifiesto", type=Path,
                        help="Manifiesto del --detalle (van juntos).")
 
+    p_man = sub.add_parser("leer-manifiesto",
+                           help="Lee un manifiesto del exportador y muestra un resumen.")
+    p_man.add_argument("ruta", type=Path, help="Archivo <prefijo>.manifest.json.")
+
+    p_paq = sub.add_parser("paquetes",
+                           help="Localiza los paquetes del exportador en una carpeta.")
+    p_paq.add_argument("carpeta", type=Path, help="Carpeta con <prefijo>.manifest.json y PDF.")
+    p_paq.add_argument("--recursivo", action="store_true", help="Busca también en subcarpetas.")
+    p_paq.add_argument("--verificar", action="store_true",
+                       help="Verifica integridad (bytes, SHA-256, abre, 1 página) y coherencia "
+                            "(geometría del manifiesto contra el PDF).")
+
+    p_ver = sub.add_parser("verificar-paquete",
+                           help="Muestra todas las comprobaciones de integridad y coherencia.")
+    p_ver.add_argument("manifiesto", type=Path, help="Archivo <prefijo>.manifest.json.")
+
+    p_inv = sub.add_parser("inventario",
+                           help="Inventario de detalles: aceptados, rechazados y si caben.")
+    p_inv.add_argument("carpeta", type=Path, help="Carpeta con los paquetes del exportador.")
+    p_inv.add_argument("--recursivo", action="store_true", help="Busca también en subcarpetas.")
+    p_inv.add_argument("--formato", type=Path,
+                       help="Formato de hoja (p. ej. formatos/A1_ERCO.json): agrega «Cabe».")
+    p_inv.add_argument("--zona", default="area_dibujo",
+                       help="Zona del formato para «Cabe» (por defecto area_dibujo).")
+
     args = parser.parse_args(argv)
 
     try:
@@ -284,8 +471,8 @@ def main(argv: list[str] | None = None) -> int:
                 dx0, dy0, dx1, dy1 = r.dibujo_en_papel
                 print(f"Rectángulo del dibujo (page_bounds_mm en papel): X {dx0:.2f} a {dx1:.2f}, "
                       f"Y {dy0:.2f} a {dy1:.2f}")
-            if args.manifiesto:
-                print(texto_comparacion(r.comparacion))
+            if r.coherencia is not None:
+                print(texto_verificacion_colocar(r.coherencia))
         elif args.subcomando == "referencia":
             if (args.detalle is None) != (args.manifiesto is None):
                 print("Error: --detalle y --manifiesto van juntos.", file=sys.stderr)
@@ -295,6 +482,29 @@ def main(argv: list[str] | None = None) -> int:
             print(r.texto, end="")
             print(f"PDF: {r.ruta_pdf}\nInforme: {r.ruta_txt}")
             return 0 if r.pasa else 1
+        elif args.subcomando == "leer-manifiesto":
+            print(resumen_manifiesto(leer_manifiesto(args.ruta)))
+        elif args.subcomando == "paquetes":
+            paquetes, sueltos = localizar_con_sueltos(args.carpeta, args.recursivo)
+            verificaciones = ([verificar_paquete(p) for p in paquetes] if args.verificar
+                              else None)
+            print(texto_paquetes(paquetes, args.carpeta, args.recursivo, verificaciones, sueltos))
+            todos_completos = all(p.estado == COMPLETO for p in paquetes)
+            sin_fallas = all(r.pasa or not r.verificable
+                             for v in verificaciones or [] for r in v)
+            return 0 if todos_completos and sin_fallas else 1
+        elif args.subcomando == "inventario":
+            formato = (cargar_formato(args.formato, usar_plantilla=False)
+                       if args.formato else None)
+            entradas = construir_inventario(args.carpeta, formato, args.zona, args.recursivo)
+            print(texto_inventario(entradas, args.carpeta, args.recursivo,
+                                   args.zona if formato else None))
+            return 1 if any(e.estado == RECHAZADO for e in entradas) else 0
+        elif args.subcomando == "verificar-paquete":
+            paquete = paquete_de_manifiesto(args.manifiesto)
+            verificacion = verificar_paquete(paquete)
+            print(texto_verificar_paquete(paquete, verificacion))
+            return 0 if paquete.estado == COMPLETO and all(r.pasa for r in verificacion) else 1
     # FormatoInvalido, DetalleInvalido, PlantillaInvalida y ManifiestoInvalido son ValueError.
     except (FileExistsError, ValueError) as e:
         print(f"Error: {e}", file=sys.stderr)

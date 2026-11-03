@@ -253,8 +253,194 @@ rectángulo de 10 x 4 unidades CAD, manifiesto mínimo sintético.
 - Con `--detalle` K0010 y su manifiesto: tamaño 416,980 x 119,403 = page_size_mm y límites
   del dibujo = page_bounds_mm en papel (diferencia 0,000 mm).
 
-## Pendientes (para después de la Fase 1)
+## Fase 2 — Ingesta y validación del extractor ✅ CERRADA (2026-11-02)
 
+Resumen: el componedor lee los paquetes del Exportador Vectorial (PDF + TXT + manifiesto)
+por una sola puerta (`importador.importar_paquete`): localiza el paquete, valida la
+estructura del manifiesto, verifica la integridad del PDF (bytes, SHA-256, que abra, una
+página) y la coherencia de la geometría (página, escala, matriz, cad_bounds, page_bounds,
+trazos) con la regla de uso de la escala física. Rechaza con todos los motivos y su
+categoría. `inventario` resume una carpeta: aceptados, rechazados, si caben en el área de
+dibujo y una escala sugerida. 272 pruebas, todas sintéticas.
+
+Comandos nuevos: `leer-manifiesto`, `paquetes [--verificar]`, `verificar-paquete`,
+`inventario` (ver README).
+
+### Subfase 2.1 — Contrato del paquete del exportador ✅ (2026-11-02)
+
+**Inspección del exportador** (solo lectura): el manifiesto lo genera
+`src/cde_exporter/cad/manifest.py` (`DOCUMENT_TYPE = "cde-detail-manifest"`,
+`SCHEMA_VERSION = "1.0"`; `model_version` "2" sale de `detail_model.py`). Documentación en
+su `docs/manifiesto.md`; no hay JSON Schema (el esquema está declarado en Python).
+`validation.status`: `complete` | `complete_with_warnings`; severidades `info` | `warning` |
+`critical`; estados de entidades `conserved`, `transformed`, `simplified`, `omitted`,
+`unsupported`, `not_visible`. Seis campos que el componedor necesita pueden venir en null
+según el exportador (unidades, escala, tamaño esperado, margen, `pdf.drawing`).
+
+**Qué se hizo**
+- `docs/contrato_paquete.md`: los tres archivos, campos obligatorios (ruta, tipo, regla,
+  uso), campos que pueden venir null, opcionales informativos, versiones y qué queda para
+  2.3/2.4.
+- `manifiesto.py` (solo biblioteca estándar): dataclasses frozen `Manifiesto`, `Unidades`,
+  `Escala`, `GeometriaPdf`, `Dibujo` (reutiliza `MatrizCad`); `leer_manifiesto(ruta)` valida
+  solo estructura y junta todos los problemas en un `ManifiestoInvalido` (uno por línea, con
+  la ruta del campo; «falta el campo» vs «es null (motivo)»; un objeto que falta se informa
+  una sola vez). Versión mayor 1; campos desconocidos e informativos se ignoran.
+- CLI `leer-manifiesto <ruta>`: resumen (bloque, escala, tamaño, estado) o error; 0/1.
+- `cad_a_papel.leer_geometria_manifiesto`: sin cambios, con nota hacia `manifiesto.py`.
+- `CLAUDE.md`: línea sobre el contrato. `README.md`: comando nuevo.
+
+**Pruebas**: 204, todas pasan (75 nuevas). Manifiestos sintéticos de
+`conftest.manifiesto_paquete` (quitar/cambiar campos, versión mínima), sin datos de ERCO:
+completo y mínimo, campos desconocidos, falta de cada uno de los 25 obligatorios, null en
+los 6 que el exportador puede dejar null, varios problemas a la vez (5 en un mensaje),
+22 casos de tipos y valores (texto, booleano, matriz de 5, NaN, inf, negativos, SHA-256,
+nombre con ruta…), versiones 1.x aceptadas y 2.0/0.9/«v1» rechazadas, JSON mal formado,
+JSON que no es objeto, archivo inexistente y el CLI.
+
+**Manifiestos reales** (copiados de solo lectura a `data/input`, no se versionan, ninguna
+prueba depende de ellos): perfil_k0010 (1:50, 416,98 x 119,40 mm), plano_completo (1:1000,
+817,44 x 772,52 mm) y via_ma (1:1000, 2551,01 x 1885,27 mm): los tres con estructura
+válida, escala física garantizada y `complete_with_warnings`.
+
+### Subfase 2.2 — Localizar paquetes y emparejar sus archivos ✅ (2026-11-02)
+
+**Qué se hizo**
+- Ajuste a 2.1: `pdf.margin_mm` pasa a opcional informativo (`margen_mm` = None si falta,
+  es null o no es válido; no se rechaza). Contrato y pruebas actualizados.
+- `paquete.py` (solo biblioteca estándar): `Paquete` (prefijo, rutas de manifiesto, PDF y
+  TXT, manifiesto, problemas; `estado` completo / incompleto / invalido),
+  `localizar_paquetes(carpeta, recursivo)` y `CarpetaInvalida`. Un paquete por manifiesto;
+  PDF por `pdf.file_name` en la misma carpeta («indica X pero la carpeta tiene Y»); TXT
+  opcional; PDF + TXT sin manifiesto = incompleto; PDF suelto, .dxf, .svg… ignorados;
+  manifiesto inválido listado sin detener el recorrido. No abre PDF ni calcula hashes.
+- CLI `paquetes <carpeta> [--recursivo]`: tabla, problemas y conteo; 0 si todos completos.
+- `docs/contrato_paquete.md`: sección «Cómo se localiza un paquete». README actualizado.
+
+**Pruebas**: 222, todas pasan (18 nuevas, sintéticas en tmp_path, PDF de bytes
+ficticios): completo con y sin TXT, manifiesto sin PDF, PDF sin manifiesto, inválido junto
+a válido, `file_name` distinto del prefijo, PDF de otro nombre, prefijos `_001/_002/_010`,
+extras y PDF suelto ignorados, recursivo/no recursivo, PDF en otra carpeta, carpeta
+inexistente/archivo/vacía y CLI (tabla, problemas, códigos). Más 4 de margen opcional.
+
+**Real**: `paquetes data/input` → perfil_k0010, plano_completo y via_ma: 3 completos,
+código 0.
+
+### Subfase 2.3 — Integridad del paquete ✅ (2026-11-02)
+
+**Qué se hizo**
+- Ajuste a 2.2: `paquetes` agrega al final «PDF sin paquete (ignorados): n — nombres»
+  (`paquete.localizar_con_sueltos`); no cambia estados ni código de salida.
+- `integridad.py`: `verificar_integridad(paquete)` → `ResultadoIntegridad` (OK / FALLA /
+  «no verificable (paquete …)»), reutilizando `validacion.Comprobacion` (nuevo campo
+  opcional `detalle`). Orden: existe → bytes → SHA-256 (por bloques de 1 MB,
+  `sha256_archivo`) → abre sin daños ni cifrado → 1 página (PDF y manifiesto). Se detiene
+  solo si seguir es imposible. Mensajes distinguen tamaño distinto («modificado o
+  incompleto») de mismo tamaño con otro hash («el contenido cambió después de
+  exportarse»). No compara página, escala ni matriz (2.4).
+- CLI `paquetes --verificar`: columna «Integridad», «Problemas de integridad» y código 1 si
+  alguno falla.
+- Hallazgo: un PDF con un byte cambiado abre normalmente en PyMuPDF; solo el SHA-256 lo
+  detecta. Un PDF recortado abre «reparado» (se informa como dañado). Los tres PDF reales
+  abren sin reparar ni cifrado.
+
+**Pruebas**: 239, todas pasan (17 nuevas). `conftest.crear_paquete_real` escribe PDF y
+manifiesto con bytes y SHA-256 reales: íntegro; un byte cambiado (falla el hash, el
+tamaño pasa); recortado (falla el tamaño); no es PDF con hash correcto (no abre, no se
+cuentan páginas); 2 páginas con manifiesto de 1 y de 2; PDF que desaparece; incompleto e
+inválido no verificables; hash de 5 MB por bloques (espía de lecturas ≤ 1 MB); CLI con y sin
+`--verificar`; PDF sueltos.
+
+**Real**: `paquetes data/input --verificar` → 3 paquetes OK, código 0. Prueba a mano: copia
+de perfil_k0010 en una carpeta temporal con un byte cambiado (mismo tamaño) → FALLA
+«SHA-256: el contenido del PDF cambió después de exportarse», código 1; original intacto.
+
+### Subfase 2.4 — Coherencia del paquete y lector único del manifiesto ✅ (2026-11-02)
+
+**Qué se hizo**
+- `coherencia.py`: `verificar_coherencia(paquete, integridad=None)` y
+  `verificar_paquete(paquete)` → (integridad, coherencia). Solo paquetes completos con
+  integridad OK; si no, «no verificable (…)». Comprobaciones a–i: rotación 0 (si no, se
+  detiene), tamaño visible = page_size (±0,1), page_size = expected (±0,1), factor = mm por
+  unidad / N (rel. < 1e-6), matriz a = factor, d = −factor, b = c = 0 («giro o inclinación:
+  todavía no soportada»), cad_bounds por la matriz = page_bounds (±0,01, 4 esquinas),
+  page_bounds dentro de la página, trazos = page_bounds (±0,5, sin fondo blanco) y regla de
+  uso `physical_scale_guaranteed` = true (cita `physical_scale_reason`).
+- Lector único: borrados `cad_a_papel.leer_geometria_manifiesto`, `GeometriaManifiesto`, el
+  `ManifiestoInvalido` antiguo y, en `comprobacion_dibujo.py`, `exigir_coherencia`,
+  `comparar_con_manifiesto` y `ComparacionLimites` (los reemplazan a, b y h).
+  `limites_dibujo_en_papel(limites, alto, origen)`. `validar_detalle_real` usa
+  `leer_manifiesto`. `ResultadoVerificacion` común (validacion.py) para integridad y
+  coherencia; `manifiesto.Escala.motivo_no_garantizada` (opcional).
+- `colocar --manifiesto`: `paquete.paquete_de_manifiesto` + exige completo, `--detalle` =
+  PDF del manifiesto, integridad OK y coherencia OK; si no, no coloca y lista problemas
+  (antes, una diferencia de trazos era solo advertencia). Ancla y rectángulo del dibujo
+  igual que antes.
+- CLI: `paquetes --verificar` con columna «Coherencia»; nuevo `verificar-paquete`.
+
+**Pruebas**: 247, todas pasan. `conftest.crear_paquete_real` arma paquetes coherentes
+(dibujo = matriz del manifiesto) con opciones (rotación, otro tamaño de página, dibujo
+desplazado). Un caso por cada comprobación a–i que falla solo esa, matriz con giro,
+escala no garantizada con y sin motivo, no verificables, `colocar --manifiesto` (incoherente,
+integridad fallida, escala no garantizada, `--detalle` distinto, incompleto, inválido,
+archivo que no es manifiesto) y la salida/código de `paquetes --verificar` y
+`verificar-paquete`. Las pruebas del lector antiguo se quitaron: sus casos ya están en
+`test_manifiesto.py` y `test_coherencia.py`.
+
+**Real** (`paquetes data/input --verificar`: 3 OK / 3 OK, código 0):
+
+| Paquete | a | b | c | d | h: dif. máx. | Tiempo (integridad + coherencia) |
+|---|---|---|---|---|---|---|
+| perfil_k0010 | 20.000000000000004 | 0 | 0 | −20.000000000000004 | 0,000005 mm | 0,09 s |
+| plano_completo | 1.0 | 0 | 0 | −1.0 | 0,000039 mm | 1,03 s |
+| via_ma | 1.0 | 0 | 0 | −1.0 | 0,000052 mm | 1,10 s |
+
+El tiempo es casi todo `get_drawings()` (comprobación h); el SHA-256 tarda ~0,01 s.
+
+### Subfase 2.5 — Importador e inventario ✅ (2026-11-02)
+
+**Qué se hizo**
+- Ajuste a 2.4: en la comprobación e, b y c cuentan como cero si
+  |valor| <= 1e-9 · |factor| (pruebas con b = 1e-16, pasa; y b = 0,01, «giro o inclinación»).
+- `importador.py`: `importar_paquete(ruta_manifiesto, pdf_esperado=None)` →
+  `PaqueteAceptado` (paquete, integridad, coherencia); única puerta de entrada. Si no,
+  `PaqueteRechazado` con todos los motivos «[categoría] texto» ([manifiesto], [archivos],
+  [integridad], [coherencia], [escala]) y el nombre del paquete. `evaluar_paquete` hace lo
+  mismo sin lanzar error (lo usa el inventario). `paquete.Paquete` separa
+  `problemas_manifiesto` y `problemas_archivos` (`problemas` sigue existiendo).
+- `colocar --manifiesto` usa `importar_paquete`; se borraron `paquete_utilizable` y
+  `PaqueteNoUtilizable` del CLI.
+- `inventario.py`: `construir_inventario(carpeta, formato, zona, recursivo)` →
+  `EntradaInventario` (prefijo, carpeta, bloque, escala, página, dibujo, estado, motivos,
+  cabe, notas). «Cabe» con la misma regla que `colocar` (`colocar.exceso_de_tamano`, nueva);
+  no caber es nota, no rechazo; escala sugerida aproximada de la lista estándar (con
+  `pdf.margin_mm`); «duplicado de …» por SHA-256.
+- CLI `inventario <carpeta> [--recursivo] [--formato] [--zona]`: tabla, motivos, notas y
+  resumen; código 1 solo si hay rechazados.
+
+**Pruebas**: 272, todas pasan (25 nuevas). Un rechazo por categoría, PDF indicado que no
+es el del paquete, manifiesto inexistente, varios motivos en un mensaje (3 motivos;
+manifiesto + archivos), aceptado; inventario con aceptado/rechazado (mismos motivos que el
+importador), cabe, no cabe con margen (sugiere 1:100), sin margen (sin sugerencia), ni con
+1:10000, zona inexistente, duplicado, recursivo, CLI sin formato (sin «Cabe»), no caber con
+código 0, rechazados con código 1, carpeta vacía y otra zona.
+
+**Real**
+- `inventario data/input --formato formatos/A1_ERCO.json`: 3 aceptados; perfil_k0010 cabe;
+  plano_completo no cabe (sugerida 1:1500, ≈ 548,3 x 518,3 mm) y via_ma no cabe (sugerida
+  1:5000, ≈ 518,2 x 385,1 mm). Código 0.
+- Inventario recursivo (solo lectura) de `Exportador Vectorial/data/output/referencia`:
+  5 aceptados (3 copias de perfil_k0010 en carpetas distintas, plano_completo, via_ma), 2 no
+  caben. Las 3 copias de perfil_k0010 NO salen como duplicadas: sus PDF tienen SHA-256
+  distintos (el exportador escribe un `/ID` aleatorio en cada extracción).
+
+## Pendientes (después de las Fases 1 y 2)
+
+- **Mayúsculas/minúsculas del nombre del PDF en Windows**: `localizar_paquetes` busca
+  `pdf.file_name` comparando el nombre exacto. En Windows el sistema de archivos no
+  distingue mayúsculas, así que un manifiesto con «Detalle.pdf» y un archivo «detalle.pdf»
+  hoy sale como «el manifiesto indica X pero la carpeta tiene Y». Decidir si se acepta
+  (con aviso) o se exige igualdad exacta.
 - **Fondo blanco del exportador**: cada detalle trae un rectángulo blanco de página
   completa que tapa lo que haya debajo en la hoja (rótulo, rosa, otros detalles si se
   traslapan). Decidir con el exportador si se quita o si el componedor lo omite.
@@ -265,5 +451,5 @@ rectángulo de 10 x 4 unidades CAD, manifiesto mínimo sintético.
   PDF final (`show_pdf_page` no copia anotaciones); el aspecto no cambia, pero ese texto no
   se puede buscar.
 - **Versionado de plantillas**: decidir con Alan si `plantillas/*.pdf` entra al repositorio.
-- Fase 2: importador completo del manifiesto (hash, versión de esquema, escala, unidades,
-  coherencia, inventario de detalles); reemplaza a `leer_geometria_manifiesto`.
+- **Detalles que no caben en A1** (plano_completo, via_ma): el inventario sugiere una escala
+  aproximada; reexportarlos a esa escala es una decisión de diseño, fuera del componedor.

@@ -1,4 +1,7 @@
-"""CLI `colocar` con manifiesto y ancla CAD (datos sintéticos, no de ERCO)."""
+"""CLI `colocar` con manifiesto y ancla CAD (datos sintéticos, no de ERCO).
+
+Con --manifiesto el paquete debe estar completo, íntegro y coherente; si no, no se coloca.
+"""
 
 import pymupdf
 import pytest
@@ -12,9 +15,8 @@ from conftest import (
     PAGINA_CAD_MM,
     RECT_CAD,
     crear_detalle_cad,
+    crear_paquete_real,
     escribir_formato,
-    escribir_json,
-    manifiesto_sintetico,
 )
 
 TOL_MM = 0.1
@@ -24,12 +26,19 @@ ANCLA_PAPEL = (150.0, 200.0)
 
 @pytest.fixture
 def entradas(tmp_path):
+    detalle = crear_paquete_real(tmp_path / "paquete")  # PDF + manifiesto coherentes
     return {
         "formato": escribir_formato(tmp_path / "formato.json"),
-        "detalle": crear_detalle_cad(tmp_path / "detalle.pdf"),
-        "manifiesto": escribir_json(tmp_path / "detalle.manifest.json", manifiesto_sintetico()),
+        "detalle": detalle,
+        "manifiesto": detalle.with_name("detalle.manifest.json"),
         "salida": tmp_path / "salida.pdf",
     }
+
+
+def _paquete(tmp_path, entradas, **kw):
+    """Reemplaza el paquete de `entradas` por uno con las opciones dadas."""
+    detalle = crear_paquete_real(tmp_path / "otro_paquete", **kw)
+    entradas.update(detalle=detalle, manifiesto=detalle.with_name("detalle.manifest.json"))
 
 
 def _args(e, *extra):
@@ -67,8 +76,8 @@ def test_esquinas_caen_donde_predice_cad_a_papel(entradas, capsys):
 
     assert "Rectángulo del dibujo (page_bounds_mm en papel): X 150.00 a 350.00, " \
            "Y 200.00 a 280.00" in out
-    assert "diferencia máx. 0.00" in out
-    assert "ADVERTENCIA" not in out
+    assert ("Paquete verificado: completo, integridad OK y coherencia OK (trazos del PDF vs "
+            "page_bounds_mm: diferencia máx. 0.000 mm)") in out
 
 
 def test_con_manifiesto_y_centrar_tambien_imprime_el_dibujo(entradas, capsys):
@@ -78,15 +87,51 @@ def test_con_manifiesto_y_centrar_tambien_imprime_el_dibujo(entradas, capsys):
     assert "Rectángulo del dibujo (page_bounds_mm en papel)" in out
 
 
-def test_advertencia_si_page_bounds_no_coincide(entradas, capsys, tmp_path):
-    datos = manifiesto_sintetico()
-    datos["pdf"]["drawing"]["page_bounds_mm"]["y1"] += 1.5
-    manifiesto = escribir_json(tmp_path / "otro.json", datos)
-    assert main(_args(entradas, "--centrar", "--manifiesto", str(manifiesto))) == 0
-    out = capsys.readouterr().out
-    assert "diferencia máx. 1.500 mm" in out
-    assert "ADVERTENCIA" in out
-    assert entradas["salida"].exists()
+def test_paquete_incoherente_no_se_coloca(entradas, capsys, tmp_path):
+    # Antes era una advertencia; ahora la coherencia es requisito para colocar.
+    _paquete(tmp_path, entradas, desplazar_dibujo_mm=(0.0, 1.5))
+    assert main(_args(entradas, "--centrar", "--manifiesto", str(entradas["manifiesto"]))) == 1
+    err = capsys.readouterr().err
+    assert "Paquete 'detalle' rechazado (1 motivo):" in err
+    assert ("  - [coherencia] los trazos del PDF no están donde dice page_bounds_mm "
+            "(diferencia máx. 1.500 mm)") in err
+    assert not entradas["salida"].exists()
+
+
+def test_integridad_fallida_no_se_coloca(entradas, capsys):
+    datos = bytearray(entradas["detalle"].read_bytes())
+    datos[200] ^= 0x01
+    entradas["detalle"].write_bytes(bytes(datos))
+    assert main(_args(entradas, "--centrar", "--manifiesto", str(entradas["manifiesto"]))) == 1
+    assert "  - [integridad] el contenido del PDF cambió después de exportarse" in         capsys.readouterr().err
+    assert not entradas["salida"].exists()
+
+
+def test_escala_no_garantizada_no_se_coloca(entradas, capsys, tmp_path):
+    _paquete(tmp_path, entradas, cambiar={"scale.physical_scale_guaranteed": False})
+    assert main(_args(entradas, "--manifiesto", str(entradas["manifiesto"]), *_ancla())) == 1
+    assert "  - [escala] escala física no garantizada: el paquete no se usa" in         capsys.readouterr().err
+
+
+def test_detalle_que_no_es_el_del_manifiesto(entradas, capsys, tmp_path):
+    otro = crear_detalle_cad(tmp_path / "otro.pdf")  # mismo dibujo, pero otro archivo
+    args = _args(dict(entradas, detalle=otro), "--centrar", "--manifiesto",
+                 str(entradas["manifiesto"]))
+    assert main(args) == 1
+    err = capsys.readouterr().err
+    assert (f"  - [archivos] el PDF indicado '{otro}' no es el del paquete: el manifiesto "
+            f"indica 'detalle.pdf'") in err
+    assert not entradas["salida"].exists()
+
+
+def test_paquete_incompleto_no_se_coloca(entradas, capsys, tmp_path):
+    otro = crear_detalle_cad(tmp_path / "suelto.pdf")
+    entradas["detalle"].unlink()
+    assert main(_args(dict(entradas, detalle=otro), "--centrar", "--manifiesto",
+                      str(entradas["manifiesto"]))) == 1
+    err = capsys.readouterr().err
+    assert "Paquete 'detalle' rechazado (1 motivo):" in err
+    assert "  - [archivos] falta el PDF 'detalle.pdf'" in err
 
 
 def test_ancla_fuera_de_la_zona_no_crea_archivo(entradas, capsys):
@@ -98,10 +143,21 @@ def test_ancla_fuera_de_la_zona_no_crea_archivo(entradas, capsys):
 
 
 def test_manifiesto_invalido_no_crea_archivo(entradas, capsys, tmp_path):
-    manifiesto = escribir_json(tmp_path / "m.json", manifiesto_sintetico(units="m"))
-    assert main(_args(entradas, "--manifiesto", str(manifiesto), *_ancla())) == 1
-    assert "debe ser 'mm'" in capsys.readouterr().err
+    _paquete(tmp_path, entradas, cambiar={"pdf.drawing.cad_to_page.units": "m"})
+    assert main(_args(entradas, "--manifiesto", str(entradas["manifiesto"]), *_ancla())) == 1
+    err = capsys.readouterr().err
+    assert "Paquete 'detalle' rechazado (1 motivo):" in err
+    assert "  - [manifiesto] pdf.drawing.cad_to_page.units: debe ser 'mm'; tiene 'm'" in err
     assert not entradas["salida"].exists()
+
+
+def test_archivo_que_no_es_manifiesto(entradas, capsys, tmp_path):
+    otro = tmp_path / "geometria.json"
+    otro.write_text("{}", encoding="utf-8")
+    assert main(_args(entradas, "--centrar", "--manifiesto", str(otro))) == 1
+    err = capsys.readouterr().err
+    assert "Paquete 'geometria.json' rechazado (1 motivo):" in err
+    assert "[archivos] 'geometria.json' no es un manifiesto de paquete" in err
 
 
 @pytest.mark.parametrize("extra, mensaje", [

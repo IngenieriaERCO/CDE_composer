@@ -7,22 +7,18 @@ tolerancia)`. Todo se mide sobre el PDF ya guardado, con `get_drawings()`,
 """
 
 import math
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pymupdf
 
 from componedor import referencia as ref
-from componedor.cad_a_papel import (
-    cad_a_papel,
-    leer_geometria_manifiesto,
-    limites_dibujo_en_papel,
-    origen_para_ancla,
-)
+from componedor.cad_a_papel import cad_a_papel, limites_dibujo_en_papel, origen_para_ancla
 from componedor.colocar import DetalleInvalido, abrir_pdf, colocar_detalle, tamano_visible_mm
 from componedor.comprobacion_dibujo import trazos_sin_fondo
 from componedor.formato import Formato, RectMM
 from componedor.hoja import crear_pagina
+from componedor.manifiesto import leer_manifiesto
 from componedor.plantilla import (
     TOLERANCIA_MARCO_MM,
     TOLERANCIA_TAMANO_MM,
@@ -45,6 +41,33 @@ class Comprobacion:
     esperado: str
     medido: str
     tolerancia: str
+    detalle: str = ""  # explicación para la persona (integridad y coherencia)
+
+
+@dataclass
+class ResultadoVerificacion:
+    """Resultado de una verificación de paquete (integridad o coherencia)."""
+
+    prefijo: str
+    verificable: bool
+    comprobaciones: list[Comprobacion] = field(default_factory=list)
+    motivo: str = ""  # por qué no es verificable
+    datos: dict = field(default_factory=dict)  # medidas numéricas para informar
+
+    @property
+    def pasa(self) -> bool:
+        return self.verificable and all(c.pasa for c in self.comprobaciones)
+
+    @property
+    def etiqueta(self) -> str:
+        """Para las columnas del CLI: OK, FALLA o — (no verificable)."""
+        if not self.verificable:
+            return "—"
+        return "OK" if self.pasa else "FALLA"
+
+    @property
+    def fallas(self) -> list[Comprobacion]:
+        return [c for c in self.comprobaciones if not c.pasa]
 
 
 def _r(rect: RectMM) -> str:
@@ -237,15 +260,17 @@ def validar_detalle_real(formato: Formato, ruta_detalle: Path,
                          ruta_manifiesto: Path) -> list[Comprobacion]:
     """Coloca el detalle real centrado en una hoja limpia (sin plantilla ni marco) y compara
     con su manifiesto: tamaño de página y límites del dibujo en papel."""
-    geometria = leer_geometria_manifiesto(ruta_manifiesto)
-    tamano_manifiesto = (geometria.ancho_pagina_mm, geometria.alto_pagina_mm)
+    manifiesto = leer_manifiesto(ruta_manifiesto)
+    tamano_manifiesto = manifiesto.pdf.tamano_pagina_mm
     detalle = abrir_pdf(ruta_detalle, "el detalle", DetalleInvalido)
     hoja = crear_pagina(formato.ancho_mm, formato.alto_mm)
     try:
         ancho, alto = tamano_visible_mm(detalle[0])
         ocupado = colocar_detalle(hoja[0], formato, detalle)  # centrado en area_dibujo
-        geometria = replace(geometria, ancho_pagina_mm=ancho, alto_pagina_mm=alto)
-        esperado = limites_dibujo_en_papel(geometria, ocupado[:2])
+        # Alto real de la página colocada (coincide con page_size_mm ±0,1 mm si el
+        # paquete es coherente).
+        esperado = limites_dibujo_en_papel(manifiesto.pdf.dibujo.limites_pagina_mm, alto,
+                                           ocupado[:2])
         fondo = rect_papel_a_pdf(ocupado, formato.alto_mm)
         rects = [rect_pdf_a_papel(t["rect"], formato.alto_mm)
                  for t in trazos_sin_fondo(hoja[0], fondo)]

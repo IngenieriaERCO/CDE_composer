@@ -135,6 +135,14 @@ def abrir_pdf(origen: pymupdf.Document | Path | str, que: str,
     return doc
 
 
+def exceso_de_tamano(tamano_mm: tuple[float, float], zona: RectMM) -> tuple[float, float]:
+    """Cuánto se pasa (ancho, alto) en mm un detalle de `tamano_mm` respecto a la zona;
+    (0, 0) si cabe por tamaño. Es la regla que usan `colocar` y el inventario."""
+    dx = tamano_mm[0] - (zona[2] - zona[0])
+    dy = tamano_mm[1] - (zona[3] - zona[1])
+    return (dx if dx > EPS_MM else 0.0, dy if dy > EPS_MM else 0.0)
+
+
 def _exigir_que_quepa(ocupado: RectMM, nombre_zona: str, zona: RectMM) -> None:
     ancho, alto = ocupado[2] - ocupado[0], ocupado[3] - ocupado[1]
     ancho_zona, alto_zona = zona[2] - zona[0], zona[3] - zona[1]
@@ -144,11 +152,12 @@ def _exigir_que_quepa(ocupado: RectMM, nombre_zona: str, zona: RectMM) -> None:
     )
 
     # 1) Más grande que la zona: no cabe en ninguna posición.
+    dx, dy = exceso_de_tamano((ancho, alto), zona)
     exceso = []
-    if ancho > ancho_zona + EPS_MM:
-        exceso.append(f"{ancho - ancho_zona:.1f} mm a lo ancho")
-    if alto > alto_zona + EPS_MM:
-        exceso.append(f"{alto - alto_zona:.1f} mm a lo alto")
+    if dx:
+        exceso.append(f"{dx:.1f} mm a lo ancho")
+    if dy:
+        exceso.append(f"{dy:.1f} mm a lo alto")
     if exceso:
         raise DetalleInvalido(f"{descripcion}: se pasa {' y '.join(exceso)}.")
 
