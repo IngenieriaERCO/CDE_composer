@@ -434,7 +434,11 @@ código 0, rechazados con código 1, carpeta vacía y otra zona.
   caben. Las 3 copias de perfil_k0010 NO salen como duplicadas: sus PDF tienen SHA-256
   distintos (el exportador escribe un `/ID` aleatorio en cada extracción).
 
-## Fase 3 — Planos con varios detalles (EN CURSO, rama `fase-3`, iniciada 2026-11-05)
+## Fase 3 — Planos con varios detalles ✅ COMPLETA (rama `fase-3`, 2026-11-05)
+
+Resumen: `componer` arma un plano con varios detalles desde un `plano.json`, revalidándolo
+todo y verificando la geometría; los elementos fijos del rótulo se advierten; y `editor`
+genera un editor visual de un solo archivo para armar el plano arrastrando detalles.
 
 ### Subfase 3.1 — Comando `componer` y formato plano.json ✅ (2026-11-05)
 
@@ -513,7 +517,51 @@ solo `area_dibujo` editable, detalles, rechazados, coordenadas del dibujo iguale
   'k0010_abajo_der' se monta sobre 'rosa_vientos' de la plantilla (31.0 x 39.0 mm)»; el
   PDF se genera igual (advertencia, no error) y la verificación pasa.
 
-**Lo que sigue**: 3.3 editor HTML que escribe plano.json.
+### Subfase 3.3 — Editor HTML de planos ✅ (2026-11-05)
+
+**Qué se hizo**
+- `advertencias.py`: plantillas de texto de las 4 advertencias de traslape en un solo lugar;
+  `componer` las usa (mismos mensajes exactos; las 344 pruebas siguieron pasando) y se
+  incrustan en el editor.
+- Recursos del editor en `src/componedor/editor/` (declarados en `pyproject.toml`):
+  `editor.html`, `editor.css`, `editor_logica.js` (funciones PURAS, también para Node:
+  `papelAPantalla`/`pantallaAPapel` —única inversión de Y, escala X e Y por separado—,
+  `clampAZona`, `posicionCentrada`, `redondearDentro`, `interseccion`, `advertencias`,
+  `idUnico`, `serializarPlano`, `leerPlano`) y `editor_ui.js` (SVG + DOM, sin librerías).
+- `editor_html.py`: `generar_editor` reutiliza `preparar_editor` y escribe `editor.html` con
+  todo incrustado (CSS, JS, datos, imágenes en base64, plantillas de advertencias, carpeta del
+  editor solo informativa). CLI `editor CARPETA --formato --salida [--sobrescribir]`.
+- Editor: hoja completa de fondo, zonas no editables rayadas y bloqueadas (solo de `zonas`),
+  elementos fijos en naranja, catálogo (aceptados, no caben con escala sugerida, rechazados con
+  motivos), agregar varias veces (ids únicos; la copia se corre 10 mm), arrastre con límite
+  estricto al área de dibujo, paso 0,1/1/5/10 mm, X/Y editables (muestran lo que se guardará),
+  Centrar / Traer al frente / Enviar atrás / Quitar, flechas (Shift ×10), Supr, zoom con rueda
+  y botones, desplazamiento, posición del cursor en mm, advertencias en vivo (mismo texto y
+  niveles que componer), Guardar (`showSaveFilePicker`; si falla, descarga; la cancelación se
+  ignora; LF; redondeo a 0,01 mm hacia dentro del área), comando de componer para copiar,
+  Abrir plano.json (versión, catálogo, `centrar`, ajuste al área con aviso), aviso de cambios
+  sin guardar.
+- `docs/editor.md`; README.
+
+**Pruebas**: 366, todas pasan (22 nuevas). Python: un solo HTML, sin URLs http(s) ni recursos
+externos, marcadores reemplazados, datos incrustados válidos (solo `area_dibujo` editable,
+imágenes PNG en base64, plantillas iguales a las de componer), carpeta existente con y sin
+`--sobrescribir`, CLI. JavaScript con Node (17, ninguna saltada): inversión de Y y escalas,
+clamp (6 casos, aceptados por la regla de componer), no cabe, centrado idéntico a Python,
+redondeo hacia dentro en los bordes, paso e ids, advertencias idénticas a las de componer
+(4 tipos, mismo orden y texto), plano escrito por JS que `leer_plano` + `componer_plano`
+aceptan, `leerPlano` (versión, catálogo, rechazado, repetido, fuera del área, JSON roto).
+
+**Verificación en Edge real** (script `data/verificacion_editor/verificar_editor.mjs`, fuera
+del repositorio; maneja Edge sin ventana por su protocolo de depuración desde Node): abrir
+desde file://, agregar dos K0010, arrastrarlos con eventos reales de mouse (quedan limitados a
+las esquinas del área y aparecen las advertencias muy fuertes por la rosa y el recuadro), X/Y
+escritos, flechas, Guardar con cancelación (nada) y con falla de permisos (descarga),
+plano.json con LF; ningún error de JavaScript. `componer` con ese plano: aceptado, sin
+advertencias, verificado.
+
+**Pendiente (después de la Fase 3)**: deshacer en el editor; el catálogo es el de la carpeta
+con que se generó; el fondo blanco del exportador sigue tapando lo que queda debajo.
 
 ## Pendientes (después de las Fases 1 y 2)
 

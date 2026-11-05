@@ -15,6 +15,7 @@ from componedor.colocar import DetalleInvalido, abrir_pdf, colocar_detalle, tama
 from componedor.comando_referencia import ejecutar_referencia
 from componedor.componer import ResultadoComposicion, componer_plano
 from componedor.composicion import hoja_base
+from componedor.editor_html import generar_editor
 from componedor.datos_editor import (
     ARCHIVO_DATOS,
     ARCHIVO_PLANTILLA,
@@ -497,6 +498,17 @@ def main(argv: list[str] | None = None) -> int:
                            help="Muestra todas las comprobaciones de integridad y coherencia.")
     p_ver.add_argument("manifiesto", type=Path, help="Archivo <prefijo>.manifest.json.")
 
+    p_html = sub.add_parser("editor",
+                            help="Genera el editor HTML de planos (un solo archivo, sin servidor).")
+    p_html.add_argument("carpeta", type=Path, help="Carpeta con los paquetes del exportador.")
+    p_html.add_argument("--formato", type=Path, required=True,
+                        help="Formato de hoja (p. ej. formatos/A1_ERCO.json).")
+    p_html.add_argument("--salida", type=Path, required=True,
+                        help="Carpeta del editor: editor.html, datos e imágenes (y ahí va el "
+                             "plano.json).")
+    p_html.add_argument("--sobrescribir", action="store_true",
+                        help="Reemplaza lo que genera el editor si la carpeta ya tiene contenido.")
+
     p_ed = sub.add_parser("preparar-editor",
                           help="Prepara los datos e imágenes del editor de planos.")
     p_ed.add_argument("carpeta", type=Path, help="Carpeta con los paquetes del exportador.")
@@ -595,6 +607,14 @@ def main(argv: list[str] | None = None) -> int:
             sin_fallas = all(r.pasa or not r.verificable
                              for v in verificaciones or [] for r in v)
             return 0 if todos_completos and sin_fallas else 1
+        elif args.subcomando == "editor":
+            ruta_html = generar_editor(args.carpeta, args.formato, args.salida, args.sobrescribir)
+            carpeta = ruta_html.parent.resolve()
+            print(f"Editor generado: {ruta_html.resolve()}")
+            print("Ábralo con doble clic (Edge o Chrome); no necesita servidor ni internet.")
+            print(f"Guarde el plano.json en la MISMA carpeta que editor.html: {carpeta}")
+            print(f"Luego: python -m componedor.cli componer \"{carpeta / 'plano.json'}\" "
+                  f"--salida \"{carpeta / 'plano.pdf'}\"")
         elif args.subcomando == "preparar-editor":
             datos = preparar_editor(args.carpeta, args.formato, args.salida, args.sobrescribir)
             print(texto_preparar_editor(datos, args.salida))

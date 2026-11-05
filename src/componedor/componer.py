@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pymupdf
 
+from componedor.advertencias import texto_advertencia
 from componedor.cad_a_papel import limites_dibujo_en_papel
 from componedor.colocar import (
     DetalleInvalido,
@@ -172,16 +173,9 @@ def _traslapes(colocados: list[tuple]) -> list[str]:
             dibujos = _interseccion(a.dibujo, b.dibujo)
             paginas = _interseccion(a.ocupado, b.ocupado)
             if dibujos:
-                avisos.append(
-                    f"ADVERTENCIA FUERTE: los DIBUJOS de '{a.id}' y '{b.id}' se traslapan "
-                    f"({dibujos[0]:.1f} x {dibujos[1]:.1f} mm). Mientras el exportador deje "
-                    f"fondo blanco, '{b.id}' (encima) tapa parte del dibujo de '{a.id}'.")
+                avisos.append(texto_advertencia("dibujos", *dibujos, a=a.id, b=b.id))
             elif paginas:
-                avisos.append(
-                    f"Advertencia: las PÁGINAS de '{a.id}' y '{b.id}' se traslapan "
-                    f"({paginas[0]:.1f} x {paginas[1]:.1f} mm), aunque sus dibujos no. Mientras "
-                    f"el exportador deje fondo blanco, el margen de '{b.id}' (encima) tapa "
-                    f"esa franja de '{a.id}'.")
+                avisos.append(texto_advertencia("paginas", *paginas, a=a.id, b=b.id))
     return avisos
 
 
@@ -194,15 +188,11 @@ def _sobre_elementos(colocados: list[tuple], formato: Formato) -> list[str]:
             dibujo = _interseccion(c.dibujo, elemento.rect)
             pagina = _interseccion(c.ocupado, elemento.rect)
             if dibujo:
-                avisos.append(
-                    f"ADVERTENCIA MUY FUERTE: el dibujo '{c.id}' se monta sobre "
-                    f"'{elemento.nombre}' de la plantilla ({dibujo[0]:.1f} x {dibujo[1]:.1f} mm); "
-                    f"además su fondo blanco lo tapa.")
+                avisos.append(texto_advertencia("dibujo_sobre_elemento", *dibujo,
+                                                a=c.id, elemento=elemento.nombre))
             elif pagina:
-                avisos.append(
-                    f"ADVERTENCIA FUERTE: el detalle '{c.id}' tapa '{elemento.nombre}' de la "
-                    f"plantilla con su fondo blanco ({pagina[0]:.1f} x {pagina[1]:.1f} mm), "
-                    f"aunque su dibujo no lo toca.")
+                avisos.append(texto_advertencia("pagina_sobre_elemento", *pagina,
+                                                a=c.id, elemento=elemento.nombre))
     return avisos
 
 

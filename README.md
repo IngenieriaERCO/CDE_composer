@@ -28,6 +28,7 @@ papel (origen en la esquina inferior izquierda de la hoja, Y hacia arriba).
 | `verificar-paquete` | Muestra todas las comprobaciones de integridad y coherencia de un paquete y «RESULTADO: PASA / FALLA». |
 | `inventario` | Lista los detalles de una carpeta: aceptados o rechazados (con motivos), tamaños, si caben en la zona y escala sugerida. |
 | `componer` | Compone un plano con varios detalles a partir de un `plano.json` (ver [docs/formato_plano.md](docs/formato_plano.md)). |
+| `editor` | Genera `editor.html`, un editor visual de planos de un solo archivo (arrastrar detalles y guardar el plano.json). Ver [docs/editor.md](docs/editor.md). |
 | `preparar-editor` | Prepara `editor_datos.json`, `plantilla.png` y miniaturas para el editor de planos (ver [docs/formato_editor_datos.md](docs/formato_editor_datos.md)). |
 | `detectar-elementos` | Mide los elementos fijos de la plantilla dentro del área de dibujo (rosa, recuadro de capas) y genera un PDF de verificación. |
 
@@ -43,6 +44,7 @@ python -m componedor.cli paquetes data/input --recursivo --verificar
 python -m componedor.cli verificar-paquete data/input/detalle.manifest.json
 python -m componedor.cli inventario data/input --formato formatos/A1_ERCO.json
 python -m componedor.cli componer data/planos/mi_plano.json --salida data/output/mi_plano.pdf
+python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --salida data/editor
 python -m componedor.cli preparar-editor data/input --formato formatos/A1_ERCO.json --salida data/editor
 python -m componedor.cli detectar-elementos --formato formatos/A1_ERCO.json --salida data/output/elementos_plantilla.pdf
 ```
@@ -167,6 +169,22 @@ Cada detalle pasa por el importador; si alguno se rechaza, no se genera el PDF. 
 página debe quedar dentro del área de dibujo (el rótulo es inamovible). Los traslapes entre
 detalles son advertencias. El PDF se verifica antes de entregarlo (posición de cada dibujo
 ±0,1 mm, rótulo intacto, sin imágenes nuevas).
+
+### Editor visual de planos (`editor`)
+
+La forma recomendada de armar un plano: genere el editor, ábralo con doble clic, arrastre
+los detalles dentro del área de dibujo (el rótulo está bloqueado), guarde el `plano.json` en
+la misma carpeta que `editor.html` y componga el PDF con el comando que el editor le muestra.
+
+```powershell
+python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --salida data/editor
+# ... abrir data/editor/editor.html, armar el plano y guardar data/editor/plano.json ...
+python -m componedor.cli componer data/editor/plano.json --salida data/editor/plano.pdf
+```
+
+`editor.html` es un solo archivo (sin servidor, sin internet, sin librerías externas). Muestra
+en vivo las mismas advertencias que `componer`. Guía completa en [docs/editor.md](docs/editor.md).
+Si Node está instalado, `pytest` prueba también la lógica del editor (JavaScript).
 
 ### Elementos fijos de la plantilla y datos del editor
 

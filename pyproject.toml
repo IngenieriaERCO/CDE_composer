@@ -17,5 +17,9 @@ dev = ["pytest"]
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# Recursos del editor HTML de planos (se incrustan en editor.html).
+componedor = ["editor/*.html", "editor/*.css", "editor/*.js"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

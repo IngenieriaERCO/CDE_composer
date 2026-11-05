@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Editor de planos — Componedor</title>
+<style>
+/*@@CSS@@*/
+</style>
+</head>
+<body>
+<header class="barra">
+  <strong class="titulo">Editor de planos</strong>
+  <button id="btn-abrir" type="button" title="Cargar un plano.json guardado">Abrir plano.json</button>
+  <input id="archivo-plano" type="file" accept=".json,application/json" hidden>
+  <button id="btn-guardar" type="button" class="principal" title="Guardar el plano (Ctrl+S)">Guardar plano</button>
+  <span class="separador"></span>
+  <button id="btn-alejar" type="button" title="Alejar">−</button>
+  <button id="btn-acercar" type="button" title="Acercar">+</button>
+  <button id="btn-ajustar" type="button" title="Ver la hoja completa">Ajustar</button>
+  <label class="paso">Paso
+    <select id="paso" title="Paso de ajuste al arrastrar y con las flechas">
+      <option value="0.1">0,1 mm</option>
+      <option value="1" selected>1 mm</option>
+      <option value="5">5 mm</option>
+      <option value="10">10 mm</option>
+    </select>
+  </label>
+  <span class="separador"></span>
+  <span id="cursor" class="lectura">Cursor: —</span>
+</header>
+
+<main>
+  <aside class="panel izquierda">
+    <h2>Detalles disponibles</h2>
+    <div id="catalogo" class="lista-detalles"></div>
+    <h2>No caben en el área de dibujo</h2>
+    <div id="no-caben" class="lista-detalles"></div>
+    <h2>Rechazados</h2>
+    <div id="rechazados" class="lista-detalles"></div>
+  </aside>
+
+  <section class="lienzo" id="lienzo">
+    <svg id="hoja" aria-label="Hoja del plano"></svg>
+  </section>
+
+  <aside class="panel derecha">
+    <h2>Selección</h2>
+    <div id="propiedades" class="propiedades"></div>
+    <h2>En el plano <small>(el último queda encima)</small></h2>
+    <ol id="lista-plano" class="lista-plano"></ol>
+    <h2>Advertencias</h2>
+    <ul id="advertencias" class="advertencias"></ul>
+  </aside>
+</main>
+
+<footer class="pie">
+  <div id="donde-guardar" class="donde-guardar"></div>
+  <div id="comando" class="comando" hidden>
+    <span>Para generar el PDF:</span>
+    <code id="texto-comando"></code>
+    <button id="btn-copiar" type="button">Copiar comando</button>
+  </div>
+  <div class="nota">El editor es solo una ayuda: <code>componer</code> vuelve a validar todo y, si hay una diferencia con lo que muestra el editor, manda <code>componer</code>.</div>
+</footer>
+
+<div id="mensaje" class="mensaje" role="status" hidden></div>
+
+<script id="datos-editor" type="application/json">@@DATOS_EDITOR@@</script>
+<script>
+/*@@JS_LOGICA@@*/
+</script>
+<script>
+/*@@JS_UI@@*/
+</script>
+</body>
+</html>
