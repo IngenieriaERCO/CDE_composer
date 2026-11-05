@@ -116,11 +116,13 @@ def _cad_a_pagina_mm(x, y):
     return a * x + c * y + e, b * x + d * y + f
 
 
-def _dibujar_detalle_cad(page: pymupdf.Page, desplazar_mm=(0.0, 0.0)) -> None:
-    """Fondo blanco (como el exportador) y el rectángulo RECT_CAD con MATRIZ_SINTETICA.
+def _dibujar_detalle_cad(page: pymupdf.Page, desplazar_mm=(0.0, 0.0), fondo: bool = True) -> None:
+    """Fondo blanco (como el exportador antiguo; `fondo=False`: como el nuevo, sin fondo) y
+    el rectángulo RECT_CAD con MATRIZ_SINTETICA.
 
     `desplazar_mm` mueve el dibujo en la página (solo para provocar incoherencias)."""
-    page.draw_rect(page.rect, color=None, fill=(1, 1, 1))  # fondo de página
+    if fondo:
+        page.draw_rect(page.rect, color=None, fill=(1, 1, 1))  # fondo de página
     x0, y0, x1, y1 = RECT_CAD
     dx, dy = desplazar_mm
     esquinas = [_cad_a_pagina_mm(x, y) for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1))]
@@ -210,14 +212,15 @@ def crear_paquete_real(carpeta: Path, prefijo: str = "detalle", paginas: int = 1
                        contenido: bytes | None = None, rotacion: int = 0,
                        pagina_mm: tuple[float, float] = PAGINA_CAD_MM,
                        desplazar_dibujo_mm: tuple[float, float] = (0.0, 0.0),
-                       **kw_manifiesto) -> Path:
+                       sin_fondo: bool = False, **kw_manifiesto) -> Path:
     """Paquete sintético COHERENTE: PDF de verdad con el detalle de `_dibujar_detalle_cad` y
     un manifiesto (`manifiesto_paquete`) cuyos `pdf.bytes` y `pdf.sha256` se calculan del
     archivo escrito. Devuelve la ruta del PDF.
 
     Opciones para provocar fallas: `contenido` (bytes en lugar del PDF), `paginas`,
     `rotacion` (/Rotate), `pagina_mm` (otro tamaño de página, sin tocar el manifiesto),
-    `desplazar_dibujo_mm` y `cambiar`/`quitar` del manifiesto.
+    `desplazar_dibujo_mm` y `cambiar`/`quitar` del manifiesto. `sin_fondo=True`: PDF como los
+    del exportador nuevo, sin el rectángulo blanco de página.
     """
     carpeta.mkdir(parents=True, exist_ok=True)
     ruta_pdf = carpeta / f"{prefijo}.pdf"
@@ -225,7 +228,7 @@ def crear_paquete_real(carpeta: Path, prefijo: str = "detalle", paginas: int = 1
         doc = pymupdf.open()
         for _ in range(paginas):
             pagina = doc.new_page(width=mm_a_pt(pagina_mm[0]), height=mm_a_pt(pagina_mm[1]))
-            _dibujar_detalle_cad(pagina, desplazar_dibujo_mm)
+            _dibujar_detalle_cad(pagina, desplazar_dibujo_mm, fondo=not sin_fondo)
             pagina.set_rotation(rotacion)
         contenido = doc.tobytes()
         doc.close()

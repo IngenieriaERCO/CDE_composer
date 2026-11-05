@@ -162,8 +162,29 @@
   }
 
   /**
-   * colocados: [{id, pagina: [x0,y0,x1,y1], dibujo: [...]}] en orden de apilado.
-   * Devuelve [{clave, nivel, texto, ids, elemento}] en el mismo orden que componer:
+   * Qué advertencia corresponde a dos detalles (null: ninguna). Lo que tapa es solo el de
+   * ENCIMA: si no tiene fondo, un traslape solo de páginas no avisa. Igual que
+   * advertencias.clave_traslape_detalles en Python.
+   */
+  function claveTraslapeDetalles(dibujos, paginas, encimaTieneFondo) {
+    if (dibujos) return encimaTieneFondo ? "dibujos" : "dibujos_sin_fondo";
+    if (paginas && encimaTieneFondo) return "paginas";
+    return null;
+  }
+
+  /** Igual que advertencias.clave_sobre_elemento en Python. */
+  function claveSobreElemento(dibujo, pagina, tieneFondo) {
+    if (dibujo) return tieneFondo ? "dibujo_sobre_elemento" : "dibujo_sobre_elemento_sin_fondo";
+    if (pagina && tieneFondo) return "pagina_sobre_elemento";
+    return null;
+  }
+
+  /** Si el dato falta (datos de antes de la 3.4), se supone que tiene fondo. */
+  const conFondo = (c) => c.tiene_fondo !== false;
+
+  /**
+   * colocados: [{id, pagina: [x0,y0,x1,y1], dibujo: [...], tiene_fondo}] en orden de
+   * apilado. Devuelve [{clave, nivel, texto, ids, elemento}] en el mismo orden que componer:
    * primero los pares de detalles, luego cada detalle contra cada elemento fijo.
    */
   function advertencias(colocados, elementos, plantillas) {
@@ -182,17 +203,16 @@
         const b = colocados[j];
         const dibujos = interseccion(a.dibujo, b.dibujo);
         const paginas = interseccion(a.pagina, b.pagina);
-        if (dibujos) agregar("dibujos", dibujos, { a: a.id, b: b.id }, [a.id, b.id]);
-        else if (paginas) agregar("paginas", paginas, { a: a.id, b: b.id }, [a.id, b.id]);
+        const clave = claveTraslapeDetalles(!!dibujos, !!paginas, conFondo(b));
+        if (clave) agregar(clave, dibujos || paginas, { a: a.id, b: b.id }, [a.id, b.id]);
       }
     }
     for (const c of colocados) {
       for (const el of elementos) {
         const dibujo = interseccion(c.dibujo, el.rect_mm);
         const pagina = interseccion(c.pagina, el.rect_mm);
-        const nombres = { a: c.id, elemento: el.nombre };
-        if (dibujo) agregar("dibujo_sobre_elemento", dibujo, nombres, [c.id], el.nombre);
-        else if (pagina) agregar("pagina_sobre_elemento", pagina, nombres, [c.id], el.nombre);
+        const clave = claveSobreElemento(!!dibujo, !!pagina, conFondo(c));
+        if (clave) agregar(clave, dibujo || pagina, { a: c.id, elemento: el.nombre }, [c.id], el.nombre);
       }
     }
     return lista;
@@ -339,6 +359,8 @@
     dentroDeZona,
     interseccion,
     textoAdvertencia,
+    claveTraslapeDetalles,
+    claveSobreElemento,
     advertencias,
     idUnico,
     zonaEditable,

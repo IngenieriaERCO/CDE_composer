@@ -560,8 +560,44 @@ escritos, flechas, Guardar con cancelación (nada) y con falla de permisos (desc
 plano.json con LF; ningún error de JavaScript. `componer` con ese plano: aceptado, sin
 advertencias, verificado.
 
+### Subfase 3.4 — El editor muestra el resultado real (paquetes sin fondo) ✅ (2026-11-05)
+
+**Qué se hizo**
+- `comprobacion_dibujo.tiene_fondo_de_pagina` (misma regla que ignora el fondo al medir).
+  `componer` la usa por paquete (`DetalleColocado.tiene_fondo`) y `preparar-editor` por
+  detalle aceptado (`tiene_fondo` en editor_datos.json, campo aditivo).
+- Miniaturas: transparentes si el detalle no tiene fondo, opacas si lo tiene; lado mayor
+  1400 px (antes 600). Peso de editor.html: data/input 1,03 MB, data/input_reales 1,10 MB,
+  data/input_sinfondo 0,22 MB.
+- Advertencias (`advertencias.py`, fuente única): dos textos nuevos sin mencionar el fondo
+  (`dibujos_sin_fondo`, `dibujo_sobre_elemento_sin_fondo`) y la tabla de decisión
+  `clave_traslape_detalles` / `clave_sobre_elemento` (lo que tapa es el de ENCIMA; sin fondo,
+  un traslape solo de páginas o una página sobre un elemento no avisan). El JS aplica la
+  misma tabla. Con fondo, todo igual que antes.
+- Editor: **Vista limpia** (botón interruptor y tecla V sostenida; el arrastre sigue
+  activo), **Alt + clic** para seleccionar el detalle de debajo (en ciclo); clic normal = el
+  de encima; la lista «En el plano» selecciona cualquiera.
+- docs: editor.md, formato_editor_datos.md, README.
+
+**Pruebas**: 391, todas pasan (25 nuevas). Detección de fondo; miniatura transparente vs
+opaca (canal alfa y píxel de la esquina); `tiene_fondo` en editor_datos.json; textos nuevos
+y tablas de decisión; componer con paquetes con y sin fondo (páginas sin fondo no avisan,
+solo tapa el de encima, dibujos y rosa sin fondo, con fondo igual que antes); paridad
+Python↔JS con un plano mixto que produce los SEIS tipos y 5 casos puntuales. Pruebas
+existentes ajustadas: solo `test_datos_editor.test_preparar_escribe_json_y_png` (tamaño de
+miniatura 600 → 1400 px) y `test_editor_js.test_advertencias_iguales_que_componer` (ahora
+con paquetes con y sin fondo y los seis tipos).
+
+**Verificación en Edge** (`data/verificacion_editor/verificar_sinfondo.mjs`, fuera del
+repo, con data/input_sinfondo): 18 comprobaciones OK, sin errores de JavaScript: dos K0010
+sin fondo traslapados se ven uno a través del otro; clic en el traslape = el de encima;
+Alt+clic = el de abajo (y en ciclo); lista y flechas para el de abajo; vista limpia oculta
+las ayudas y deja las miniaturas; arrastre en vista limpia; tecla V momentánea; componer da
+las mismas advertencias que el editor.
+
 **Pendiente (después de la Fase 3)**: deshacer en el editor; el catálogo es el de la carpeta
-con que se generó; el fondo blanco del exportador sigue tapando lo que queda debajo.
+con que se generó; los paquetes antiguos con fondo siguen tapando lo que queda debajo
+(reexportarlos con el exportador nuevo lo resuelve).
 
 ## Pendientes (después de las Fases 1 y 2)
 

@@ -29,6 +29,12 @@ def es_fondo_de_pagina(trazo: dict, pagina: pymupdf.Page) -> bool:
     return es_fondo_blanco(trazo, pagina.rect)
 
 
+def tiene_fondo_de_pagina(pagina: pymupdf.Page) -> bool:
+    """True si la página trae el fondo blanco de página completa (paquetes antiguos del
+    exportador). Misma regla con la que `medir_limites_trazos` lo ignora."""
+    return any(es_fondo_de_pagina(d, pagina) for d in pagina.get_drawings())
+
+
 def trazos_sin_fondo(pagina: pymupdf.Page, rect_fondo: pymupdf.Rect | None = None) -> list[dict]:
     """Trazos de la página (`get_drawings()`) sin el fondo blanco en `rect_fondo` (pt).
 

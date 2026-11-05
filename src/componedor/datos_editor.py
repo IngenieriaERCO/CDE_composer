@@ -4,7 +4,8 @@
   - editor_datos.json: hoja, zonas (solo `area_dibujo` editable), elementos fijos de la
     plantilla, detalles aceptados (con su miniatura) y rechazados (con sus motivos);
   - plantilla.png: la hoja base con el rótulo, SIN detalles;
-  - miniaturas/<id>.png: una por detalle aceptado.
+  - miniaturas/<id>.png: una por detalle aceptado (transparente si el PDF no trae fondo de
+    página; opaca si es un paquete antiguo con fondo blanco).
 Estructura: docs/formato_editor_datos.md.
 
 Las imágenes son SOLO para mostrar en el editor; el PDF final siempre lo genera `componer`,
@@ -21,6 +22,7 @@ import pymupdf
 
 from componedor.cad_a_papel import limites_dibujo_en_papel
 from componedor.composicion import hoja_base
+from componedor.comprobacion_dibujo import tiene_fondo_de_pagina
 from componedor.formato import Formato, cargar_formato
 from componedor.inventario import ACEPTADO, EntradaInventario, construir_inventario
 
@@ -30,7 +32,7 @@ ARCHIVO_DATOS = "editor_datos.json"
 ARCHIVO_PLANTILLA = "plantilla.png"
 CARPETA_MINIATURAS = "miniaturas"
 MAX_PX_HOJA = 1600
-MAX_PX_MINIATURA = 600
+MAX_PX_MINIATURA = 1400  # nítida al acercar en el editor
 
 
 def construir_datos_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
@@ -56,6 +58,8 @@ def construir_datos_editor(carpeta_paquetes: Path | str, ruta_formato: Path | st
         # page_bounds_mm (página, Y abajo) en papel relativo a la esquina inferior izquierda
         # de la página del detalle (Y arriba). La inversión de Y la hace transformaciones.py.
         dibujo = limites_dibujo_en_papel(e.limites_pagina_mm, alto, (0.0, 0.0))
+        with pymupdf.open(e.ruta_pdf) as doc:
+            tiene_fondo = tiene_fondo_de_pagina(doc[0])
         detalles.append({
             "id": ident,
             "manifiesto": _relativa(e.ruta_manifiesto, carpeta_salida),
@@ -64,6 +68,7 @@ def construir_datos_editor(carpeta_paquetes: Path | str, ruta_formato: Path | st
             "tamano_pagina_mm": [ancho, alto],
             "limites_dibujo_mm": list(dibujo),
             "cabe": bool(e.cabe),
+            "tiene_fondo": tiene_fondo,
             "notas": list(e.notas),
             "miniatura": {"archivo": f"{CARPETA_MINIATURAS}/{ident}.png"},
         })
@@ -113,7 +118,8 @@ def preparar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
     aceptadas = [e for e in entradas if e.estado == ACEPTADO]
     for detalle, entrada in zip(datos["detalles"], aceptadas):
         detalle["miniatura"].update(_png_detalle(
-            entrada.ruta_pdf, carpeta_salida / detalle["miniatura"]["archivo"], max_px_miniatura))
+            entrada.ruta_pdf, carpeta_salida / detalle["miniatura"]["archivo"], max_px_miniatura,
+            transparente=not detalle["tiene_fondo"]))
 
     (carpeta_salida / ARCHIVO_DATOS).write_text(
         json.dumps(datos, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
@@ -129,14 +135,16 @@ def _png_plantilla(formato: Formato, ruta: Path, max_px: int) -> dict:
         doc.close()
 
 
-def _png_detalle(ruta_pdf: Path, ruta: Path, max_px: int) -> dict:
+def _png_detalle(ruta_pdf: Path, ruta: Path, max_px: int, transparente: bool) -> dict:
+    """Miniatura del detalle: transparente si el PDF no trae fondo de página (se ve como en
+    el PDF final, sin tapar lo de abajo); opaca si lo trae (paquete antiguo)."""
     with pymupdf.open(ruta_pdf) as doc:
-        return _png(doc[0], ruta, max_px)
+        return _png(doc[0], ruta, max_px, transparente)
 
 
-def _png(pagina: pymupdf.Page, ruta: Path, max_px: int) -> dict:
+def _png(pagina: pymupdf.Page, ruta: Path, max_px: int, transparente: bool = False) -> dict:
     zoom = max_px / max(pagina.rect.width, pagina.rect.height)
-    pixmap = pagina.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
+    pixmap = pagina.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=transparente)
     pixmap.save(ruta)
     return {"ancho_px": pixmap.width, "alto_px": pixmap.height}
 

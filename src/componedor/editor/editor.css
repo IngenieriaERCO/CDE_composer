@@ -27,6 +27,7 @@ button {
 button:hover:not(:disabled) { border-color: var(--acento); }
 button:disabled { opacity: .5; cursor: not-allowed; }
 button.principal { background: var(--acento); border-color: var(--acento); color: #fff; }
+button[aria-pressed="true"] { background: #e0e7ff; border-color: var(--acento); color: var(--acento); }
 
 .barra {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -116,3 +117,13 @@ main { flex: 1; display: flex; min-height: 0; }
 .detalle.muy_fuerte .pagina { stroke: var(--muy-fuerte); stroke-width: 2.5; }
 .detalle.sel .pagina { stroke: var(--acento); stroke-width: 3; }
 .detalle .etiqueta { fill: var(--acento); font-size: 9px; font-weight: 700; pointer-events: none; }
+
+/* Vista limpia: solo plantilla + detalles, como saldrá impreso. Se ocultan las ayudas de
+   edición (el arrastre sigue funcionando: las miniaturas siguen ahí). */
+#hoja.vista-limpia .zona-bloqueada,
+#hoja.vista-limpia .zona-activa,
+#hoja.vista-limpia .elemento-fijo,
+#hoja.vista-limpia .etiqueta-fijo,
+#hoja.vista-limpia .detalle .pagina,
+#hoja.vista-limpia .detalle .dibujo,
+#hoja.vista-limpia .detalle .etiqueta { display: none; }

@@ -7,9 +7,10 @@ import pytest
 from componedor.comprobacion_dibujo import (
     es_fondo_de_pagina,
     medir_limites_trazos,
+    tiene_fondo_de_pagina,
     trazos_sin_fondo,
 )
-from conftest import LIMITES_RECT_PAGINA_MM, crear_detalle_cad
+from conftest import LIMITES_RECT_PAGINA_MM, crear_detalle_cad, crear_paquete_real
 
 
 @pytest.fixture
@@ -27,6 +28,25 @@ def test_reconoce_el_fondo_de_pagina(pagina):
     fondos = [d for d in pagina.get_drawings() if es_fondo_de_pagina(d, pagina)]
     assert len(fondos) == 1
     assert len(trazos_sin_fondo(pagina)) == len(pagina.get_drawings()) - 1
+
+
+def test_tiene_fondo_de_pagina(tmp_path):
+    con = pymupdf.open(crear_paquete_real(tmp_path / "con", "c"))
+    sin = pymupdf.open(crear_paquete_real(tmp_path / "sin", "s", sin_fondo=True))
+    assert tiene_fondo_de_pagina(con[0]) is True
+    assert tiene_fondo_de_pagina(sin[0]) is False
+    # Con o sin fondo, el dibujo medido es el mismo (el fondo se ignora con la misma regla).
+    assert medir_limites_trazos(sin[0]) == pytest.approx(medir_limites_trazos(con[0]))
+    con.close()
+    sin.close()
+
+
+def test_rectangulo_blanco_que_no_es_toda_la_pagina_no_es_fondo():
+    doc = pymupdf.open()
+    pagina = doc.new_page(width=300, height=200)
+    pagina.draw_rect(pymupdf.Rect(10, 10, 100, 100), color=None, fill=(1, 1, 1))
+    assert tiene_fondo_de_pagina(pagina) is False
+    doc.close()
 
 
 def test_pagina_sin_trazos():

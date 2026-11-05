@@ -49,6 +49,7 @@ def entorno(tmp_path):
     escribir_formato(tmp_path / "formato.json", plantilla=plantilla,
                      elementos_plantilla=[{"nombre": "rosa_vientos", "rect_mm": ROSA}])
     crear_paquete_real(tmp_path / "input", "a")
+    crear_paquete_real(tmp_path / "input", "s", sin_fondo=True)  # exportador nuevo, sin fondo
     crear_paquete_real(tmp_path / "input", "malo",
                        cambiar={"scale.physical_scale_guaranteed": False})
     (tmp_path / "editor").mkdir()
@@ -138,25 +139,52 @@ def test_ajustar_a_paso_e_id_unico():
 
 # --- advertencias: mismos criterios, orden y textos que componer -----------------------------
 
+def _paridad(carpeta, datos, detalles):
+    """Compone con Python y calcula las advertencias en JS para el mismo plano. El dato
+    `tiene_fondo` del JS sale del catálogo del editor (editor_datos.json), no de Python."""
+    plano = carpeta / "plano.json"
+    plano.write_text(json.dumps({"version": 1, "formato": "formato.json", "detalles": [
+        {"id": i, "manifiesto": f"input/{p}.manifest.json", "posicion_mm": pos}
+        for i, p, pos in detalles]}), encoding="utf-8")
+    resultado = componer_plano(leer_plano(plano), carpeta / "p.pdf", sobrescribir=True)
+    catalogo = {d["id"]: d for d in datos["detalles"]}
+    colocados = [{"id": c.id, "pagina": list(c.ocupado), "dibujo": list(c.dibujo),
+                  "tiene_fondo": catalogo[c.prefijo]["tiene_fondo"]} for c in resultado.detalles]
+    assert [x["tiene_fondo"] for x in colocados] == [c.tiene_fondo for c in resultado.detalles]
+    r = js("return L.advertencias(entrada.c, entrada.e, entrada.p);",
+           {"c": colocados, "e": datos["elementos_plantilla"], "p": PLANTILLAS})
+    return r, resultado.advertencias
+
+
 def test_advertencias_iguales_que_componer(entorno):
     carpeta, datos = entorno
     # Página 260 x 120; dibujo X +37,3..+237,3, Y +21,3..+101,3. Rosa: X 612..652, Y 51..91.
-    # d1-d2: dibujos traslapados; d2-d3: solo páginas; d4: su dibujo sobre la rosa;
-    # d5 (x = 360: página hasta 620 > 612, dibujo hasta 597,3 < 612): solo su página toca la rosa.
-    posiciones = {"d1": [30, 300], "d2": [130, 320], "d3": [360, 300], "d4": [400, 40],
-                  "d5": [360, 40]}
-    plano = carpeta / "plano.json"
-    plano.write_text(json.dumps({"version": 1, "formato": "formato.json", "detalles": [
-        {"id": i, "manifiesto": "input/a.manifest.json", "posicion_mm": p}
-        for i, p in posiciones.items()]}), encoding="utf-8")
-    resultado = componer_plano(leer_plano(plano), carpeta / "p.pdf")
-    colocados = [{"id": c.id, "pagina": list(c.ocupado), "dibujo": list(c.dibujo)}
-                 for c in resultado.detalles]
-    r = js("return L.advertencias(entrada.c, entrada.e, entrada.p);",
-           {"c": colocados, "e": datos["elementos_plantilla"], "p": PLANTILLAS})
-    assert [a["texto"] for a in r] == resultado.advertencias
-    assert {a["clave"] for a in r} == set(PLANTILLAS)  # los cuatro tipos aparecen
+    # Con fondo ("a"): d1-d2 dibujos traslapados; d2-d3 solo páginas; d4 dibujo sobre la rosa;
+    # d5 (x = 360: página hasta 620 > 612, dibujo hasta 597,3 < 612) solo su página la toca.
+    # Sin fondo ("s"): s1-s2 dibujos traslapados; s2-s3 solo páginas (no avisa); s4 dibujo
+    # sobre la rosa; mezclas: d1 (con) bajo s1 (sin) y s2 (sin) bajo d2 (con), etc.
+    r, python = _paridad(carpeta, datos, [
+        ("d1", "a", [30, 300]), ("d2", "a", [130, 320]), ("d3", "a", [360, 300]),
+        ("d4", "a", [400, 40]), ("d5", "a", [360, 40]),
+        ("s1", "s", [30, 160]), ("s2", "s", [130, 180]), ("s3", "s", [380, 160]),
+        ("s4", "s", [390, 30]),
+    ])
+    assert [a["texto"] for a in r] == python
+    assert {a["clave"] for a in r} == set(PLANTILLAS)  # los seis tipos aparecen
     assert {a["nivel"] for a in r} == {"aviso", "fuerte", "muy_fuerte"}
+
+
+@pytest.mark.parametrize("detalles", [
+    [("d1", "s", [30, 300]), ("d2", "s", [280, 300])],  # solo páginas, sin fondo: nada
+    [("d1", "a", [30, 300]), ("d2", "s", [280, 300])],  # de encima sin fondo: nada
+    [("d1", "s", [30, 300]), ("d2", "a", [280, 300])],  # de encima con fondo: aviso
+    [("d1", "s", [360, 40])],                           # página sin fondo sobre la rosa: nada
+    [("d1", "a", [360, 40])],                           # página con fondo sobre la rosa
+])
+def test_paridad_casos_con_y_sin_fondo(entorno, detalles):
+    carpeta, datos = entorno
+    r, python = _paridad(carpeta, datos, detalles)
+    assert [a["texto"] for a in r] == python
 
 
 # --- plano.json: el editor escribe, Python lee y compone -------------------------------------

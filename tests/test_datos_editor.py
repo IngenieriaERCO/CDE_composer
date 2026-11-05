@@ -95,9 +95,32 @@ def test_preparar_escribe_json_y_png(entorno):
     png = pymupdf.Pixmap(str(salida / "plantilla.png"))
     assert (png.width, png.height) == (1600, 1131)
     miniatura = next(x for x in datos["detalles"] if x["id"] == "a")["miniatura"]
-    assert miniatura["ancho_px"] == 600 and miniatura["alto_px"] == 277
+    # Lado mayor 1400 px (antes 600): 120 / 260 x 1400 = 646,15 -> 647 (redondeo hacia arriba).
+    assert miniatura["ancho_px"] == 1400 and miniatura["alto_px"] == 647
     assert (salida / "miniaturas" / "a.png").is_file()
     assert sorted(p.name for p in (salida / "miniaturas").iterdir()) == ["a.png", "grande.png"]
+
+
+def test_tiene_fondo_y_miniatura_transparente_u_opaca(entorno):
+    crear_paquete_real(entorno / "input", "nuevo", sin_fondo=True)
+    salida = entorno / "editor"
+    datos = preparar_editor(entorno / "input", entorno / "formato.json", salida)
+    detalles = {x["id"]: x for x in datos["detalles"]}
+    assert detalles["a"]["tiene_fondo"] is True  # paquete antiguo
+    assert detalles["nuevo"]["tiene_fondo"] is False
+    escrito = json.loads((salida / "editor_datos.json").read_text(encoding="utf-8"))
+    assert {x["id"]: x["tiene_fondo"] for x in escrito["detalles"]} == {
+        "a": True, "grande": True, "nuevo": False}
+
+    opaca = pymupdf.Pixmap(str(salida / "miniaturas" / "a.png"))
+    transparente = pymupdf.Pixmap(str(salida / "miniaturas" / "nuevo.png"))
+    assert opaca.alpha == 0  # sin canal alfa: el fondo blanco tapa lo de abajo
+    assert transparente.alpha == 1
+    # La esquina (fuera del dibujo) es totalmente transparente; las líneas del dibujo, no
+    # (son finas y suavizadas: opacas en parte).
+    assert transparente.pixel(2, 2)[3] == 0
+    assert max(transparente.pixel(x, transparente.height // 2)[3]
+               for x in range(transparente.width)) > 100
 
 
 def test_tamano_de_imagen_configurable(entorno):

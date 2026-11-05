@@ -183,7 +183,9 @@ python -m componedor.cli componer data/editor/plano.json --salida data/editor/pl
 ```
 
 `editor.html` es un solo archivo (sin servidor, sin internet, sin librerías externas). Muestra
-en vivo las mismas advertencias que `componer`. Guía completa en [docs/editor.md](docs/editor.md).
+en vivo las mismas advertencias que `componer`. Con los paquetes nuevos del exportador (sin
+fondo blanco) las miniaturas son transparentes y se ve lo mismo que saldrá en el PDF; la
+**Vista limpia** (botón o tecla V) oculta las ayudas de edición. Guía completa en [docs/editor.md](docs/editor.md).
 Si Node está instalado, `pytest` prueba también la lógica del editor (JavaScript).
 
 ### Elementos fijos de la plantilla y datos del editor

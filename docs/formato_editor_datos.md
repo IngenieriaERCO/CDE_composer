@@ -11,7 +11,8 @@ python -m componedor.cli preparar-editor data/input --formato formatos/A1_ERCO.j
 data/editor/
   editor_datos.json      estructura de abajo
   plantilla.png          la hoja con el rótulo, SIN detalles (lado mayor: 1600 px)
-  miniaturas/<id>.png    una por detalle aceptado (lado mayor: 600 px)
+  miniaturas/<id>.png    una por detalle aceptado (lado mayor: 1400 px; transparente si el
+                         detalle no tiene fondo de página, opaca si lo tiene)
 ```
 
 Las imágenes son **solo para mostrar** en el editor. El editor escribe un `plano.json`
@@ -57,8 +58,9 @@ miniaturas, borrando las viejas) y no toca nada más.
       "tamano_pagina_mm": [416.98, 119.40],
       "limites_dibujo_mm": [10.43, 5.74, 406.55, 113.66],
       "cabe": true,
+      "tiene_fondo": false,
       "notas": [],
-      "miniatura": {"archivo": "miniaturas/perfil_k0010.png", "ancho_px": 600, "alto_px": 172}
+      "miniatura": {"archivo": "miniaturas/perfil_k0010.png", "ancho_px": 1400, "alto_px": 401}
     }
   ],
   "rechazados": [
@@ -82,6 +84,7 @@ miniaturas, borrando las viejas) y no toca nada más.
 | `detalles[].tamano_pagina_mm` | `[ancho, alto]` de la página del detalle: lo que ocupa en la hoja. |
 | `detalles[].limites_dibujo_mm` | Caja del dibujo real (`page_bounds_mm`) en mm, relativa a la **esquina inferior izquierda de la página del detalle**, Y hacia arriba. Con la página en `(x, y)`, el dibujo queda en `[x + x0, y + y0, x + x1, y + y1]`. |
 | `detalles[].cabe` | Si la página cabe por tamaño en `area_dibujo` (misma regla que `colocar`). Uno que no cabe se lista, pero no se puede colocar. |
+| `detalles[].tiene_fondo` | **(Agregado en la subfase 3.4; aditivo, el resto no cambia.)** `true` si el PDF trae el fondo blanco de página completa (paquetes antiguos del exportador), `false` si no. Misma regla con la que `componer` lo detecta (`comprobacion_dibujo.tiene_fondo_de_pagina`). Decide si la miniatura es transparente u opaca y qué advertencias de traslape aplican. Si falta (datos anteriores), el editor supone `true`. |
 | `detalles[].notas` | Notas del inventario (no cabe, escala sugerida aproximada, duplicado). |
 | `detalles[].miniatura` | PNG del detalle y su tamaño en píxeles. |
 | `rechazados[]` | Paquetes rechazados con sus motivos (`[categoría] texto`, los del importador). El editor los lista pero **no se pueden arrastrar**. |

@@ -171,6 +171,7 @@
       id: c.id,
       pagina: L.paginaEnPapel(c.detalle, c.pos),
       dibujo: L.dibujoEnPapel(c.detalle, c.pos),
+      tiene_fondo: c.detalle.tiene_fondo,
     }));
   }
 
@@ -408,11 +409,27 @@
   // Mouse: arrastrar detalles, desplazar la hoja, zoom con la rueda.
   // ---------------------------------------------------------------------------------------
 
+  /** Detalles cuya página contiene el punto (mm de papel), del de ENCIMA al de abajo. */
+  function detallesEnPunto(p) {
+    return estado.colocaciones.filter((c) => {
+      const r = L.paginaEnPapel(c.detalle, c.pos);
+      return p.x >= r[0] && p.x <= r[2] && p.y >= r[1] && p.y <= r[3];
+    }).reverse();
+  }
+
   function empezarArrastre(ev, c) {
     if (ev.button !== 0) return;
     ev.stopPropagation();
-    if (estado.seleccion !== c.id) seleccionar(c.id);
     const p = puntoPapel(ev);
+    if (ev.altKey) {
+      // Alt + clic: el de debajo del seleccionado en ese punto (en ciclo). Sin Alt, el clic
+      // toma el de encima, como en el PDF.
+      ev.preventDefault();
+      const pila = detallesEnPunto(p);
+      const actual = pila.findIndex((x) => x.id === estado.seleccion);
+      c = pila[(actual + 1) % pila.length] || c;
+    }
+    if (estado.seleccion !== c.id) seleccionar(c.id);
     arrastre = { c, dx: p.x - c.pos[0], dy: p.y - c.pos[1] };
     svg.setPointerCapture(ev.pointerId);
   }
@@ -462,6 +479,29 @@
   // Teclado: flechas (paso; Shift = 10 pasos), Supr = quitar, Ctrl+S = guardar.
   // ---------------------------------------------------------------------------------------
 
+  // Vista limpia: el botón la deja fija; la tecla V la muestra mientras se mantiene.
+  let vistaLimpiaFija = false;
+  let teclaV = false;
+  const botonVistaLimpia = document.getElementById("btn-vista-limpia");
+  function aplicarVistaLimpia() {
+    svg.classList.toggle("vista-limpia", vistaLimpiaFija || teclaV);
+    botonVistaLimpia.setAttribute("aria-pressed", String(vistaLimpiaFija));
+  }
+  botonVistaLimpia.addEventListener("click", () => {
+    vistaLimpiaFija = !vistaLimpiaFija;
+    aplicarVistaLimpia();
+  });
+  document.addEventListener("keyup", (ev) => {
+    if (ev.key === "v" || ev.key === "V") {
+      teclaV = false;
+      aplicarVistaLimpia();
+    }
+  });
+  window.addEventListener("blur", () => {
+    teclaV = false; // si se suelta la V fuera de la ventana
+    aplicarVistaLimpia();
+  });
+
   document.addEventListener("keydown", (ev) => {
     if (ev.ctrlKey && (ev.key === "s" || ev.key === "S")) {
       ev.preventDefault();
@@ -470,6 +510,11 @@
     }
     const etiqueta = ev.target.tagName;
     if (etiqueta === "INPUT" || etiqueta === "SELECT" || etiqueta === "TEXTAREA") return;
+    if ((ev.key === "v" || ev.key === "V") && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+      teclaV = true;
+      aplicarVistaLimpia();
+      return;
+    }
     const c = seleccionada();
     if (!c) return;
     const paso = estado.paso * (ev.shiftKey ? 10 : 1);

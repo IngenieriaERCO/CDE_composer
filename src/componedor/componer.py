@@ -23,7 +23,11 @@ from pathlib import Path
 
 import pymupdf
 
-from componedor.advertencias import texto_advertencia
+from componedor.advertencias import (
+    clave_sobre_elemento,
+    clave_traslape_detalles,
+    texto_advertencia,
+)
 from componedor.cad_a_papel import limites_dibujo_en_papel
 from componedor.colocar import (
     DetalleInvalido,
@@ -34,7 +38,11 @@ from componedor.colocar import (
     tamano_visible_mm,
 )
 from componedor.composicion import hoja_base
-from componedor.comprobacion_dibujo import es_fondo_blanco, limites_de_trazos
+from componedor.comprobacion_dibujo import (
+    es_fondo_blanco,
+    limites_de_trazos,
+    tiene_fondo_de_pagina,
+)
 from componedor.formato import EPS_MM, Formato, RectMM, cargar_formato
 from componedor.importador import PaqueteAceptado, PaqueteRechazado, importar_paquete
 from componedor.plano import Plano
@@ -55,6 +63,7 @@ class DetalleColocado:
     prefijo: str  # del paquete
     ocupado: RectMM  # página del detalle en la hoja, mm de papel
     dibujo: RectMM  # page_bounds_mm trasladado a mm de papel
+    tiene_fondo: bool = True  # paquete antiguo con fondo blanco de página (tapa lo de abajo)
 
 
 @dataclass
@@ -133,11 +142,13 @@ def _posiciones(plano: Plano, formato: Formato, aceptados: dict[Path, PaqueteAce
     """(detalle, aceptado, documento, DetalleColocado) por detalle; junta TODOS los errores."""
     zona = formato.zonas[ZONA]
     colocados, errores = [], []
+    con_fondo: dict[Path, bool] = {}  # por PDF: se mira una sola vez
     for detalle in plano.detalles:
         aceptado = aceptados[detalle.manifiesto.resolve()]
         ruta_pdf = aceptado.paquete.ruta_pdf
         if ruta_pdf not in documentos:
             documentos[ruta_pdf] = abrir_pdf(ruta_pdf, "el detalle", DetalleInvalido)
+            con_fondo[ruta_pdf] = tiene_fondo_de_pagina(documentos[ruta_pdf][0])
         doc = documentos[ruta_pdf]
         ancho, alto = tamano_visible_mm(doc[0])
         x, y = (detalle.posicion_mm if detalle.posicion_mm is not None
@@ -155,7 +166,8 @@ def _posiciones(plano: Plano, formato: Formato, aceptados: dict[Path, PaqueteAce
         dibujo = limites_dibujo_en_papel(aceptado.manifiesto.pdf.dibujo.limites_pagina_mm,
                                          alto, (x, y))
         colocados.append((detalle, aceptado, doc,
-                          DetalleColocado(detalle.id, aceptado.paquete.prefijo, ocupado, dibujo)))
+                          DetalleColocado(detalle.id, aceptado.paquete.prefijo, ocupado, dibujo,
+                                          con_fondo[ruta_pdf])))
     if errores:
         raise PlanoNoComponible(
             f"No se compone el plano: {len(errores)} detalle(s) fuera de '{ZONA}' "
@@ -167,15 +179,16 @@ def _posiciones(plano: Plano, formato: Formato, aceptados: dict[Path, PaqueteAce
 # --- 5. traslapes (advertencias) ---------------------------------------------------------
 
 def _traslapes(colocados: list[tuple]) -> list[str]:
+    """Pares de detalles que se traslapan. Lo que tapa es el de encima (b, el que va
+    después): si no tiene fondo, un traslape solo de páginas no avisa (advertencias.py)."""
     avisos = []
     for i, (_, _, _, a) in enumerate(colocados):
         for _, _, _, b in colocados[i + 1:]:
             dibujos = _interseccion(a.dibujo, b.dibujo)
             paginas = _interseccion(a.ocupado, b.ocupado)
-            if dibujos:
-                avisos.append(texto_advertencia("dibujos", *dibujos, a=a.id, b=b.id))
-            elif paginas:
-                avisos.append(texto_advertencia("paginas", *paginas, a=a.id, b=b.id))
+            clave = clave_traslape_detalles(bool(dibujos), bool(paginas), b.tiene_fondo)
+            if clave:
+                avisos.append(texto_advertencia(clave, *(dibujos or paginas), a=a.id, b=b.id))
     return avisos
 
 
@@ -187,11 +200,9 @@ def _sobre_elementos(colocados: list[tuple], formato: Formato) -> list[str]:
         for elemento in formato.elementos_plantilla:
             dibujo = _interseccion(c.dibujo, elemento.rect)
             pagina = _interseccion(c.ocupado, elemento.rect)
-            if dibujo:
-                avisos.append(texto_advertencia("dibujo_sobre_elemento", *dibujo,
-                                                a=c.id, elemento=elemento.nombre))
-            elif pagina:
-                avisos.append(texto_advertencia("pagina_sobre_elemento", *pagina,
+            clave = clave_sobre_elemento(bool(dibujo), bool(pagina), c.tiene_fondo)
+            if clave:
+                avisos.append(texto_advertencia(clave, *(dibujo or pagina),
                                                 a=c.id, elemento=elemento.nombre))
     return avisos
 

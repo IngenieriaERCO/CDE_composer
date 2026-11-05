@@ -58,6 +58,36 @@ Vuelva a generar el editor cuando cambien los paquetes de la carpeta de entrada.
 | Elementos fijos (rosa de los vientos, recuadro de capas) | Borde naranja discontinuo con su nombre «(fijo)». Se pueden tapar, pero se advierte; el borde se pone rojo si algo los tapa. |
 | Detalle | Su miniatura; borde gris = página; borde celeste discontinuo = dibujo real (`page_bounds_mm`). Seleccionado: borde azul grueso. Con advertencias: borde amarillo, naranja o rojo. |
 
+### Con o sin fondo: el editor muestra lo que saldrá en el PDF
+
+- **Paquetes nuevos del exportador (sin fondo)**: la miniatura es **transparente**. Dos
+  detalles traslapados se ven uno a través del otro, igual que en el PDF: nada tapa nada.
+- **Paquetes antiguos (con fondo blanco de página)**: la miniatura es **opaca**, porque en el
+  PDF ese fondo sí tapa lo que queda debajo.
+
+El editor lo sabe por el dato `tiene_fondo` de cada detalle (lo detecta `preparar-editor`
+con la misma regla que `componer`). Las miniaturas tienen hasta 1400 px de lado para que se
+vean nítidas al acercar.
+
+### Vista limpia
+
+El botón **Vista limpia** (o mantener pulsada la tecla **V**) oculta todo lo que es ayuda de
+edición: el rayado de las zonas bloqueadas, el borde del área de dibujo, los contornos de
+página y de dibujo, las etiquetas de los detalles, las marcas de los elementos fijos y la
+selección. Queda solo la plantilla con los detalles, como saldrá impreso.
+
+- El **botón** es un interruptor: queda presionado hasta que lo vuelva a pulsar.
+- La **tecla V** es momentánea: vista limpia mientras la mantiene; al soltarla vuelve todo.
+- El **arrastre sigue funcionando** en vista limpia (y las flechas, y el panel de selección).
+
+### Detalles traslapados: elegir el de abajo
+
+- Un **clic** en la zona traslapada selecciona el de **encima** (el que va después en el plano).
+- **Alt + clic** en ese punto selecciona el de **debajo**; repetido, recorre todos los que hay
+  en ese punto y vuelve al de encima.
+- En la lista **En el plano** del panel derecho, un clic selecciona cualquier detalle, aunque
+  esté tapado. Luego se mueve con las flechas o con X / Y.
+
 Panel izquierdo: detalles disponibles (miniatura, escala 1:N, tamaño de página, si cabe), los
 que **no caben** (deshabilitados, con su nota y la escala sugerida aproximada) y los
 **rechazados** con sus motivos (no se pueden agregar).
@@ -73,6 +103,8 @@ La barra superior muestra la posición del **cursor** sobre la hoja, en mm de pa
 | Acción | Cómo |
 |---|---|
 | Mover un detalle | Arrastrarlo con el botón izquierdo. |
+| Seleccionar el detalle de debajo | **Alt + clic** (repetido: recorre la pila), o clic en la lista **En el plano**. |
+| Vista limpia | Botón **Vista limpia** (fija) o mantener la tecla **V** (momentánea). |
 | Mover la hoja | Arrastrar el fondo. |
 | Acercar / alejar | Rueda del mouse (hacia el cursor) o botones **+** / **−**. |
 | Ver la hoja completa | **Ajustar**. |
@@ -87,15 +119,17 @@ La barra superior muestra la posición del **cursor** sobre la hoja, en mm de pa
 Son las mismas de `componer`, con el mismo texto (salen de un único lugar,
 `advertencias.py`). Ninguna impide guardar ni componer.
 
-| Nivel | Cuándo | Qué significa |
-|---|---|---|
-| Advertencia (amarillo) | Se traslapan las PÁGINAS de dos detalles, pero no sus dibujos. | El margen blanco del de encima tapa una franja del de abajo. |
-| ADVERTENCIA FUERTE (naranja) | Se traslapan los DIBUJOS de dos detalles. | El de encima tapa parte del dibujo del de abajo. |
-| ADVERTENCIA FUERTE (naranja) | La PÁGINA de un detalle tapa un elemento fijo (p. ej. la rosa). | Su fondo blanco lo tapa, aunque el dibujo no lo toca. |
-| ADVERTENCIA MUY FUERTE (rojo) | El DIBUJO de un detalle se monta sobre un elemento fijo. | El dibujo y su fondo blanco tapan el elemento. |
+Dependen de si el detalle de **encima** (o el que toca un elemento fijo) tiene fondo blanco:
 
-Mientras el exportador siga dejando un fondo blanco en cada detalle, lo que está encima tapa
-lo de abajo.
+| Nivel | Cuándo | Con fondo (paquete antiguo) | Sin fondo (paquete nuevo) |
+|---|---|---|---|
+| Advertencia (amarillo) | Se traslapan las PÁGINAS de dos detalles, no sus dibujos. | El margen blanco del de encima tapa una franja del de abajo. | **No se avisa**: no tapa nada. |
+| ADVERTENCIA FUERTE (naranja) | Se traslapan los DIBUJOS de dos detalles. | El de encima tapa parte del dibujo del de abajo. | Sus líneas quedarán superpuestas en el plano. |
+| ADVERTENCIA FUERTE (naranja) | La PÁGINA de un detalle toca un elemento fijo (p. ej. la rosa). | Su fondo blanco lo tapa, aunque el dibujo no lo toca. | **No se avisa**. |
+| ADVERTENCIA MUY FUERTE (rojo) | El DIBUJO de un detalle se monta sobre un elemento fijo. | El dibujo y su fondo blanco tapan el elemento. | Sus líneas quedarán encima del elemento. |
+
+Si dos detalles se cruzan y solo uno tiene fondo, cuenta el de **encima**: un detalle con
+fondo que está debajo no tapa al de encima.
 
 ## 6. Guardar y abrir
 
