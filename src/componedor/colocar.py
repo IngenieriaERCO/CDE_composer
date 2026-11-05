@@ -144,6 +144,16 @@ def exceso_de_tamano(tamano_mm: tuple[float, float], zona: RectMM) -> tuple[floa
 
 
 def _exigir_que_quepa(ocupado: RectMM, nombre_zona: str, zona: RectMM) -> None:
+    motivo = motivo_fuera_de_zona(ocupado, nombre_zona, zona)
+    if motivo:
+        raise DetalleInvalido(motivo)
+
+
+def motivo_fuera_de_zona(ocupado: RectMM, nombre_zona: str, zona: RectMM) -> str | None:
+    """Por qué el rectángulo `ocupado` (mm de papel) no cabe en la zona, o None si cabe.
+
+    Regla estricta (solo tolera ruido numérico, EPS_MM). La usan `colocar` y `componer`.
+    """
     ancho, alto = ocupado[2] - ocupado[0], ocupado[3] - ocupado[1]
     ancho_zona, alto_zona = zona[2] - zona[0], zona[3] - zona[1]
     descripcion = (
@@ -159,7 +169,7 @@ def _exigir_que_quepa(ocupado: RectMM, nombre_zona: str, zona: RectMM) -> None:
     if dy:
         exceso.append(f"{dy:.1f} mm a lo alto")
     if exceso:
-        raise DetalleInvalido(f"{descripcion}: se pasa {' y '.join(exceso)}.")
+        return f"{descripcion}: se pasa {' y '.join(exceso)}."
 
     # 2) Cabe por tamaño, pero la posición pedida lo saca de la zona.
     lados = [
@@ -170,7 +180,6 @@ def _exigir_que_quepa(ocupado: RectMM, nombre_zona: str, zona: RectMM) -> None:
     ]
     fuera = [f"{d:.1f} mm {lado}" for d, lado in lados if d > EPS_MM]
     if fuera:
-        raise DetalleInvalido(
-            f"{descripcion} en la posición pedida {[round(v, 1) for v in ocupado]}: "
-            f"se pasa {' y '.join(fuera)}."
-        )
+        return (f"{descripcion} en la posición pedida {[round(v, 1) for v in ocupado]}: "
+                f"se pasa {' y '.join(fuera)}.")
+    return None

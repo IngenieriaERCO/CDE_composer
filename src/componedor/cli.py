@@ -13,7 +13,9 @@ from componedor.importador import importar_paquete
 from componedor.inventario import RECHAZADO, EntradaInventario, construir_inventario
 from componedor.colocar import DetalleInvalido, abrir_pdf, colocar_detalle, tamano_visible_mm
 from componedor.comando_referencia import ejecutar_referencia
+from componedor.componer import ResultadoComposicion, componer_plano
 from componedor.composicion import hoja_base
+from componedor.plano import leer_plano
 from componedor.formato import Formato, RectMM, cargar_formato
 from componedor.hoja import ORIENTACIONES, crear_hoja
 from componedor.manifiesto import Manifiesto, leer_manifiesto
@@ -327,6 +329,27 @@ def texto_inventario(entradas: list[EntradaInventario], carpeta: Path, recursivo
     return "\n".join(lineas)
 
 
+def texto_composicion(plano_ruta: Path, r: ResultadoComposicion) -> str:
+    """Resumen de `componer`: detalles y su posición final, advertencias y ruta del PDF."""
+    lineas = [f"Plano: {plano_ruta} ({len(r.detalles)} detalle(s))",
+              texto_informe_plantilla(r.plantilla), "",
+              "Detalles (en orden de apilado: el último queda encima):"]
+    for c in r.detalles:
+        x0, y0, x1, y1 = c.ocupado
+        lineas.append(f"  {c.id}: paquete {c.prefijo}, esquina inferior izquierda "
+                      f"({x0:.2f}, {y0:.2f}) mm; página X {x0:.2f} a {x1:.2f}, "
+                      f"Y {y0:.2f} a {y1:.2f}")
+    if r.advertencias:
+        lineas += ["", f"Advertencias ({len(r.advertencias)}):"]
+        lineas += [f"  - {a}" for a in r.advertencias]
+    else:
+        lineas += ["", "Advertencias: ninguna (sin traslapes entre detalles)."]
+    lineas += ["", "Verificación: el dibujo de cada detalle está donde dice el plano "
+                   "(±0,1 mm), el marco del rótulo no se movió y no hay imágenes nuevas.",
+               f"PDF: {r.ruta_pdf}"]
+    return "\n".join(lineas)
+
+
 def tabla_zonas(formato: Formato) -> str:
     """Tabla de texto con hoja, marco y cada zona: coordenadas y tamaño en mm."""
     filas = [("hoja", formato.hoja), ("marco", formato.marco), *formato.zonas.items()]
@@ -424,6 +447,15 @@ def main(argv: list[str] | None = None) -> int:
                            help="Muestra todas las comprobaciones de integridad y coherencia.")
     p_ver.add_argument("manifiesto", type=Path, help="Archivo <prefijo>.manifest.json.")
 
+    p_comp = sub.add_parser("componer",
+                            help="Compone un plano con varios detalles a partir de un plano.json.")
+    p_comp.add_argument("plano", type=Path, help="Archivo plano.json (ver docs/formato_plano.md).")
+    p_comp.add_argument("--salida", type=Path, required=True, help="Ruta del PDF a crear.")
+    p_comp.add_argument("--sobrescribir", action="store_true",
+                        help="Reemplaza el archivo de salida si ya existe.")
+    p_comp.add_argument("--guias", action="store_true",
+                        help="Dibuja las zonas como guías discontinuas con su nombre.")
+
     p_inv = sub.add_parser("inventario",
                            help="Inventario de detalles: aceptados, rechazados y si caben.")
     p_inv.add_argument("carpeta", type=Path, help="Carpeta con los paquetes del exportador.")
@@ -493,6 +525,10 @@ def main(argv: list[str] | None = None) -> int:
             sin_fallas = all(r.pasa or not r.verificable
                              for v in verificaciones or [] for r in v)
             return 0 if todos_completos and sin_fallas else 1
+        elif args.subcomando == "componer":
+            plano = leer_plano(args.plano)
+            resultado = componer_plano(plano, args.salida, args.sobrescribir, args.guias)
+            print(texto_composicion(args.plano, resultado))
         elif args.subcomando == "inventario":
             formato = (cargar_formato(args.formato, usar_plantilla=False)
                        if args.formato else None)

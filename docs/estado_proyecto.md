@@ -434,6 +434,47 @@ código 0, rechazados con código 1, carpeta vacía y otra zona.
   caben. Las 3 copias de perfil_k0010 NO salen como duplicadas: sus PDF tienen SHA-256
   distintos (el exportador escribe un `/ID` aleatorio en cada extracción).
 
+## Fase 3 — Planos con varios detalles (EN CURSO, rama `fase-3`, iniciada 2026-11-05)
+
+### Subfase 3.1 — Comando `componer` y formato plano.json ✅ (2026-11-05)
+
+**Qué se hizo**
+- `plano.py`: `leer_plano(ruta)` → `Plano` / `DetallePlano` (frozen); `PlanoInvalido` junta
+  todos los problemas con la ruta del campo. Versión 1; rutas relativas a la carpeta del
+  plano.json; cada detalle con `posicion_mm` o `centrar: true` (uno solo); `id` único (se
+  detecta aunque el detalle tenga otros errores); campos desconocidos rechazados.
+- `componer.py`: `componer_plano(plano, salida, sobrescribir, guias)`. Formato y plantilla
+  (la del plano o la del formato); cada detalle por `importar_paquete` (un mismo manifiesto
+  se importa una vez; si hay rechazados, se listan todos y no se genera nada); la página
+  de cada detalle dentro de `area_dibujo` con la regla estricta de `colocar` (error con
+  `id`, mm que se pasa y zona invadida); traslapes de páginas (advertencia) y de dibujos
+  (ADVERTENCIA FUERTE, con la nota del fondo blanco); hoja base + `insertar_pagina` en orden;
+  PDF temporal verificado (dibujo de cada detalle ±0,1 mm, marco del rótulo, sin imágenes
+  nuevas) y renombrado; el temporal se borra ante cualquier falla. Si el conteo de trazos
+  (hoja base + trazos de cada detalle) no cuadra, error explícito: no se verifica a ciegas.
+- `colocar.motivo_fuera_de_zona` (separado de `_exigir_que_quepa`, misma regla) y
+  `comprobacion_dibujo.limites_de_trazos` (separado de `medir_limites_trazos`).
+- CLI `componer PLANO --salida PDF [--sobrescribir] [--guias]`: resumen con la posición
+  final de cada detalle, advertencias y ruta del PDF.
+- `docs/formato_plano.md`; README actualizado.
+
+**Pruebas**: 316, todas pasan (44 nuevas, sintéticas). plano.json: válido, rutas relativas,
+plantilla opcional, 14 casos de detalles inválidos (id repetido, sin posición ni centrar,
+ambos, campo desconocido…), raíz inválida (versión 2, versión texto…), varios problemas a
+la vez, JSON mal formado. componer: dos detalles con geometría medida, centrar, mismo
+paquete dos veces, guías, fuera del área (con mm), encima del rótulo, más grande que el
+área, rechazados entre varios, traslape de páginas y de dibujos (advertencias), salida
+existente con y sin `--sobrescribir`, plantilla del plano, conteo de trazos que no cuadra,
+detalle corrido detectado por la verificación (sin dejar temporales), CLI desde otra
+carpeta y errores del CLI.
+
+**Real**: `data/planos/prueba_dos_k0010.json` (no se versiona) con perfil_k0010 dos veces,
+en (30, 440) y (237, 40) mm → `data/output/prueba_dos_k0010.pdf`: sin advertencias,
+verificado, 1 imagen (logo), 2681 trazos = 2119 del rótulo + 2 × 281. Ojo: el de abajo a la
+derecha (página hasta X 653,98, Y 40–159,4) tapa la rosa de los vientos con su fondo blanco.
+
+**Lo que sigue**: 3.2 vista previa por comando; 3.3 editor HTML que escribe plano.json.
+
 ## Pendientes (después de las Fases 1 y 2)
 
 - **Mayúsculas/minúsculas del nombre del PDF en Windows**: `localizar_paquetes` busca

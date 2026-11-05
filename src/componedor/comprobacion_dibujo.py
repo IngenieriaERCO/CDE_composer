@@ -44,7 +44,15 @@ def medir_limites_trazos(pagina: pymupdf.Page) -> RectMM | None:
     Ignora el fondo blanco de página completa (ver `es_fondo_blanco`). No incluye texto
     ni el grosor de línea. Devuelve None si no hay trazos.
     """
-    rects = [d["rect"] for d in trazos_sin_fondo(pagina)]
+    return limites_de_trazos(trazos_sin_fondo(pagina))
+
+
+def limites_de_trazos(trazos: list[dict]) -> RectMM | None:
+    """Límites (mm, Y abajo, como los da PyMuPDF) de una lista de trazos de `get_drawings()`.
+
+    No quita el fondo blanco: eso lo decide quien arma la lista. None si está vacía.
+    """
+    rects = [d["rect"] for d in trazos]
     if not rects:
         return None
     # Mínimos y máximos a mano: un segmento vertical u horizontal es un Rect "vacío" y

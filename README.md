@@ -27,6 +27,7 @@ papel (origen en la esquina inferior izquierda de la hoja, Y hacia arriba).
 | `paquetes` | Localiza los paquetes del exportador en una carpeta y dice si están completos; con `--verificar`, agrega integridad (bytes, SHA-256, que abra, una página) y coherencia (geometría del manifiesto contra el PDF, escala física garantizada). |
 | `verificar-paquete` | Muestra todas las comprobaciones de integridad y coherencia de un paquete y «RESULTADO: PASA / FALLA». |
 | `inventario` | Lista los detalles de una carpeta: aceptados o rechazados (con motivos), tamaños, si caben en la zona y escala sugerida. |
+| `componer` | Compone un plano con varios detalles a partir de un `plano.json` (ver [docs/formato_plano.md](docs/formato_plano.md)). |
 
 Ejemplos rápidos (uno por comando):
 
@@ -39,6 +40,7 @@ python -m componedor.cli leer-manifiesto data/input/detalle.manifest.json
 python -m componedor.cli paquetes data/input --recursivo --verificar
 python -m componedor.cli verificar-paquete data/input/detalle.manifest.json
 python -m componedor.cli inventario data/input --formato formatos/A1_ERCO.json
+python -m componedor.cli componer data/planos/mi_plano.json --salida data/output/mi_plano.pdf
 ```
 
 El contrato del paquete del exportador (PDF + TXT + manifiesto) está en
@@ -145,6 +147,22 @@ Un paquete solo se acepta si está completo, íntegro (bytes y SHA-256 del PDF),
 motivos salen con su categoría: `[manifiesto]`, `[archivos]`, `[integridad]`,
 `[coherencia]` o `[escala]`. `inventario` termina con código 1 solo si hay rechazados; que
 un detalle no quepa en la zona es una nota, no un rechazo.
+
+### Varios detalles en un plano (`componer`)
+
+Un `plano.json` lista los detalles (por su manifiesto) y dónde va cada uno: `posicion_mm`
+(esquina inferior izquierda de la página del detalle, mm de papel) o `centrar: true`. Las
+rutas son relativas a la carpeta del plano.json. Formato completo y reglas en
+[docs/formato_plano.md](docs/formato_plano.md).
+
+```powershell
+python -m componedor.cli componer data/planos/mi_plano.json --salida data/output/mi_plano.pdf --sobrescribir
+```
+
+Cada detalle pasa por el importador; si alguno se rechaza, no se genera el PDF. Cada
+página debe quedar dentro del área de dibujo (el rótulo es inamovible). Los traslapes entre
+detalles son advertencias. El PDF se verifica antes de entregarlo (posición de cada dibujo
+±0,1 mm, rótulo intacto, sin imágenes nuevas).
 
 ## Formatos
 
