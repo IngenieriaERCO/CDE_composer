@@ -15,6 +15,14 @@ from componedor.colocar import DetalleInvalido, abrir_pdf, colocar_detalle, tama
 from componedor.comando_referencia import ejecutar_referencia
 from componedor.componer import ResultadoComposicion, componer_plano
 from componedor.composicion import hoja_base
+from componedor.datos_editor import (
+    ARCHIVO_DATOS,
+    ARCHIVO_PLANTILLA,
+    CARPETA_MINIATURAS,
+    ZONA_EDITABLE,
+    preparar_editor,
+)
+from componedor.elementos_plantilla import Candidato, detectar_elementos, pdf_verificacion
 from componedor.plano import leer_plano
 from componedor.formato import Formato, RectMM, cargar_formato
 from componedor.hoja import ORIENTACIONES, crear_hoja
@@ -350,6 +358,48 @@ def texto_composicion(plano_ruta: Path, r: ResultadoComposicion) -> str:
     return "\n".join(lineas)
 
 
+def texto_preparar_editor(datos: dict, salida: Path) -> str:
+    detalles, rechazados = datos["detalles"], datos["rechazados"]
+    caben = sum(1 for d in detalles if d["cabe"])
+    lineas = [f"Datos del editor en '{salida}':",
+              f"  {ARCHIVO_DATOS}, {ARCHIVO_PLANTILLA} "
+              f"({datos['imagen_plantilla']['ancho_px']} x {datos['imagen_plantilla']['alto_px']} px)"
+              f" y {len(detalles)} miniatura(s) en {CARPETA_MINIATURAS}/",
+              f"  Elementos fijos de la plantilla: {len(datos['elementos_plantilla'])}", ""]
+    for d in detalles:
+        lineas.append(f"  {d['id']}: 1:{d['escala']:g}, página {d['tamano_pagina_mm'][0]:.2f} x "
+                      f"{d['tamano_pagina_mm'][1]:.2f} mm, "
+                      f"{'cabe' if d['cabe'] else 'NO cabe'} en {ZONA_EDITABLE}")
+    for r in rechazados:
+        lineas.append(f"  {r['prefijo']}: rechazado ({len(r['motivos'])} motivo(s))")
+    lineas += ["", f"{len(detalles)} aceptado(s), {len(rechazados)} rechazado(s), {caben} "
+                   f"cabrían en {ZONA_EDITABLE}."]
+    return "\n".join(lineas)
+
+
+def texto_candidatos(candidatos: list[Candidato], salida: Path) -> str:
+    """Candidatos a elementos de la plantilla y el bloque JSON listo para revisar."""
+    if not candidatos:
+        return (f"No se encontraron elementos de la plantilla dentro del área de dibujo.\n"
+                f"PDF de verificación: {salida}")
+    lineas = [f"Elementos de la plantilla dentro del área de dibujo ({len(candidatos)}):"]
+    for i, c in enumerate(candidatos, start=1):
+        contenido = [f"{c.trazos} trazo(s)"]
+        if c.imagenes:
+            contenido.append(f"{c.imagenes} imagen(es)")
+        if c.textos:
+            contenido.append("texto: " + " | ".join(c.textos))
+        lineas.append(f"  {i}: X {c.rect[0]:.2f} a {c.rect[2]:.2f}, Y {c.rect[1]:.2f} a "
+                      f"{c.rect[3]:.2f} mm ({c.rect[2] - c.rect[0]:.2f} x "
+                      f"{c.rect[3] - c.rect[1]:.2f}); {', '.join(contenido)}")
+    lineas += ["", "Para el formato (ponga un nombre a cada uno, después de revisar el PDF):",
+               '"elementos_plantilla": [']
+    filas = [f'  {{"nombre": "elemento_{i}", "rect_mm": [{c.rect[0]:.2f}, {c.rect[1]:.2f}, '
+             f'{c.rect[2]:.2f}, {c.rect[3]:.2f}]}}' for i, c in enumerate(candidatos, start=1)]
+    lineas += [",\n".join(filas), "]", "", f"PDF de verificación: {salida}"]
+    return "\n".join(lineas)
+
+
 def tabla_zonas(formato: Formato) -> str:
     """Tabla de texto con hoja, marco y cada zona: coordenadas y tamaño en mm."""
     filas = [("hoja", formato.hoja), ("marco", formato.marco), *formato.zonas.items()]
@@ -447,6 +497,26 @@ def main(argv: list[str] | None = None) -> int:
                            help="Muestra todas las comprobaciones de integridad y coherencia.")
     p_ver.add_argument("manifiesto", type=Path, help="Archivo <prefijo>.manifest.json.")
 
+    p_ed = sub.add_parser("preparar-editor",
+                          help="Prepara los datos e imágenes del editor de planos.")
+    p_ed.add_argument("carpeta", type=Path, help="Carpeta con los paquetes del exportador.")
+    p_ed.add_argument("--formato", type=Path, required=True,
+                      help="Formato de hoja (p. ej. formatos/A1_ERCO.json).")
+    p_ed.add_argument("--salida", type=Path, required=True,
+                      help="Carpeta donde escribir editor_datos.json, plantilla.png y miniaturas/.")
+    p_ed.add_argument("--sobrescribir", action="store_true",
+                      help="Reemplaza los datos del editor si la carpeta ya tiene contenido.")
+
+    p_det = sub.add_parser("detectar-elementos",
+                           help="Mide los elementos fijos de la plantilla dentro del área de "
+                                "dibujo y genera un PDF de verificación.")
+    p_det.add_argument("--formato", type=Path, required=True,
+                       help="Formato con plantilla (p. ej. formatos/A1_ERCO.json).")
+    p_det.add_argument("--salida", type=Path, required=True,
+                       help="PDF de verificación a crear.")
+    p_det.add_argument("--sobrescribir", action="store_true",
+                       help="Reemplaza el archivo de salida si ya existe.")
+
     p_comp = sub.add_parser("componer",
                             help="Compone un plano con varios detalles a partir de un plano.json.")
     p_comp.add_argument("plano", type=Path, help="Archivo plano.json (ver docs/formato_plano.md).")
@@ -525,6 +595,15 @@ def main(argv: list[str] | None = None) -> int:
             sin_fallas = all(r.pasa or not r.verificable
                              for v in verificaciones or [] for r in v)
             return 0 if todos_completos and sin_fallas else 1
+        elif args.subcomando == "preparar-editor":
+            datos = preparar_editor(args.carpeta, args.formato, args.salida, args.sobrescribir)
+            print(texto_preparar_editor(datos, args.salida))
+        elif args.subcomando == "detectar-elementos":
+            _exigir_que_no_exista(args.salida, args.sobrescribir)
+            formato = cargar_formato(args.formato)
+            candidatos = detectar_elementos(formato)
+            pdf_verificacion(formato, candidatos, args.salida)
+            print(texto_candidatos(candidatos, args.salida))
         elif args.subcomando == "componer":
             plano = leer_plano(args.plano)
             resultado = componer_plano(plano, args.salida, args.sobrescribir, args.guias)

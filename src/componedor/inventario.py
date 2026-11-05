@@ -33,6 +33,8 @@ class EntradaInventario:
     notas: list[str] = field(default_factory=list)
     sha256: str | None = None
     ruta_pdf: Path | None = None
+    ruta_manifiesto: Path | None = None
+    limites_pagina_mm: tuple[float, float, float, float] | None = None  # page_bounds_mm, Y abajo
 
 
 def construir_inventario(carpeta: Path | str, formato: Formato | None = None,
@@ -63,6 +65,8 @@ def construir_inventario(carpeta: Path | str, formato: Formato | None = None,
             motivos=[texto_motivo(motivo) for motivo in evaluacion.motivos],
             sha256=m.pdf.sha256 if m else None,
             ruta_pdf=paquete.ruta_pdf,
+            ruta_manifiesto=paquete.ruta_manifiesto,
+            limites_pagina_mm=m.pdf.dibujo.limites_pagina_mm if m else None,
         )
         if rect_zona is not None and m is not None:
             _evaluar_cabida(entrada, m, zona, rect_zona)

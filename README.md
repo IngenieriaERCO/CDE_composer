@@ -28,6 +28,8 @@ papel (origen en la esquina inferior izquierda de la hoja, Y hacia arriba).
 | `verificar-paquete` | Muestra todas las comprobaciones de integridad y coherencia de un paquete y «RESULTADO: PASA / FALLA». |
 | `inventario` | Lista los detalles de una carpeta: aceptados o rechazados (con motivos), tamaños, si caben en la zona y escala sugerida. |
 | `componer` | Compone un plano con varios detalles a partir de un `plano.json` (ver [docs/formato_plano.md](docs/formato_plano.md)). |
+| `preparar-editor` | Prepara `editor_datos.json`, `plantilla.png` y miniaturas para el editor de planos (ver [docs/formato_editor_datos.md](docs/formato_editor_datos.md)). |
+| `detectar-elementos` | Mide los elementos fijos de la plantilla dentro del área de dibujo (rosa, recuadro de capas) y genera un PDF de verificación. |
 
 Ejemplos rápidos (uno por comando):
 
@@ -41,6 +43,8 @@ python -m componedor.cli paquetes data/input --recursivo --verificar
 python -m componedor.cli verificar-paquete data/input/detalle.manifest.json
 python -m componedor.cli inventario data/input --formato formatos/A1_ERCO.json
 python -m componedor.cli componer data/planos/mi_plano.json --salida data/output/mi_plano.pdf
+python -m componedor.cli preparar-editor data/input --formato formatos/A1_ERCO.json --salida data/editor
+python -m componedor.cli detectar-elementos --formato formatos/A1_ERCO.json --salida data/output/elementos_plantilla.pdf
 ```
 
 El contrato del paquete del exportador (PDF + TXT + manifiesto) está en
@@ -163,6 +167,19 @@ Cada detalle pasa por el importador; si alguno se rechaza, no se genera el PDF. 
 página debe quedar dentro del área de dibujo (el rótulo es inamovible). Los traslapes entre
 detalles son advertencias. El PDF se verifica antes de entregarlo (posición de cada dibujo
 ±0,1 mm, rótulo intacto, sin imágenes nuevas).
+
+### Elementos fijos de la plantilla y datos del editor
+
+El rótulo trae elementos dentro del área de dibujo (rosa de los vientos, recuadro «LAYERS
+AUTORIZADOS»). Se declaran en `elementos_plantilla` del formato (rectángulos en mm de
+papel, medidos con `detectar-elementos`, nunca inventados) y `componer` advierte si un
+detalle los tapa con su página (ADVERTENCIA FUERTE) o si su dibujo se monta encima
+(ADVERTENCIA MUY FUERTE). No es error.
+
+`preparar-editor` deja en una carpeta los datos y las imágenes que usará el editor HTML
+de planos: zonas (solo el área de dibujo es editable), elementos fijos, detalles aceptados
+con miniatura y rechazados con sus motivos. Estructura en
+[docs/formato_editor_datos.md](docs/formato_editor_datos.md).
 
 ## Formatos
 

@@ -19,9 +19,12 @@ MARCO_A1 = (12.7, 12.7, 828.3, 581.3)
 
 
 def escribir_formato(destino: Path, plantilla: Path | None = None, **cambios) -> Path:
-    """Copia de A1_ERCO.json sin la plantilla real; opcionalmente con otra plantilla."""
+    """Copia de A1_ERCO.json sin la plantilla real ni sus elementos medidos (rosa, recuadro
+    de capas: son del rótulo real); opcionalmente con otra plantilla. Para probar elementos,
+    páselos en `cambios` (elementos_plantilla=[...])."""
     datos = json.loads(RUTA_A1.read_text(encoding="utf-8"))
     datos.pop("plantilla", None)
+    datos.pop("elementos_plantilla", None)
     if plantilla is not None:
         datos["plantilla"] = str(plantilla)
     datos.update(cambios)
@@ -30,7 +33,7 @@ def escribir_formato(destino: Path, plantilla: Path | None = None, **cambios) ->
 
 
 def crear_plantilla_sintetica(ruta: Path, ancho_pt: float = 2384, alto_pt: float = 1684,
-                              rotacion: int = 0, marco_mm=MARCO_A1) -> Path:
+                              rotacion: int = 0, marco_mm=MARCO_A1, elementos_mm=()) -> Path:
     """Rótulo de prueba: marco, columna del rótulo y un "logo" (imagen RGB pequeña).
 
     Por defecto 2384 x 1684 pt (841,02 x 594,08 mm), como redondea AutoCAD el A1.
@@ -57,6 +60,12 @@ def crear_plantilla_sintetica(ruta: Path, ancho_pt: float = 2384, alto_pt: float
     logo = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 40, 12), False)
     logo.set_rect(logo.irect, (0, 150, 60))
     page.insert_image(r(761.0, 79.4, 817.2, 96.7), pixmap=logo)
+    # Elementos fijos dentro del área de dibujo (como la rosa de los vientos): un cuadro y
+    # una cruz por dentro, para que sean varios trazos agrupados en uno.
+    for xmin, ymin, xmax, ymax in elementos_mm:
+        page.draw_rect(r(xmin, ymin, xmax, ymax), color=(0, 0, 0), width=0.5)
+        page.draw_line(r(xmin, ymin, xmax, ymax).tl, r(xmin, ymin, xmax, ymax).br,
+                       color=(0, 0, 0), width=0.3)
     doc.save(ruta)
     doc.close()
     return ruta

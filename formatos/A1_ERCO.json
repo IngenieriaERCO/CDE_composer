@@ -15,6 +15,10 @@
     "convenciones": [672.4, 137.7, 828.3, 270.5],
     "cajetin": [672.4, 12.7, 828.3, 137.7]
   },
+  "elementos_plantilla": [
+    {"nombre": "rosa_vientos", "rect_mm": [612.56, 51.55, 651.52, 90.50]},
+    {"nombre": "recuadro_capas", "rect_mm": [611.67, 25.48, 659.60, 34.84]}
+  ],
   "grosores_mm": {
     "marco": 0.5,
     "guias": 0.13

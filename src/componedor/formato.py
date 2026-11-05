@@ -24,6 +24,15 @@ class PlantillaNoEncontrada(FormatoInvalido):
 
 
 @dataclass(frozen=True)
+class ElementoPlantilla:
+    """Algo fijo de la plantilla que cae dentro del área de dibujo (p. ej. la rosa de los
+    vientos). Un detalle puede taparlo: `componer` lo advierte."""
+
+    nombre: str
+    rect: RectMM  # mm de papel, Y hacia arriba
+
+
+@dataclass(frozen=True)
 class Formato:
     nombre: str
     hoja: RectMM
@@ -31,6 +40,7 @@ class Formato:
     zonas: dict[str, RectMM]
     grosores_mm: dict[str, float]
     plantilla: Path | None = None  # PDF del rótulo, ruta ya resuelta
+    elementos_plantilla: tuple[ElementoPlantilla, ...] = ()
 
     @property
     def ancho_mm(self) -> float:
@@ -113,7 +123,37 @@ def validar_formato(datos: dict, base: Path | None = None,
         zonas=zonas,
         grosores_mm=grosores,
         plantilla=plantilla,
+        elementos_plantilla=_leer_elementos(datos.get("elementos_plantilla", []), hoja),
     )
+
+
+def _leer_elementos(valor, hoja: RectMM) -> tuple[ElementoPlantilla, ...]:
+    """`elementos_plantilla`: lista de {"nombre", "rect_mm"}; opcional (vacía si no está)."""
+    if not isinstance(valor, list):
+        raise FormatoInvalido(
+            f"'elementos_plantilla' debe ser una lista de {{\"nombre\", \"rect_mm\"}}; "
+            f"tiene {valor!r}."
+        )
+    elementos, nombres = [], set()
+    for i, item in enumerate(valor):
+        donde = f"elementos_plantilla[{i}]"
+        if not isinstance(item, dict) or set(item) != {"nombre", "rect_mm"}:
+            raise FormatoInvalido(
+                f"{donde} debe ser un objeto con exactamente \"nombre\" y \"rect_mm\"; "
+                f"tiene {item!r}."
+            )
+        nombre = item["nombre"]
+        if not isinstance(nombre, str) or not nombre.strip():
+            raise FormatoInvalido(f"{donde}.nombre debe ser un texto no vacío; tiene {nombre!r}.")
+        if nombre in nombres:
+            raise FormatoInvalido(f"{donde}.nombre '{nombre}' está repetido; cada nombre debe "
+                                  f"ser único.")
+        nombres.add(nombre)
+        descripcion = f"el rectángulo de {donde} ('{nombre}')"
+        rect = _leer_rect(descripcion, item["rect_mm"])
+        _exigir_dentro(descripcion, rect, "la hoja", hoja)
+        elementos.append(ElementoPlantilla(nombre, rect))
+    return tuple(elementos)
 
 
 def _leer_plantilla(valor, base: Path | None) -> Path:

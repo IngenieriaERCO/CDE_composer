@@ -473,7 +473,47 @@ en (30, 440) y (237, 40) mm → `data/output/prueba_dos_k0010.pdf`: sin adverten
 verificado, 1 imagen (logo), 2681 trazos = 2119 del rótulo + 2 × 281. Ojo: el de abajo a la
 derecha (página hasta X 653,98, Y 40–159,4) tapa la rosa de los vientos con su fondo blanco.
 
-**Lo que sigue**: 3.2 vista previa por comando; 3.3 editor HTML que escribe plano.json.
+### Subfase 3.2 — Elementos de la plantilla y datos del editor ✅ (2026-11-05)
+
+**Qué se hizo**
+- `formato.py`: clave opcional `elementos_plantilla` → `Formato.elementos_plantilla`
+  (`ElementoPlantilla(nombre, rect)`); valida lista de objetos con exactamente `nombre`
+  (texto único) y `rect_mm` (x0 < x1, y0 < y1, dentro de la hoja).
+- `elementos_plantilla.py`: `detectar_elementos(formato)` mide trazos, textos e imágenes de
+  la plantilla (colocada como en `componer`) dentro de `area_dibujo`, sin su propio borde,
+  y los agrupa por cercanía (3 mm); `pdf_verificacion` los dibuja en rojo con sus
+  coordenadas. CLI `detectar-elementos --formato --salida [--sobrescribir]`.
+- `componer`: ADVERTENCIA FUERTE si la página de un detalle tapa un elemento; ADVERTENCIA
+  MUY FUERTE si su dibujo se monta encima. No es error.
+- `inventario.EntradaInventario`: + `ruta_manifiesto` y `limites_pagina_mm`.
+- `datos_editor.py`: `construir_datos_editor` y `preparar_editor` (editor_datos.json,
+  plantilla.png de 1600 px, miniaturas de 600 px; máximos configurables por parámetro).
+  Solo `area_dibujo` editable; detalles aceptados con `limites_dibujo_mm` relativos a la
+  esquina inferior izquierda de su página (Y arriba, vía `limites_dibujo_en_papel`);
+  rechazados con motivos. CLI `preparar-editor CARPETA --formato --salida [--sobrescribir]`.
+- `docs/formato_editor_datos.md`; README.
+
+**Medición real** (`detectar-elementos`, PDF `data/output/elementos_plantilla.pdf`):
+1. X 612,56–651,52, Y 51,55–90,50 mm (69 trazos + textos N, S, E W): rosa de los vientos.
+2. X 611,67–659,60, Y 25,48–34,84 mm (41 trazos): recuadro «LAYERS AUTORIZADOS».
+Confirmados a ojo con el PDF y copiados a `A1_ERCO.json` como `rosa_vientos` y
+`recuadro_capas` (exactos, sin holgura). `conftest.escribir_formato` los quita (son del
+rótulo real; las pruebas usan plantilla sintética y pasan sus propios elementos).
+
+**Pruebas**: 344, todas pasan (28 nuevas): valores confirmados de A1_ERCO.json, elementos en el formato (lectura y 8 casos
+inválidos), detección en plantilla sintética (exacto, agrupado, sin elementos, sin
+plantilla), PDF de verificación, CLI `detectar-elementos`, advertencias de `componer`
+(lejos, dibujo encima, solo la página, dos elementos, CLI), datos del editor (hoja, zonas,
+solo `area_dibujo` editable, detalles, rechazados, coordenadas del dibujo iguales a las de
+`componer`, PNG y tamaños, tamaño configurable, carpeta existente, CLI).
+
+**Real**
+- `preparar-editor data/input` → `data/editor/`: 3 aceptados, 1 cabe, 2 elementos fijos.
+- `componer data/planos/prueba_dos_k0010.json` → «ADVERTENCIA MUY FUERTE: el dibujo
+  'k0010_abajo_der' se monta sobre 'rosa_vientos' de la plantilla (31.0 x 39.0 mm)»; el
+  PDF se genera igual (advertencia, no error) y la verificación pasa.
+
+**Lo que sigue**: 3.3 editor HTML que escribe plano.json.
 
 ## Pendientes (después de las Fases 1 y 2)
 

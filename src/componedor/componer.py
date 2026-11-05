@@ -77,7 +77,7 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
     documentos: dict[Path, pymupdf.Document] = {}
     try:
         colocados = _posiciones(plano, formato, aceptados, documentos)
-        advertencias = _traslapes(colocados)
+        advertencias = _traslapes(colocados) + _sobre_elementos(colocados, formato)
         resultado = _componer_y_verificar(formato, colocados, salida, guias)
     finally:
         for doc in documentos.values():
@@ -182,6 +182,27 @@ def _traslapes(colocados: list[tuple]) -> list[str]:
                     f"({paginas[0]:.1f} x {paginas[1]:.1f} mm), aunque sus dibujos no. Mientras "
                     f"el exportador deje fondo blanco, el margen de '{b.id}' (encima) tapa "
                     f"esa franja de '{a.id}'.")
+    return avisos
+
+
+def _sobre_elementos(colocados: list[tuple], formato: Formato) -> list[str]:
+    """Detalles que tapan elementos fijos de la plantilla dentro del área de dibujo (p. ej.
+    la rosa de los vientos). Advertencia, no error: misma filosofía que los traslapes."""
+    avisos = []
+    for _, _, _, c in colocados:
+        for elemento in formato.elementos_plantilla:
+            dibujo = _interseccion(c.dibujo, elemento.rect)
+            pagina = _interseccion(c.ocupado, elemento.rect)
+            if dibujo:
+                avisos.append(
+                    f"ADVERTENCIA MUY FUERTE: el dibujo '{c.id}' se monta sobre "
+                    f"'{elemento.nombre}' de la plantilla ({dibujo[0]:.1f} x {dibujo[1]:.1f} mm); "
+                    f"además su fondo blanco lo tapa.")
+            elif pagina:
+                avisos.append(
+                    f"ADVERTENCIA FUERTE: el detalle '{c.id}' tapa '{elemento.nombre}' de la "
+                    f"plantilla con su fondo blanco ({pagina[0]:.1f} x {pagina[1]:.1f} mm), "
+                    f"aunque su dibujo no lo toca.")
     return avisos
 
 
