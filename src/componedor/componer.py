@@ -68,6 +68,7 @@ from componedor.rosa import (
     rect_destino,
     verificar_rosa,
 )
+from componedor.notas import NotasMaquetadas, verificar_notas
 from componedor.rotulo import RotuloInvalido, preparar_rotulo
 from componedor.textos_pdf import escribir_textos, verificar_textos
 from componedor.transformaciones import rect_papel_a_pdf
@@ -99,14 +100,16 @@ class ResultadoComposicion:
     rosa: InformeRosa | None = None  # None: el formato no tiene rosa (o no tiene plantilla)
     rotulo: dict[str, str] = field(default_factory=dict)  # valor final de cada campo de texto
     etiquetas: list[str] = field(default_factory=list)  # ids de detalles con etiqueta ESC
+    notas: NotasMaquetadas | None = None  # cuántas notas, líneas y a qué altura (4.2a)
 
 
 @dataclass
 class _Textos:
     """Lo que se escribe como texto en la hoja (rótulo y etiquetas) y con qué fuente."""
     fuente: Fuente | None = None
-    rotulo: list[TextoMaquetado] = field(default_factory=list)
+    rotulo: list[TextoMaquetado] = field(default_factory=list)  # incluye las notas
     etiquetas: list[TextoMaquetado] = field(default_factory=list)
+    notas: NotasMaquetadas | None = None
 
 
 def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
@@ -136,6 +139,7 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
     resultado.advertencias = advertencias
     resultado.rotulo = valores
     resultado.etiquetas = [t.ruta.split(".", 1)[1] for t in textos.etiquetas]
+    resultado.notas = textos.notas
     return resultado
 
 
@@ -288,14 +292,14 @@ def _textos(plano: Plano, formato: Formato, colocados: list[tuple],
         raise PlanoNoComponible(f"No se compone el plano: {e}") from e
     escalas = [c.escala for *_, c in colocados]
     try:
-        rotulo = preparar_rotulo(formato.rotulo, plano.rotulo, escalas, fuente)
+        rotulo = preparar_rotulo(formato.rotulo, plano.rotulo, escalas, fuente, plano.carpeta)
     except RotuloInvalido as e:
         raise PlanoNoComponible(f"No se compone el plano. {e}") from e
     etiquetas, avisos = colocar_etiquetas(
         [DetalleParaEtiqueta(c.id, c.dibujo, c.escala, detalle.etiqueta_escala)
          for detalle, _, _, c in colocados],
         formato.zonas[ZONA], [(e.nombre, e.rect) for e in elementos], fuente)
-    return (_Textos(fuente, rotulo.textos, etiquetas), rotulo.valores,
+    return (_Textos(fuente, rotulo.textos, etiquetas, rotulo.notas), rotulo.valores,
             rotulo.advertencias + avisos)
 
 
@@ -335,7 +339,8 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
             doc.close()
 
         problemas = _verificar(temporal, formato, informe, [c for *_, c in colocados],
-                               trazos_base, trazos_por_detalle, imagenes_base, todos)
+                               trazos_base, trazos_por_detalle, imagenes_base, todos,
+                               textos.notas)
         if problemas:
             raise PlanoNoComponible(
                 "La verificación del PDF compuesto falló; no se generó el plano:\n"
@@ -350,11 +355,14 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
 def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
                colocados: list[DetalleColocado], trazos_base: int,
                trazos_por_detalle: list[int], imagenes_base: int,
-               textos: list[TextoMaquetado] = ()) -> list[str]:
+               textos: list[TextoMaquetado] = (),
+               notas: NotasMaquetadas | None = None) -> list[str]:
     """Mide el PDF guardado. Devuelve la lista de problemas (vacía si todo está bien)."""
     with pymupdf.open(ruta) as final:
         page = final[0]
         textos_mal = verificar_textos(page, list(textos), formato.alto_mm)
+        if notas is not None:
+            textos_mal += verificar_notas(page, notas, formato.alto_mm)
         trazos = page.get_drawings()
         esperados = trazos_base + sum(trazos_por_detalle)
         if len(trazos) != esperados:

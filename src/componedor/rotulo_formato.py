@@ -15,7 +15,9 @@ formato (todo en mm de papel, Y hacia arriba). Esquema (versión 1):
         "<nombre>": {"tipo": "tabla", "altura_mm": 2.0, "altura_min_mm": 2.0,
                      "filas": {"<fila>": {"y_mm": [y0, y1], "lineas_max": 1}},
                      "columnas": {"<columna>": {"x_mm": [x0, x1], "alinear": "centro"}},
-                     "columna_clave": "ver", "orden": ["0", "A", "B", "C"]}
+                     "columna_clave": "ver", "orden": ["0", "A", "B", "C"]},
+        "<nombre>": {"tipo": "notas", "rect_mm": [x0, y0, x1, y1], "altura_mm": 1.8,
+                     "altura_min_mm": 1.5, "separacion_notas": 0.5}
       }
     }
 
@@ -26,6 +28,8 @@ formato (todo en mm de papel, Y hacia arriba). Esquema (versión 1):
 - Tabla sin `columna_clave` (firmas): los valores van por nombre de fila.
 - Calculados: "escala_comun" (escala de los detalles) y "ultima_revision" (letra de mayor
   orden de la tabla "revisiones").
+- Notas (subfase 4.2a, aditivo): una celda con notas numeradas solas (notas.py);
+  `separacion_notas` es el espacio extra entre notas, en renglones (0,5 = medio renglón).
 
 Campos desconocidos se rechazan. Todos los problemas se juntan en un solo error.
 """
@@ -48,7 +52,9 @@ CLAVES_TEXTO = {"tipo", "rect_mm", "alinear", "altura_mm", "altura_min_mm", "lin
                 "por_defecto", "calculado"}
 CLAVES_TABLA = {"tipo", "altura_mm", "altura_min_mm", "filas", "columnas", "columna_clave",
                 "orden"}
+CLAVES_NOTAS = {"tipo", "rect_mm", "altura_mm", "altura_min_mm", "separacion_notas"}
 CLAVES_FILA = {"y_mm", "lineas_max"}
+SEPARACION_NOTAS_POR_DEFECTO = 0.5
 CLAVES_COLUMNA = {"x_mm", "alinear"}
 RELLENO_POR_DEFECTO = 0.6
 INTERLINEADO_POR_DEFECTO = 1.6
@@ -87,22 +93,27 @@ class CampoTabla:
 
 
 @dataclass(frozen=True)
+class CampoNotas:
+    nombre: str
+    celda: Celda  # lineas_max no se usa: caben las que quepan en el alto
+    separacion_notas: float = SEPARACION_NOTAS_POR_DEFECTO  # renglones extra entre notas
+
+
+@dataclass(frozen=True)
 class DefinicionRotulo:
     version: int
     fuente: Path  # ruta ya resuelta
     relleno_mm: float
     interlineado: float
-    campos: dict[str, CampoTexto | CampoTabla]
+    campos: dict[str, CampoTexto | CampoTabla | CampoNotas]
 
     def celdas(self) -> list[Celda]:
         """Todas las celdas, en el orden del formato."""
-        lista = []
-        for campo in self.campos.values():
-            if isinstance(campo, CampoTexto):
-                lista.append(campo.celda)
-            else:
-                lista.extend(campo.celdas.values())
-        return lista
+        return [c for campo in self.campos.values() for c in _celdas(campo)]
+
+
+def _celdas(campo) -> list[Celda]:
+    return list(campo.celdas.values()) if isinstance(campo, CampoTabla) else [campo.celda]
 
 
 def leer_definicion_rotulo(datos, zona_rotulo: RectMM, base: Path | None = None) -> DefinicionRotulo:
@@ -175,8 +186,22 @@ def _campo(nombre: str, valor, errores: list[str]) -> CampoTexto | CampoTabla | 
         return _campo_texto(nombre, valor, donde, errores)
     if tipo == "tabla":
         return _campo_tabla(nombre, valor, donde, errores)
-    errores.append(f"{donde}.tipo: se esperaba \"texto\" o \"tabla\"; tiene {tipo!r}")
+    if tipo == "notas":
+        return _campo_notas(nombre, valor, donde, errores)
+    errores.append(f"{donde}.tipo: se esperaba \"texto\", \"tabla\" o \"notas\"; tiene {tipo!r}")
     return None
+
+
+def _campo_notas(nombre: str, valor: dict, donde: str, errores: list[str]) -> CampoNotas | None:
+    n = len(errores)
+    _desconocidas(valor, CLAVES_NOTAS, donde, errores)
+    rect = _rect(valor.get("rect_mm"), f"{donde}.rect_mm", errores)
+    altura, minima = _alturas(valor, donde, errores)
+    separacion = _numero(valor, "separacion_notas", donde, errores,
+                         SEPARACION_NOTAS_POR_DEFECTO, minimo=0.0)
+    if len(errores) > n:
+        return None
+    return CampoNotas(nombre, Celda(nombre, rect, "izq", altura, minima, 1), separacion)
 
 
 def _campo_texto(nombre: str, valor: dict, donde: str, errores: list[str]) -> CampoTexto | None:
@@ -257,8 +282,7 @@ def _campo_tabla(nombre: str, valor: dict, donde: str, errores: list[str]) -> Ca
 
 def _revisar_celdas(campos: dict, zona: RectMM, relleno: float, errores: list[str]) -> None:
     """Cada celda dentro de la zona del rótulo, con alto para una línea y sin traslapes."""
-    celdas = [c for campo in campos.values() for c in
-              ([campo.celda] if isinstance(campo, CampoTexto) else campo.celdas.values())]
+    celdas = [c for campo in campos.values() for c in _celdas(campo)]
     for c in celdas:
         x0, y0, x1, y1 = c.rect
         if (x0 < zona[0] - EPS_MM or y0 < zona[1] - EPS_MM or x1 > zona[2] + EPS_MM

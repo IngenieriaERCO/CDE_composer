@@ -7,6 +7,7 @@ import pytest
 
 from componedor.formato import FormatoInvalido, cargar_formato, validar_formato
 from componedor.rotulo_formato import (
+    CampoNotas,
     CampoTabla,
     CampoTexto,
     RotuloFormatoInvalido,
@@ -30,7 +31,7 @@ def test_a1_erco_trae_los_campos_medidos_del_rotulo_v2():
     assert r.fuente == Path("C:/Windows/Fonts/arial.ttf")
     assert set(r.campos) == {"localizacion_escala", "este", "norte", "revisiones", "disenador",
                              "revisor", "titulo", "firmas", "hoja", "de", "escala", "no_plano",
-                             "rev"}
+                             "rev", "notas"}
     revisiones = r.campos["revisiones"]
     assert isinstance(revisiones, CampoTabla)
     assert revisiones.filas == ("0", "C", "B", "A") and revisiones.orden == ("0", "A", "B", "C")
@@ -44,7 +45,38 @@ def test_a1_erco_trae_los_campos_medidos_del_rotulo_v2():
     assert r.campos["localizacion_escala"].por_defecto == "DEFINIR"
     assert r.campos["escala"].calculado == "escala_comun"
     assert r.campos["rev"].calculado == "ultima_revision"
-    assert len(r.celdas()) == 11 + 4 * 7 + 4 * 4
+    assert len(r.celdas()) == 12 + 4 * 7 + 4 * 4  # 12 celdas simples (con notas) y 2 tablas
+
+
+def test_notas_en_a1_erco():
+    notas = cargar_formato(RUTA_A1, usar_plantilla=False).rotulo.campos["notas"]
+    assert isinstance(notas, CampoNotas)
+    assert notas.celda.rect == (673.2, 271.3, 827.4, 419.3)
+    assert (notas.celda.altura_mm, notas.celda.altura_min_mm) == (1.8, 1.5)
+    assert notas.separacion_notas == 0.5
+
+
+def test_hoja_y_de_tienen_el_mismo_centro_en_x():
+    campos = cargar_formato(RUTA_A1, usar_plantilla=False).rotulo.campos
+    hoja, de = campos["hoja"].celda, campos["de"].celda
+    assert (hoja.rect[0], hoja.rect[2]) == (de.rect[0], de.rect[2]) == (812.9, 827.4)
+    assert hoja.alinear == de.alinear == "centro"
+
+
+@pytest.mark.parametrize("cambio, esperado", [
+    ({"colr": 1}, "rotulo.campos.notas.colr: campo no reconocido"),
+    ({"altura_min_mm": 2.0}, "rotulo.campos.notas.altura_min_mm: se esperaba un número positivo "
+                             "no mayor que altura_mm (1.8)"),
+    ({"separacion_notas": -1}, "rotulo.campos.notas.separacion_notas: se esperaba un número "
+                               "mayor o igual a 0"),
+    ({"rect_mm": [673.2, 271.3, 827.4, 430.0]},  # se mete en la fila de coordenadas
+     "las celdas 'este' [715.6, 425.1, 749.5, 434] y 'notas' [673.2, 271.3, 827.4, 430] se "
+     "traslapan"),
+])
+def test_notas_invalidas(cambio, esperado):
+    datos = copy.deepcopy(rotulo_a1())
+    datos["campos"]["notas"].update(cambio)
+    assert esperado in _error(datos)
 
 
 def test_sin_rotulo_el_formato_sigue_valido():
@@ -80,7 +112,7 @@ def test_error_del_rotulo_sale_como_formato_invalido():
     (lambda r: r.update(interlineado=0.5), "rotulo.interlineado: se esperaba un número mayor o igual a 1"),
     (lambda r: r.update(campos={}), "rotulo.campos: se esperaba un objeto con al menos un campo"),
     (lambda r: r["campos"]["titulo"].update(tipo="parrafo"),
-     "rotulo.campos.titulo.tipo: se esperaba \"texto\" o \"tabla\""),
+     "rotulo.campos.titulo.tipo: se esperaba \"texto\", \"tabla\" o \"notas\""),
     (lambda r: r["campos"]["titulo"].update(colr="x"), "rotulo.campos.titulo.colr: campo no reconocido"),
     (lambda r: r["campos"]["titulo"].update(alinear="justificado"),
      "rotulo.campos.titulo.alinear: se esperaba uno de izq, centro, der"),

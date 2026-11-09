@@ -83,17 +83,14 @@ def verificar_textos(page: pymupdf.Page, textos: list[TextoMaquetado],
                      alto_hoja_mm: float) -> list[str]:
     """Problemas encontrados (lista vacía si cada línea está en su sitio y dentro de su celda,
     ±0,1 mm)."""
-    caracteres = _caracteres(page)
+    caracteres = caracteres_de_pagina(page)
     tol = mm_a_pt(TOL_MM)
     problemas = []
     for texto in textos:
         for i, linea in enumerate(texto.lineas, start=1):
             esperado = "".join(c for c in linea.texto if not c.isspace())
             base = punto_papel_a_pdf(*linea.base_mm, alto_hoja_mm)
-            fin = base.x + mm_a_pt(linea.ancho_mm) + tol
-            en_base = sorted((x, c, caja) for c, x, y, caja in caracteres
-                             if abs(y - base.y) <= tol and base.x - tol <= x <= fin)
-            leido = "".join(c for _, c, _ in en_base if not c.isspace())
+            leido, en_base = leer_linea(caracteres, linea, alto_hoja_mm)
             donde = f"'{texto.ruta}'" + (f", línea {i}" if len(texto.lineas) > 1 else "")
             if leido != esperado or not en_base or abs(en_base[0][0] - base.x) > tol:
                 problemas.append(
@@ -110,6 +107,19 @@ def verificar_textos(page: pymupdf.Page, textos: list[TextoMaquetado],
                         f"{_rect(texto.celda_mm)} {' y '.join(fuera)} (medido en el PDF: "
                         f"{_rect(medido)}; tolerancia ±{TOL_MM} mm)")
     return problemas
+
+
+def leer_linea(caracteres: list, linea, alto_hoja_mm: float) -> tuple[str, list]:
+    """Lo que el PDF tiene escrito donde va `linea`: caracteres con su origen en la base de la
+    línea (±0,1 mm) y entre su inicio y su fin. Devuelve (texto sin espacios, [(x, carácter,
+    bbox)] ordenados de izquierda a derecha)."""
+    tol = mm_a_pt(TOL_MM)
+    base = punto_papel_a_pdf(*linea.base_mm, alto_hoja_mm)
+    fin = base.x + mm_a_pt(linea.ancho_mm) + tol
+    en_base = sorted(((x, c, caja) for c, x, y, caja in caracteres
+                      if abs(y - base.y) <= tol and base.x - tol <= x <= fin),
+                     key=lambda t: t[0])
+    return "".join(c for _, c, _ in en_base if not c.isspace()), en_base
 
 
 def fuera_de_celda(medido: tuple, celda: tuple) -> list[str]:
@@ -131,7 +141,7 @@ def _rect(r: tuple) -> str:
     return "X {:.2f} a {:.2f}, Y {:.2f} a {:.2f}".format(r[0], r[2], r[1], r[3])
 
 
-def _caracteres(page: pymupdf.Page) -> list[tuple[str, float, float, pymupdf.Rect]]:
+def caracteres_de_pagina(page: pymupdf.Page) -> list[tuple[str, float, float, pymupdf.Rect]]:
     """(carácter, x, y de su origen en pt, su bbox en pt) de todo el texto de la página."""
     resultado = []
     for bloque in page.get_text("rawdict")["blocks"]:

@@ -696,12 +696,58 @@ PDF).
 - **«Dirigido a»**: la plantilla v2 trae en el margen izquierdo la anotación «ESTE DOCUMENTO
   ES PROPIEDAD DE ERCO ENERGY DIRIGDO A XXXX» sin trazos (solo anotación, que no pasa al
   PDF). No se agrega por ahora; **consultar con Alan** si debe ser un campo del rótulo.
-- Subfase 4.2: notas y símbolos de convenciones.
+- Subfase 4.2: notas y símbolos de convenciones (4.2a hecha, ver abajo; 4.2b pendiente).
 - El editor no muestra ni edita los textos del rótulo ni las etiquetas «ESC: 1:N».
 - La fuente va embebida completa (~0,5 MB por plano): no se usa `subset_fonts` porque
   reduciría también las fuentes de los detalles y de la plantilla.
 - La ruta de Arial es la de Windows (`C:/Windows/Fonts/arial.ttf`); en otro equipo se
   cambia en el formato.
+
+### Subfase 4.2a — Notas del rótulo y HOJA / DE alineados ✅ (2026-11-09, sin commit)
+
+**Qué se hizo**
+- **Esquema** (`rotulo_formato.py`, cambio aditivo, la sección sigue en versión 1): tipo de
+  campo nuevo `"notas"` (`rect_mm`, `altura_mm`, `altura_min_mm`, `separacion_notas` en
+  renglones). En `A1_ERCO.json`: `notas` en X 673,2–827,4, Y 271,3–419,3, 1,8 mm (mín.
+  1,5), medio renglón entre notas.
+- **Notas** (`notas.py`): lectura de .txt UTF-8 (con o sin BOM), una nota por línea, sin
+  líneas en blanco ni comentarios `#`; número propio («3.» o «3)») quitado con advertencia;
+  numeración automática continua (archivos primero, adicionales después); sangría francesa
+  según el número más largo; medio renglón entre notas; bloque pegado arriba; reducción
+  conjunta de 0,1 en 0,1 mm hasta 1,5 con advertencia; si no caben, error con el campo, el
+  tamaño y desde qué nota (y su origen), sin PDF. `verificar_notas`: líneas leídas en la celda
+  = escritas y numeración 1…N sin saltos (además de posición y celda de cada línea).
+- **plano.json v2**: `"rotulo": {"notas": {"archivos": [...], "adicionales": [...]}}`; rutas
+  relativas a la carpeta del plano (`preparar_rotulo` recibe la carpeta). Todos los problemas
+  juntos (archivo inexistente, no UTF-8, sin notas, caracteres que la fuente no tiene, tipos,
+  campos desconocidos).
+- **Etiqueta «NOTAS» de la plantilla**: medida en X 746,3–754,9, Y 420,96–422,99. La celda
+  termina en 419,3 (1,66 mm debajo); en el ejemplo, la caja de la primera línea llega a
+  419,17: **1,79 mm libres** hasta la etiqueta.
+- **HOJA / DE**: DE pasa a X 812,9–827,4 (igual que HOJA), ambos centrados. En el ejemplo los
+  dos valores tienen centro en X 820,15 mm (antes 1,75 mm de diferencia).
+- `maquetacion.partir_en_lineas` y `alturas_a_probar` (antes privadas) y
+  `textos_pdf.leer_linea` / `caracteres_de_pagina` se reutilizan en las notas; `cli
+  componer` informa «Notas: N nota(s) en L línea(s), a H mm».
+- docs: formato_plano.md (sección Notas, HOJA/DE, verificación).
+
+**Pruebas**: 538, todas pasan (24 nuevas): lectura (blancos, comentarios, número propio con y
+sin espacio, BOM y CRLF, inexistente, no UTF-8, vacío, orden archivos/adicionales, problemas
+juntos), maquetación (número y sangría francesa, bloque arriba, interlineado y medio renglón,
+sangría con «12.», reducción conjunta, error desde qué nota, palabra demasiado ancha, sin
+notas), rótulo con notas (numeración y todos los problemas juntos), verificación en el PDF
+(pasa; falla con una línea de más y con numeración con salto), esquema (A1 ERCO, campos
+inválidos, traslape), HOJA y DE con el mismo centro en el formato y en el PDF, y `componer`
+(txt + adicionales en el PDF y en el resumen, reducción con advertencia, error sin PDF).
+Pruebas existentes ajustadas: `test_rotulo_formato` (campo `notas` en el conjunto, cantidad
+de celdas, mensaje de tipo con «notas»).
+
+**Ejemplo** (`data/`, no se versiona): `data/notas/generales_vias.txt` (7 notas) y
+`data/notas/drenaje.txt` (3), ficticios, más 2 adicionales en
+`data/planos/ejemplo_rotulo_v2.json` → `data/output/ejemplo_rotulo_v2.pdf`: 12 notas en 17
+líneas a 1,8 mm, sin advertencias.
+
+**Pendiente**: 4.2b, convenciones (símbolos). El editor todavía no edita las notas.
 
 ## Pendientes (después de las Fases 1 y 2)
 

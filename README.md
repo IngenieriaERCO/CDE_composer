@@ -171,7 +171,8 @@ detalles son advertencias. El PDF se verifica antes de entregarlo (posición de 
 ±0,1 mm, rótulo intacto, sin imágenes nuevas, rosa y textos en su sitio ±0,1 mm).
 
 **Rótulo y rosa (plano.json versión 2)**: la sección `rotulo` del plano trae los textos
-(título, revisiones, firmas, No. PLANO, HOJA/DE, coordenadas…); ESCALA (`1:1.000` o
+(título, revisiones, firmas, No. PLANO, HOJA/DE, coordenadas…) y las **notas** (archivos .txt
+con una nota por línea más notas adicionales, numeradas solas, con sangría francesa); ESCALA (`1:1.000` o
 `INDICADAS`) y REV. (la última letra de las revisiones) se calculan solos. Los textos se
 escriben en Arial embebida, centrados en su celda; si uno no cabe, error claro con el campo,
 el texto y las medidas (nunca se recorta). Cada detalle lleva su etiqueta «ESC: 1:N». La

@@ -229,3 +229,58 @@ def test_cli_resume_rosa_y_rotulo(entorno, capsys):
     assert "ESCALA 1:50, REV. A." in out
     assert "Etiquetas \"ESC: 1:N\": 1 (d1)." in out
     assert "cada texto está en su sitio (±0,1 mm) y dentro de su celda." in out
+
+
+# --- notas (4.2a) y HOJA / DE ------------------------------------------------------------------
+
+def _notas_txt(carpeta, nombre, lineas):
+    (carpeta / nombre).write_text("\n".join(lineas) + "\n", encoding="utf-8")
+
+
+def test_notas_desde_txt_y_adicionales_en_el_pdf(entorno, capsys):
+    _notas_txt(entorno, "generales.txt", ["# notas generales", "", "LAS COTAS ESTÁN EN METROS.",
+                                          "2. LAS ELEVACIONES ESTÁN REFERIDAS AL DATUM."])
+    rotulo = dict(ROTULO, notas={"archivos": ["generales.txt"],
+                                 "adicionales": ["VER PLANO ERCO-PSF-CIV-PL-0002."]})
+    _plano(entorno, [("d1", "a", (40, 300))], rotulo=rotulo)
+    assert main(["componer", str(entorno / "plano.json"), "--salida", str(entorno / "p.pdf")]) == 0
+    out = capsys.readouterr().out
+    assert "Notas: 3 nota(s) en 3 línea(s), a 1.8 mm." in out
+    assert "traía su propio número «2.»; se quitó" in out  # advertencia, no error
+    texto = _texto_pdf(entorno / "p.pdf")
+    for esperado in ["1.", "LAS COTAS ESTÁN EN METROS.", "2.", "LAS ELEVACIONES ESTÁN REFERIDAS",
+                     "3.", "VER PLANO ERCO-PSF-CIV-PL-0002."]:
+        assert esperado in texto, esperado
+
+
+def test_notas_que_no_caben_error_sin_pdf(entorno):
+    _notas_txt(entorno, "muchas.txt", [f"NOTA DE PRUEBA NÚMERO {i}." for i in range(1, 70)])
+    plano = _plano(entorno, [("d1", "a", (40, 300))], rotulo={"notas": {"archivos": ["muchas.txt"]}})
+    with pytest.raises(PlanoNoComponible) as e:
+        componer_plano(plano, entorno / "p.pdf")
+    m = str(e.value)
+    assert m.startswith("No se compone el plano. El rótulo tiene 1 problema:\n- campo 'notas': "
+                        "69 notas (69 líneas a 1.5 mm (la mínima permitida)) ocupan ")
+    assert "no caben desde la nota" in m and "(muchas.txt, línea " in m
+    assert not (entorno / "p.pdf").exists() and not list(entorno.glob(".*.componiendo.pdf"))
+
+
+def test_notas_que_se_reducen_avisan(entorno):
+    _notas_txt(entorno, "varias.txt", [f"NOTA DE PRUEBA NÚMERO {i}." for i in range(1, 41)])
+    plano = _plano(entorno, [("d1", "a", (40, 300))], rotulo={"notas": {"archivos": ["varias.txt"]}})
+    r = componer_plano(plano, entorno / "p.pdf")
+    assert r.notas.reducido_desde == 1.8 and 1.5 <= r.notas.altura_mm < 1.8
+    assert (f"Advertencia: en el rótulo, las notas se escribieron a {r.notas.altura_mm:.1f} mm "
+            f"de altura (pedida 1.8 mm) para que quepan en su celda.") in r.advertencias
+
+
+def test_hoja_y_de_con_el_mismo_centro_en_el_pdf(entorno):
+    r = componer_plano(_plano(entorno, [("d1", "a", (40, 300))], rotulo=dict(ROTULO, hoja=1, de=12)),
+                       entorno / "p.pdf")
+    assert r.rotulo["hoja"] == "1" and r.rotulo["de"] == "12"
+    with pymupdf.open(entorno / "p.pdf") as doc:
+        k = 25.4 / 72
+        centros = {w[4]: (w[0] + w[2]) / 2 * k for w in doc[0].get_text("words")
+                   if w[4] in ("1", "12") and w[0] * k > 805}
+    assert centros["1"] == pytest.approx(centros["12"], abs=0.1)
+    assert centros["1"] == pytest.approx((812.9 + 827.4) / 2, abs=0.1)

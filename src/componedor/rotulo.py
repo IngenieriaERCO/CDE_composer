@@ -18,10 +18,12 @@ problemas juntos.
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from componedor.fuente import Fuente
 from componedor.maquetacion import TextoMaquetado, TextoNoCabe, maquetar
-from componedor.rotulo_formato import CampoTabla, CampoTexto, DefinicionRotulo
+from componedor.notas import NotasMaquetadas, leer_notas, maquetar_notas
+from componedor.rotulo_formato import CampoNotas, CampoTabla, CampoTexto, DefinicionRotulo
 from componedor.texto_escala import texto_escala
 
 ESCALAS_DISTINTAS = "INDICADAS"
@@ -39,20 +41,29 @@ class RotuloInvalido(ValueError):
 
 @dataclass
 class RotuloPreparado:
-    textos: list[TextoMaquetado]  # solo los que tienen algo que escribir
+    textos: list[TextoMaquetado]  # solo los que tienen algo que escribir (incluye las notas)
     advertencias: list[str]
     valores: dict[str, str]  # valor final de cada campo de texto (incluye calculados)
+    notas: NotasMaquetadas | None = None  # para verificar_notas y el resumen
 
 
 def preparar_rotulo(definicion: DefinicionRotulo, valores: dict | None,
-                    escalas: list[float], fuente: Fuente) -> RotuloPreparado:
-    """Valida los valores, calcula ESCALA y REV. y maqueta cada celda. Lanza `RotuloInvalido`."""
+                    escalas: list[float], fuente: Fuente,
+                    carpeta: Path | None = None) -> RotuloPreparado:
+    """Valida los valores, calcula ESCALA y REV. y maqueta cada celda. Lanza `RotuloInvalido`.
+    `carpeta`: la del plano.json (las rutas de los archivos de notas son relativas a ella)."""
     valores = {} if valores is None else valores
     problemas: list[str] = []
     contenidos: list[tuple] = []  # (celda, contenido)
     for clave in sorted(set(valores) - set(definicion.campos)):
         problemas.append(f"rotulo.{clave}: campo no reconocido (campos válidos: "
                          f"{', '.join(definicion.campos)})")
+    textos, advertencias = [], []
+    notas = None
+    for campo in definicion.campos.values():
+        if isinstance(campo, CampoNotas) and campo.nombre in valores:
+            notas = _notas(campo, valores[campo.nombre], definicion, fuente, carpeta,
+                           problemas, advertencias)
 
     letras: list[str] = []
     for campo in definicion.campos.values():
@@ -79,7 +90,6 @@ def preparar_rotulo(definicion: DefinicionRotulo, valores: dict | None,
                                  else contenido)
         contenidos.append((campo.celda, contenido))
 
-    textos, advertencias = [], []
     for celda, contenido in contenidos:
         texto = " ".join(contenido) if isinstance(contenido, list) else contenido
         faltan = fuente.caracteres_faltantes(texto)
@@ -102,7 +112,39 @@ def preparar_rotulo(definicion: DefinicionRotulo, valores: dict | None,
                 f"mm) para que quepa en su celda.")
     if problemas:
         raise RotuloInvalido(problemas)
-    return RotuloPreparado(textos, advertencias, finales)
+    if notas is not None:
+        textos += notas.textos
+        finales["notas"] = f"{len(notas.textos)} nota(s)"
+    return RotuloPreparado(textos, advertencias, finales, notas)
+
+
+def _notas(campo: CampoNotas, valor, definicion: DefinicionRotulo, fuente: Fuente,
+           carpeta: Path | None, problemas: list[str],
+           advertencias: list[str]) -> NotasMaquetadas | None:
+    """Lee, revisa y acomoda las notas. Anota problemas y advertencias."""
+    lista, avisos, errores = leer_notas(valor, carpeta)
+    advertencias += avisos
+    problemas += errores
+    for k, nota in enumerate(lista, start=1):
+        faltan = fuente.caracteres_faltantes(nota.texto)
+        if faltan:
+            errores.append(f"rotulo.notas: la nota {k} ({nota.origen}) tiene caracteres que la "
+                           f"fuente {fuente.nombre} no tiene: {' '.join(repr(c) for c in faltan)}")
+            problemas.append(errores[-1])
+    if errores:
+        return None
+    try:
+        maquetadas = maquetar_notas(campo, lista, fuente, definicion.relleno_mm,
+                                    definicion.interlineado)
+    except TextoNoCabe as e:
+        problemas.append(str(e))
+        return None
+    if maquetadas.reducido_desde is not None:
+        advertencias.append(
+            f"Advertencia: en el rótulo, las notas se escribieron a {maquetadas.altura_mm:.1f} "
+            f"mm de altura (pedida {maquetadas.reducido_desde:.1f} mm) para que quepan en su "
+            f"celda.")
+    return maquetadas
 
 
 def ultima_revision(letras: list[str], orden: tuple[str, ...]) -> str:

@@ -63,8 +63,8 @@ def maquetar(celda: Celda, contenido: str | list[str], fuente: Fuente, relleno_m
     alto_util = celda.rect[3] - celda.rect[1] - 2 * relleno_mm
     partir = not explicitas and celda.lineas_max > 1
     problema = ""
-    for altura in _alturas(celda):
-        lineas = _partir(parrafos, ancho_util, altura, fuente) if partir else parrafos
+    for altura in alturas_a_probar(celda):
+        lineas = partir_en_lineas(parrafos, ancho_util, altura, fuente) if partir else parrafos
         problema = _problema(celda, contenido, lineas, altura, ancho_util, alto_util, fuente,
                              interlineado)
         if not problema:
@@ -75,7 +75,7 @@ def maquetar(celda: Celda, contenido: str | list[str], fuente: Fuente, relleno_m
     raise TextoNoCabe(problema)
 
 
-def _alturas(celda: Celda) -> list[float]:
+def alturas_a_probar(celda: Celda) -> list[float]:
     """altura, altura - 0,1, ..., altura_min (redondeadas a 0,01 mm)."""
     pasos = int(round((celda.altura_mm - celda.altura_min_mm) / PASO_REDUCCION_MM))
     alturas = [round(celda.altura_mm - i * PASO_REDUCCION_MM, 2) for i in range(pasos + 1)]
@@ -83,7 +83,8 @@ def _alturas(celda: Celda) -> list[float]:
     return alturas
 
 
-def _partir(parrafos: list[str], ancho: float, altura: float, fuente: Fuente) -> list[str]:
+def partir_en_lineas(parrafos: list[str], ancho: float, altura: float,
+                     fuente: Fuente) -> list[str]:
     """Corta cada párrafo por palabras para que cada línea mida a lo sumo `ancho`. Una
     palabra más ancha que la celda queda sola en su línea (y luego se informa)."""
     lineas = []

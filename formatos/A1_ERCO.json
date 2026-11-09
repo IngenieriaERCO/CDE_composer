@@ -34,6 +34,8 @@
                "alinear": "izq", "altura_mm": 2.0},
       "norte": {"tipo": "texto", "rect_mm": [794.6, 425.1, 827.4, 434.0],
                 "alinear": "izq", "altura_mm": 2.0},
+      "notas": {"tipo": "notas", "rect_mm": [673.2, 271.3, 827.4, 419.3],
+                "altura_mm": 1.8, "altura_min_mm": 1.5, "separacion_notas": 0.5},
       "revisiones": {
         "tipo": "tabla", "altura_mm": 2.0, "columna_clave": "ver", "orden": ["0", "A", "B", "C"],
         "filas": {
@@ -75,7 +77,7 @@
       },
       "hoja": {"tipo": "texto", "rect_mm": [812.9, 38.3, 827.4, 43.6],
                "alinear": "centro", "altura_mm": 2.0},
-      "de": {"tipo": "texto", "rect_mm": [809.4, 32.3, 827.4, 37.6],
+      "de": {"tipo": "texto", "rect_mm": [812.9, 32.3, 827.4, 37.6],
              "alinear": "centro", "altura_mm": 2.0},
       "escala": {"tipo": "texto", "rect_mm": [803.4, 21.4, 827.4, 25.6],
                  "alinear": "centro", "altura_mm": 2.0, "calculado": "escala_comun"},

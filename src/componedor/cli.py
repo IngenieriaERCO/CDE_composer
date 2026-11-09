@@ -380,6 +380,11 @@ def texto_rosa_y_rotulo(r: ResultadoComposicion) -> list[str]:
         llenos = sum(1 for v in r.rotulo.values() if v)
         lineas += ["", f"Rótulo: {llenos} campo(s) de texto con valor; ESCALA "
                        f"{r.rotulo.get('escala') or '(vacía)'}, REV. {r.rotulo.get('rev') or '(vacía)'}."]
+    if r.notas is not None and r.notas.textos:
+        reducida = (f" (pedida {r.notas.reducido_desde:.1f} mm)"
+                    if r.notas.reducido_desde is not None else "")
+        lineas.append(f"Notas: {len(r.notas.textos)} nota(s) en {r.notas.lineas} línea(s), "
+                      f"a {r.notas.altura_mm:.1f} mm{reducida}.")
     if r.rotulo or r.etiquetas:
         ids = ", ".join(r.etiquetas) if r.etiquetas else "ninguno"
         lineas.append(f"Etiquetas \"ESC: 1:N\": {len(r.etiquetas)} ({ids}).")

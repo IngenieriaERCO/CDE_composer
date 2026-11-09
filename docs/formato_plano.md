@@ -129,8 +129,9 @@ falta queda vacío, salvo su valor por defecto. `null` o `""` dejan la celda vac
 | `disenador`, `revisor` | texto o lista de hasta 3 líneas | Celdas a la izquierda y a la derecha del logo. |
 | `revisiones` | lista de objetos | Tabla de revisiones (ver abajo). |
 | `firmas` | objeto por fila | Tabla DIBUJÓ / DISEÑÓ / REVISÓ / APROBÓ (ver abajo). |
-| `hoja`, `de` | texto o entero | HOJA __ DE __. |
+| `hoja`, `de` | texto o entero | HOJA __ DE __ (las dos celdas tienen el mismo rango en X, 812,9–827,4 mm, y van centradas: los dos valores quedan uno debajo del otro). |
 | `no_plano` | texto | No. PLANO. |
+| `notas` | objeto | `{"archivos": [...], "adicionales": [...]}`: notas numeradas (ver «Notas»). |
 | `escala` | **calculada** | No se escribe: es la escala de los detalles si todos tienen la misma (`1:1.000`), si no `INDICADAS`. |
 | `rev` | **calculada** | No se escribe: la letra de mayor orden con revisión llena (0 < A < B < C); sin revisiones, vacía. |
 
@@ -165,8 +166,54 @@ No se compone el plano. El rótulo tiene 1 problema:
 - campo 'no_plano': «ERCO-PSF-CIV-PL-0001-PLANTA-GENERAL-...» mide 138.5 mm y la celda permite 114.9 mm (altura 2.5 mm)
 ```
 
-- `notas` y `convenciones` todavía no existen (subfase 4.2): ponerlos es «campo no
-  reconocido».
+- `convenciones` todavía no existe (subfase 4.2b): ponerlo es «campo no reconocido».
+
+### Notas (`rotulo.notas`, subfase 4.2a)
+
+```json
+"notas": {
+  "archivos": ["../notas/generales_vias.txt", "../notas/drenaje.txt"],
+  "adicionales": ["ESTE PLANO REEMPLAZA A LA REVISIÓN A."]
+}
+```
+
+- **Archivos de notas** (`.txt`, rutas relativas a la carpeta del plano.json): UTF-8 (con o
+  sin BOM), **una nota por línea**. Se ignoran las líneas en blanco y las que empiezan con
+  `#` (comentarios). **Sin número**: el componedor numera solo. Si una línea ya trae su
+  número («3. …» o «3) …»), se quita **con advertencia** («3.5 M» no cuenta como número: le
+  falta el espacio).
+
+  ```text
+  # Notas generales de vías
+  LAS DIMENSIONES ESTÁN EN METROS, SALVO QUE SE INDIQUE OTRA UNIDAD.
+  LAS COORDENADAS ESTÁN REFERIDAS AL SISTEMA MAGNA-SIRGAS ORIGEN NACIONAL.
+  ```
+
+- **Adicionales**: lista de textos, una nota por texto (sin saltos de línea).
+- **Orden y numeración**: primero las de los archivos (en el orden de la lista), luego las
+  adicionales; numeración continua 1, 2, 3, …
+- **Cómo quedan** (celda NOTAS: X 673,2–827,4, Y 271,3–419,3 mm):
+  - número a la izquierda y texto con **sangría francesa** (las líneas que siguen de una nota
+    empiezan donde empieza su texto, no bajo el número; la sangría es el ancho del número más
+    largo más un espacio);
+  - corte por palabras; **medio renglón** extra entre una nota y la siguiente;
+  - el bloque va **pegado arriba** de la celda (no centrado). La celda termina 1,7 mm por
+    debajo de la etiqueta «NOTAS» de la plantilla (Y 420,96–422,99): la primera línea, con su
+    caja completa, queda a 1,8 mm de ella.
+  - altura **1,8 mm**; caben unas 51 líneas de unos 99 caracteres en mayúscula.
+- **Si no caben**: **todas** bajan juntas de 0,1 en 0,1 mm hasta **1,5 mm**, con advertencia.
+  Si ni así caben, error con el campo, el tamaño y desde qué nota ya no caben, sin PDF:
+
+  ```
+  - campo 'notas': 69 notas (69 líneas a 1.5 mm (la mínima permitida)) ocupan 246.3 mm de alto y la celda permite 146.8 mm; no caben desde la nota 42 (muchas.txt, línea 42): «NOTA DE PRUEBA NÚMERO 42.»
+  ```
+
+- **Errores juntos**: archivo inexistente, archivo que no está en UTF-8, archivo sin notas,
+  caracteres que la fuente no tiene, campos desconocidos y tipos equivocados salen todos a la
+  vez, con la nota y su origen («generales.txt, línea 7», «adicionales[1]»).
+- **Verificación en el PDF**: cada línea, como todo texto, en su sitio y dentro de la celda
+  (±0,1 mm); además, en la celda se leen **tantas líneas como se escribieron** y la
+  numeración leída es **1…N sin saltos**.
 
 ## Etiqueta «ESC: 1:N» de cada detalle
 
@@ -208,7 +255,7 @@ Las etiquetas y los campos calculados se escriben siempre que el formato tenga l
    los originales trasladados, ±0,1 mm) y, para cada línea de texto (campos, tablas y
    etiquetas «ESC: 1:N»), leyendo los caracteres del PDF con `get_text("rawdict")`:
    - **posición**: su primer carácter está en la base esperada y el texto leído es el
-     escrito (±0,1 mm);
+     escrito (±0,1 mm) (en las notas, además: líneas leídas = escritas y numeración 1…N);
    - **celda**: la caja que forman los bboxes de sus caracteres (ancho de avance y caja de
      línea de la fuente: ascenso y descenso) queda dentro del rectángulo de su celda,
      ±0,1 mm. En una etiqueta ESC la «celda» es la caja que se le reservó al colocarla. Si
