@@ -14,6 +14,7 @@ data/editor/
                          (lado mayor: 1600 px)
   rosa.png               la rosa sola, transparente (lado mayor: 600 px); solo si el formato
                          tiene plantilla y declara la rosa
+  simbolos/<id>.png      cada símbolo de convenciones, transparente, a 20 px/mm (subfase 4.3a)
   miniaturas/<id>.png    una por detalle aceptado (lado mayor: 1400 px; transparente si el
                          detalle no tiene fondo de página, opaca si lo tiene)
 ```
@@ -99,6 +100,7 @@ miniaturas, borrando las viejas) y no toca nada más.
 | `detalles[].tiene_fondo` | **(Agregado en la subfase 3.4; aditivo, el resto no cambia.)** `true` si el PDF trae el fondo blanco de página completa (paquetes antiguos del exportador), `false` si no. Misma regla con la que `componer` lo detecta (`comprobacion_dibujo.tiene_fondo_de_pagina`). Decide si la miniatura es transparente u opaca y qué advertencias de traslape aplican. Si falta (datos anteriores), el editor supone `true`. |
 | `detalles[].notas` | Notas del inventario (no cabe, escala sugerida aproximada, duplicado). |
 | `detalles[].miniatura` | PNG del detalle y su tamaño en píxeles. |
+| `rotulo` | **(Agregado en la subfase 4.3a; aditivo.)** `null` si el formato no tiene sección `rotulo`. Si la tiene: `definicion` (celdas del rótulo en mm, alturas, líneas, `formato_fecha`), `fuente` (`nombre`, `altura_mayusculas` y `anchos_em`: ancho de avance de cada carácter en fracciones del em, el mismo que usa `componer`), `notas` (catálogo de notas típicas de `--notas`, o `null`: `grupos` → `archivos` → `notas` con `texto`, `vinetas` y `origen`, más `avisos` y `problemas` de lectura por archivo), `simbolos` (cada símbolo de convenciones: `id`, `descripcion`, `opacidad`, `tamano_dibujo_mm`, `margen_mm` e `imagen` → `simbolos/<id>.png`, transparente, 20 px/mm, con su opacidad) y `avisos`. **Nunca** trae firmas. |
 | `rechazados[]` | Paquetes rechazados con sus motivos (`[categoría] texto`, los del importador). El editor los lista pero **no se pueden arrastrar**. |
 
 La aceptación y los motivos salen del inventario (`inventario.construir_inventario`, que usa

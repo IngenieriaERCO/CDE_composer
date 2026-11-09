@@ -73,7 +73,7 @@ def test_rotulo_completo_y_etiquetas(entorno):
     plano = _plano(entorno, [("d1", "a", (40, 300)), ("d2", "s", (40, 100))], rotulo=ROTULO)
     r = componer_plano(plano, entorno / "p.pdf")
     assert r.advertencias == []
-    assert r.rotulo["escala"] == "1:50" and r.rotulo["rev"] == "A"  # orden 0 < A
+    assert r.rotulo["escala"] == "1:50" and r.rotulo["rev"] == "0"  # 0 = emisión final
     texto = _texto_pdf(entorno / "p.pdf")
     for esperado in ["PLANTA GENERAL Y PERFIL", "4.876.543,21", "REVISIÓN INTERNA", "EMISIÓN",
                      "LUIS Á. NÚÑEZ", "ERCO-PSF-CIV-PL-0001", "DEFINIR", "1:50", "ESC: 1:50"]:
@@ -86,7 +86,19 @@ def test_rev_es_la_de_mayor_orden(entorno):
     rotulo = dict(ROTULO, revisiones=[{"ver": "B", "fecha": "1"}, {"ver": "0", "fecha": "2"},
                                       {"ver": "A", "fecha": "3"}])
     r = componer_plano(_plano(entorno, [("d1", "a", (40, 300))], rotulo=rotulo), entorno / "p.pdf")
+    assert r.rotulo["rev"] == "0"  # 0 + A + B: manda la emisión final
+
+
+def test_rev_sin_emision_final_es_la_mayor_letra(entorno):
+    rotulo = dict(ROTULO, revisiones=[{"ver": "B", "fecha": "1"}, {"ver": "A", "fecha": "2"}])
+    r = componer_plano(_plano(entorno, [("d1", "a", (40, 300))], rotulo=rotulo), entorno / "p.pdf")
     assert r.rotulo["rev"] == "B"
+
+
+def test_rev_sin_revisiones_queda_vacia(entorno):
+    rotulo = {k: v for k, v in ROTULO.items() if k != "revisiones"}
+    r = componer_plano(_plano(entorno, [("d1", "a", (40, 300))], rotulo=rotulo), entorno / "p.pdf")
+    assert r.rotulo["rev"] == ""
 
 
 def test_plano_version_1_lleva_defectos_calculados_y_etiquetas(entorno):
@@ -226,7 +238,7 @@ def test_cli_resume_rosa_y_rotulo(entorno, capsys):
     assert main(["componer", str(entorno / "plano.json"), "--salida", str(entorno / "p.pdf")]) == 0
     out = capsys.readouterr().out
     assert "Rosa de los vientos: movida: esquina inferior izquierda (100.00, 450.00) mm." in out
-    assert "ESCALA 1:50, REV. A." in out
+    assert "ESCALA 1:50, REV. 0." in out
     assert "Etiquetas \"ESC: 1:N\": 1 (d1)." in out
     assert "cada texto está en su sitio (±0,1 mm) y dentro de su celda." in out
 

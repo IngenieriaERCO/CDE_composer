@@ -42,11 +42,15 @@ def test_escala_comun_e_indicadas():
 
 
 def test_ultima_revision_por_orden_no_por_llegada():
-    orden = ("0", "A", "B", "C")
-    assert ultima_revision(["B", "0", "A"], orden) == "B"
-    assert ultima_revision(["0"], orden) == "0"
+    orden = ("A", "B", "C", "0")  # A1 ERCO: la emisión final «0» manda sobre A, B, C
+    assert ultima_revision(["0", "A", "B"], orden) == "0"  # 0 + A + B
+    assert ultima_revision(["B", "0", "A"], orden) == "0"  # mismo caso, otro orden de llegada
+    assert ultima_revision(["A", "B"], orden) == "B"  # solo A + B
+    assert ultima_revision(["B", "A"], orden) == "B"
+    assert ultima_revision(["0"], orden) == "0"  # solo 0
     assert ultima_revision(["C", "A"], orden) == "C"
-    assert ultima_revision([], orden) == ""
+    assert ultima_revision(["A"], orden) == "A"
+    assert ultima_revision([], orden) == ""  # ninguna
 
 
 @requiere_arial
@@ -75,7 +79,7 @@ def test_valores_simples_tablas_y_calculados(definicion, fuente):
     assert t["titulo"] == ["PLANTA GENERAL"]
     assert t["hoja"] == ["2"] and t["de"] == ["5"]
     assert t["escala"] == ["INDICADAS"]
-    assert t["rev"] == ["B"]  # la de mayor orden, aunque llegó primero
+    assert t["rev"] == ["0"]  # hay emisión final «0»: manda sobre B
     # Cada revisión en la fila de SU letra, con la letra en la columna VER.
     assert t["revisiones.B.ver"] == ["B"] and t["revisiones.B.descripcion"] == ["AJUSTE"]
     assert t["revisiones.0.ver"] == ["0"] and t["revisiones.0.fecha"] == ["2026-10-01"]
@@ -133,12 +137,13 @@ def test_todos_los_problemas_juntos(definicion, fuente):
         "- rotulo.titulos: campo no reconocido (campos válidos: localizacion_escala, este,",
         "- rotulo.escala: se calcula automáticamente (la escala de los detalles, o INDICADAS si "
         "son distintas); no se escribe en el plano",
-        "- rotulo.rev: se calcula automáticamente (la última letra de las revisiones)",
+        "- rotulo.rev: se calcula automáticamente (0 si hay emisión final; si no, la mayor "
+        "letra llena entre C, B y A); no se escribe en el plano",
         "- rotulo.hoja: se esperaba un texto; tiene un booleano (true)",
         "- rotulo.no_plano: la celda es de una sola línea y el texto trae un salto de línea",
         "- rotulo.este: se esperaba un texto; tiene una lista",
         "- rotulo.revisiones[1].ver: la revisión 'A' está repetida (ya está en rotulo.revisiones[0])",
-        "- rotulo.revisiones[2].ver: se esperaba una de 0, A, B, C; tiene texto 'D'",
+        "- rotulo.revisiones[2].ver: se esperaba una de A, B, C, 0; tiene texto 'D'",
         "- rotulo.revisiones[3].firma: campo no reconocido",
         "- rotulo.firmas.revisor: fila no reconocida (filas válidas: dibujo, diseno, reviso, aprobo)",
         "- rotulo.firmas.dibujo.cedula: campo no reconocido",

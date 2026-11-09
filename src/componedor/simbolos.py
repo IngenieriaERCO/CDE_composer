@@ -190,13 +190,13 @@ def dibujar_simbolos(page: pymupdf.Page, colocaciones: list[ColocacionSimbolo],
             origen = doc[c.simbolo.pagina - 1]
             destino = rect_papel_a_pdf(c.destino_pagina, alto_hoja_mm)
             if c.simbolo.opacidad < 1:
-                with _con_opacidad(doc, c.simbolo.pagina - 1, c.simbolo.opacidad) as transparente:
+                with con_opacidad(doc, c.simbolo.pagina - 1, c.simbolo.opacidad) as transparente:
                     page.show_pdf_page(destino, transparente, 0, clip=transparente[0].rect)
             else:
                 page.show_pdf_page(destino, doc, c.simbolo.pagina - 1, clip=origen.rect)
 
 
-def _con_opacidad(doc: pymupdf.Document, pagina: int, opacidad: float) -> pymupdf.Document:
+def con_opacidad(doc: pymupdf.Document, pagina: int, opacidad: float) -> pymupdf.Document:
     """Página intermedia con el símbolo dentro de un estado gráfico de opacidad
     (ExtGState /CA y /ca): `q /GSopacidad gs ... Q`. Los trazos no cambian y siguen siendo
     vector; solo se dibujan con transparencia. `show_pdf_page` no tiene parámetro de opacidad."""

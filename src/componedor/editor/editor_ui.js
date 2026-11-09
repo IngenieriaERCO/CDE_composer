@@ -20,13 +20,21 @@
   // Rosa de los vientos (subfase 4.1): null si el formato no la declara (datos anteriores).
   const ROSA = DATOS.rosa_vientos || null;
   const ROSA_ORIGEN = ROSA ? [ROSA.rect_mm[0], ROSA.rect_mm[1]] : null;
+  // Rótulo (subfase 4.3a): definición, catálogo de notas, símbolos y anchos de la fuente.
+  // null con datos anteriores o con un formato sin sección "rotulo".
+  const R = window.EditorRotulo;
+  const DATOS_ROTULO = DATOS.rotulo || null;
+  const DEFINICION_ROTULO = DATOS_ROTULO ? DATOS_ROTULO.definicion : null;
 
   const estado = {
     colocaciones: [], // [{id, detalle, pos: [x, y]}], en orden de apilado
     seleccion: null, // id
     rosa: ROSA ? { visible: true, pos: ROSA_ORIGEN.slice() } : null,
     rosaSeleccionada: false,
-    rotulo: null, // "rotulo" de un plano abierto: se conserva tal cual al guardar
+    // Rótulo (4.3a): modelo que conserva intacto lo que no se toca; plano abierto, para
+    // guardarlo idéntico si no se cambia nada.
+    rotulo: R.crearModelo(null, DEFINICION_ROTULO),
+    original: null,
     paso: 1,
     cambios: false,
     vista: { x: 0, y: 0, ancho: ANCHO_PX, alto: ALTO_PX },
@@ -390,6 +398,41 @@
     ul.replaceChildren(...lista.map((a) => nodo("li", { class: a.nivel }, a.texto)));
   }
 
+  /**
+   * Panel «Rótulo» (4.3a, informativo): qué trae el editor (catálogo de notas, símbolos) y qué
+   * rótulo tiene el plano abierto. Los formularios llegan en la 4.3b; mientras, el rótulo de un
+   * plano abierto se conserva tal cual al guardar.
+   */
+  function pintarRotulo() {
+    const panel = document.getElementById("panel-rotulo");
+    if (!panel) return;
+    if (!DATOS_ROTULO) {
+      panel.replaceChildren(nodo("div", { class: "vacio" }, "El formato no tiene sección de rótulo."));
+      return;
+    }
+    const c = R.resumenCatalogo(DATOS_ROTULO.notas);
+    const filas = [
+      nodo("div", { class: "medida" }, DATOS_ROTULO.notas
+        ? "Notas típicas: " + c.notas + " nota(s) (" + c.vinetas + " viñeta(s)) en " + c.archivos +
+          " archivo(s), " + c.grupos + " grupo(s)."
+        : "Notas típicas: no se cargó ninguna carpeta (use --notas al generar el editor)."),
+      nodo("div", { class: "medida" }, "Símbolos de convenciones: " + DATOS_ROTULO.simbolos.length + "."),
+    ];
+    if (c.problemas) {
+      filas.push(nodo("div", { class: "nota-detalle" }, c.problemas + " problema(s) al leer las notas típicas."));
+    }
+    for (const aviso of DATOS_ROTULO.avisos) filas.push(nodo("div", { class: "nota-detalle" }, aviso));
+    const actual = R.serializar(estado.rotulo);
+    filas.push(nodo("div", { class: "medida" }, actual
+      ? "El plano abierto trae rótulo (" + Object.keys(actual).length + " campo(s)): se conserva tal cual al guardar."
+      : "El plano no tiene rótulo todavía."));
+    for (const texto of R.noRepresentable(estado.rotulo)) {
+      filas.push(nodo("div", { class: "medida" }, "Se conserva sin editar: " + texto));
+    }
+    filas.push(nodo("div", { class: "vacio" }, "Los formularios del rótulo llegan en la próxima versión del editor."));
+    panel.replaceChildren(...filas);
+  }
+
   /** Panel «Rosa de los vientos»: mostrar/ocultar, X / Y y restaurar posición. */
   function pintarRosa() {
     const panel = document.getElementById("panel-rosa");
@@ -742,7 +785,8 @@
 
   /** plano.json con los detalles, la rosa y (si se abrió un plano que lo traía) el rótulo. */
   function textoPlano() {
-    return L.serializarPlano(estado.colocaciones, DATOS, { rosa: estado.rosa, rotulo: estado.rotulo });
+    return L.serializarPlano(estado.colocaciones, DATOS, {
+      rosa: estado.rosa, rotulo: R.serializar(estado.rotulo), original: estado.original });
   }
 
   function guardado(nombre, descargado) {
@@ -767,7 +811,9 @@
     estado.rosaSeleccionada = false;
     // Sin "rosa_vientos" en el plano: visible y en su sitio (lo mismo que hace componer).
     if (ROSA) estado.rosa = resultado.rosa || { visible: true, pos: ROSA_ORIGEN.slice() };
-    estado.rotulo = resultado.rotulo; // el editor no lo edita: lo conserva al guardar
+    estado.rotulo = R.crearModelo(resultado.rotulo, DEFINICION_ROTULO); // se conserva al guardar
+    estado.original = resultado.original;
+    pintarRotulo();
     estado.cambios = resultado.avisos.length > 0; // si se ajustó algo, hay cambios por guardar
     actualizar();
     const resumen = "Plano abierto: " + resultado.colocaciones.length + " detalle(s).";
@@ -829,6 +875,7 @@
     moverRosa, mostrarRosa, restaurarRosa, abrir };
 
   pintarCatalogo();
+  pintarRotulo();
   pintarDondeGuardar();
   ajustarVista();
   actualizar();

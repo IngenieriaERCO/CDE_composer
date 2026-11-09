@@ -28,6 +28,7 @@
     "relleno_mm": 0.6,
     "interlineado": 1.6,
     "carpeta_firmas": ["../firmas", "../data/firmas"],
+    "formato_fecha": "dd/mm/aa",
     "campos": {
       "localizacion_escala": {"tipo": "texto", "rect_mm": [809.4, 447.6, 827.4, 454.8],
                               "alinear": "izq", "altura_mm": 2.0, "por_defecto": "DEFINIR"},
@@ -46,7 +47,7 @@
         "biblioteca": "../simbolos/indice.json"
       },
       "revisiones": {
-        "tipo": "tabla", "altura_mm": 2.0, "columna_clave": "ver", "orden": ["0", "A", "B", "C"],
+        "tipo": "tabla", "altura_mm": 2.0, "columna_clave": "ver", "orden": ["A", "B", "C", "0"],
         "filas": {
           "0": {"y_mm": [131.5, 137.7]},
           "C": {"y_mm": [125.2, 131.5]},

@@ -4,7 +4,9 @@ Une tres cosas: la definición de los campos (formato, `rotulo_formato`), los va
 plano (texto que escribe el usuario) y los campos calculados:
   - ESCALA ("escala_comun"): la de los detalles si todos tienen la misma ("1:1.000"); si no,
     "INDICADAS".
-  - REV. ("ultima_revision"): la letra de mayor orden con revisión llena (0 < A < B < C); si
+  - REV. ("ultima_revision"): la letra de mayor `orden` con revisión llena. En A1 ERCO el orden
+    es A < B < C < 0: la «0» es la emisión final (para construcción) y A, B, C son emisiones
+    previas; con «0», REV. = 0; sin ella, la mayor letra llena entre C, B y A; si
     no hay revisiones, vacía.
 
 Valores del plano (todos opcionales; un campo que falta queda vacío, salvo su `por_defecto`):
@@ -243,7 +245,8 @@ def _notas(campo: CampoNotas, valor, definicion: DefinicionRotulo, fuente: Fuent
 
 
 def ultima_revision(letras: list[str], orden: tuple[str, ...]) -> str:
-    """La letra de mayor orden entre las llenas ("" si no hay)."""
+    """La letra de mayor orden entre las llenas ("" si no hay). `orden` va de menor a mayor
+    (A1 ERCO: A, B, C, 0: la emisión final «0» manda sobre las previas)."""
     presentes = [l for l in orden if l in letras]
     return presentes[-1] if presentes else ""
 
@@ -268,7 +271,8 @@ def _calcular(campo: CampoTexto, definicion: DefinicionRotulo, escalas: list[flo
 
 def _explicar(calculado: str) -> str:
     return {"escala_comun": "la escala de los detalles, o INDICADAS si son distintas",
-            "ultima_revision": "la última letra de las revisiones"}[calculado]
+            "ultima_revision": "0 si hay emisión final; si no, la mayor letra llena entre C, "
+                               "B y A"}[calculado]
 
 
 def _contenido(valor, donde: str, lineas_max: int, problemas: list[str]) -> str | list | None:

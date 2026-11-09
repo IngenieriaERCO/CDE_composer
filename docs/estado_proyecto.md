@@ -612,7 +612,8 @@ con que se generó; los paquetes antiguos con fondo siguen tapando lo que queda 
   (Arial, ruta configurable), relleno 0,6 mm, interlineado 1,6, y los campos medidos del
   rótulo v2: `texto` (celda, alineación, altura de mayúsculas, altura mínima, líneas, valor
   por defecto o calculado) y `tabla` (filas y columnas en mm; revisiones con
-  `columna_clave: "ver"` y orden 0 < A < B < C; firmas por fila). Se valida: campos
+  `columna_clave: "ver"` y orden A < B < C < 0 —corregido después, ver «Corrección de REV.»
+  en la subfase 4.3a—; firmas por fila). Se valida: campos
   desconocidos, tipos, celdas dentro de la zona `rotulo`, sin traslapes, alto suficiente,
   calculados conocidos. Todos los problemas en un solo error.
 - **plano.json versión 2** (`plano.py`): `rotulo` (objeto; su contenido lo valida
@@ -953,6 +954,75 @@ Pruebas de la 4.2d/4.2e ajustadas a la estructura por persona (rutas y mensajes)
 **Ejemplo**: las 3 firmas ficticias pasaron a `data/firmas/Ficticia Núñez/firma.png`,
 `data/firmas/Ficticia Ocaña/firma.png` y `data/firmas/Ficticia Gómez/firma.png`; el plano de
 ejemplo usa `{"imagen": "Ficticia Núñez"}`, etc. Mismos tamaños que en la 4.2e.
+
+### Subfase 4.3a — Editor: datos y modelo del rótulo (sin formularios) ✅ (2026-11-09, sin commit)
+
+Decisiones (Paso 0): notas COPIADAS al plano.json (en `adicionales`, con viñetas);
+`proyecto.json` como prellenado por copia (4.3b); fechas con selector, formato por defecto
+`dd/mm/aa` configurable; orden de notas con subir/bajar; firmas NUNCA en editor.html.
+
+**Qué se hizo**
+- **`datos_rotulo_editor.py`**: catálogo de notas típicas leído de forma recursiva con
+  `notas.leer_archivo_notas` (cada subcarpeta = un grupo con su nombre; la raíz = «General»;
+  grupos → archivos → notas con viñetas, avisos y problemas de lectura); símbolos de
+  convenciones en PNG transparente a 20 px/mm con su opacidad (aviso si falta la biblioteca);
+  tabla de anchos de Arial (`Fuente.anchos_em`, 201 caracteres); definición del rótulo en JSON.
+- **Formato**: `rotulo.formato_fecha` (A1 ERCO `"dd/mm/aa"`; día, mes y año una vez cada uno,
+  separadores `/`, `-` o `.`).
+- **`editor` / `preparar-editor --notas <carpeta>`**: `editor_datos.json` gana la clave
+  `rotulo` (aditiva) y `simbolos/<id>.png`; todo se incrusta en editor.html. El resumen del
+  comando dice cuántas notas, grupos y símbolos trae, los problemas de lectura y el peso.
+- **`editor_rotulo.js`** (modelo puro, probado con Node): guarda el `rotulo` tal como vino y
+  solo reemplaza los campos cambiados (`cambiar`, `serializar`); notas adicionales normalizadas
+  `{texto, vinetas}` y escritas como texto u objeto; `noRepresentable` lista lo que los
+  formularios no sabrán editar (notas de archivos .txt, títulos en lista, nombres en varias
+  líneas, campos que el formato no tiene).
+- **`editor_logica.js`**: `leerPlano` devuelve el plano original y recuerda cada detalle;
+  `objetoPlano`/`serializarPlano` conservan lo no tocado (detalles sin mover tal como venían,
+  incluso con `centrar`; formato y plantilla originales; rosa solo si cambió o ya estaba;
+  mismo orden de claves). Corrección de paso: si el original no traía `"plantilla"`, ya no se
+  agrega `"plantilla": null`.
+- **Interfaz**: panel «Rótulo» informativo (catálogo, símbolos, rótulo del plano abierto y lo
+  que se conserva sin editar).
+
+**Pruebas**: 628, todas pasan (24 nuevas): catálogo por grupos recursivo (General primero,
+subcarpetas anidadas, viñetas, número propio, archivo no UTF-8, viñeta suelta, carpeta vacía o
+inexistente), tabla de anchos = medida de Python (±1e-6 mm), definición del rótulo, 8 formatos
+de fecha, símbolos PNG a 20 px/mm con opacidad 0,5, aviso sin biblioteca, `editor --notas` con
+una firma presente en la carpeta de firmas que **no** llega al HTML, formato sin rótulo; con
+Node: **ida y vuelta idéntica** de 6 planos (v1 con `centrar`, sin plantilla, rosa oculta,
+rosa `{}`, ejemplo completo con notas, viñetas, 12 convenciones y 3 firmas con imagen, rótulo
+con campos raros) y del ejemplo real de `data/` (si está), solo cambia lo que se toca, plano
+nuevo sin rosa por defecto, modelo (cambiar, volver atrás, quitar), notas con viñetas que
+conservan `archivos`, avisos de lo no editable, resumen del catálogo.
+
+**Verificación en Edge** (`data/verificacion_editor/verificar_rotulo.mjs`, fuera del repo):
+12 comprobaciones OK, sin errores de JavaScript: catálogo por grupos, 12 símbolos en PNG, tabla
+de anchos y formato de fecha, ninguna firma en el HTML, panel «Rótulo», **abrir el ejemplo
+real y guardarlo sin tocar nada da el mismo JSON** (también el archivo descargado), `componer`
+acepta el plano guardado (12 convenciones, 3 firmas), mover un detalle solo cambia ese detalle.
+La verificación de la 4.1 (rosa) sigue toda OK.
+
+**Peso**: editor de `data/input_ejemplo` (2 paquetes reales) con 11 notas típicas y 12
+símbolos: **576 KB**; el rótulo aporta 77 KB (símbolos 61 KB, definición + anchos + notas
+16 KB), como se estimó; el resto son miniaturas (via_ma: 255 KB).
+
+**Corrección de REV.** (2026-11-09, sin commit): la fila «0» es la emisión final (para
+construcción) y A, B, C son emisiones previas. Antes el orden era 0 < A < B < C y con
+revisiones 0, A y B salía REV. = B (incorrecto). Ahora el `orden` de `revisiones` en
+`A1_ERCO.json` es `["A", "B", "C", "0"]`: con «0», REV. = 0; si no, la mayor letra llena entre
+C, B y A; sin revisiones, vacía. La función `ultima_revision` no cambió (toma la de mayor
+orden); cambió el dato del formato, los textos de ayuda y el mensaje de letra inválida, que
+ahora lista «A, B, C, 0». Pruebas: casos 0+A+B → 0, solo A+B → B, solo 0 → 0, ninguna → vacía
+(en `ultima_revision` y en `componer`). Suite: **630**, todas pasan. `ejemplo_rotulo_v2.pdf`
+regenerado: REV. = 0.
+
+**Pendiente (4.3b)**: formularios del rótulo (campos simples, revisiones y firmas, con selector
+de fecha en `formato_fecha`); notas típicas con casillas, orden subir/bajar y notas a mano
+(copiadas en `adicionales`); selector de convenciones con miniaturas y descripción editable;
+`proyecto.json` (prellenado por copia); pegar, recortar y limpiar la firma en imagen; validación
+en vivo. Después (4.3e/f): maquetación en JavaScript con avisos idénticos a Python y vista
+previa dibujada.
 
 ## Pendientes (después de las Fases 1 y 2)
 

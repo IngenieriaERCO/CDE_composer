@@ -25,7 +25,14 @@ import pymupdf
 from componedor.cad_a_papel import limites_dibujo_en_papel
 from componedor.composicion import hoja_base_con_rosa
 from componedor.comprobacion_dibujo import tiene_fondo_de_pagina
+from componedor.datos_rotulo_editor import (
+    catalogo_notas,
+    definicion_editor,
+    simbolos_editor,
+    tabla_anchos,
+)
 from componedor.formato import Formato, cargar_formato
+from componedor.fuente import FuenteInvalida, cargar_fuente
 from componedor.inventario import ACEPTADO, EntradaInventario, construir_inventario
 from componedor.rosa import NOMBRE as ROSA
 from componedor.rosa import documento_rosa_sola
@@ -43,10 +50,12 @@ MAX_PX_ROSA = 600
 
 
 def construir_datos_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
-                           carpeta_salida: Path | str) -> tuple[dict, list[EntradaInventario]]:
+                           carpeta_salida: Path | str, carpeta_notas: Path | str | None = None,
+                           ) -> tuple[dict, list[EntradaInventario]]:
     """Estructura de editor_datos.json (sin los tamaños en píxeles de las imágenes, que se
     agregan al generarlas) y las entradas del inventario. Las rutas van relativas a
-    `carpeta_salida`, que es donde el editor guardará el plano.json."""
+    `carpeta_salida`, que es donde el editor guardará el plano.json. `carpeta_notas`: las
+    notas típicas para el catálogo del rótulo (subfase 4.3a)."""
     carpeta_salida = Path(carpeta_salida)
     formato = cargar_formato(ruta_formato)
     entradas = construir_inventario(carpeta_paquetes, formato, ZONA_EDITABLE)
@@ -94,8 +103,25 @@ def construir_datos_editor(carpeta_paquetes: Path | str, ruta_formato: Path | st
         "rosa_vientos": _datos_rosa(formato),
         "detalles": detalles,
         "rechazados": rechazados,
+        # Subfase 4.3a (aditivo): definición del rótulo, tabla de anchos de la fuente, catálogo
+        # de notas y símbolos (los PNG se agregan en preparar_editor). Nunca firmas.
+        "rotulo": _datos_rotulo(formato, carpeta_notas),
     }
     return datos, entradas
+
+
+def _datos_rotulo(formato: Formato, carpeta_notas) -> dict | None:
+    if formato.rotulo is None:
+        return None
+    avisos = []
+    try:
+        fuente = tabla_anchos(cargar_fuente(formato.rotulo.fuente))
+    except FuenteInvalida as e:
+        fuente = None
+        avisos.append(f"fuente: {e}")
+    notas = catalogo_notas(carpeta_notas) if carpeta_notas is not None else None
+    return {"definicion": definicion_editor(formato.rotulo), "fuente": fuente,
+            "notas": notas, "simbolos": [], "avisos": avisos}
 
 
 def _datos_rosa(formato: Formato) -> dict | None:
@@ -109,7 +135,8 @@ def _datos_rosa(formato: Formato) -> dict | None:
 def preparar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
                     carpeta_salida: Path | str, sobrescribir: bool = False,
                     max_px_hoja: int = MAX_PX_HOJA,
-                    max_px_miniatura: int = MAX_PX_MINIATURA) -> dict:
+                    max_px_miniatura: int = MAX_PX_MINIATURA,
+                    carpeta_notas: Path | str | None = None) -> dict:
     """Escribe editor_datos.json, plantilla.png y miniaturas/<id>.png en `carpeta_salida`.
 
     No pisa una carpeta con contenido salvo con `sobrescribir`; en ese caso reemplaza solo
@@ -123,8 +150,13 @@ def preparar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
             f"La carpeta '{carpeta_salida}' ya tiene contenido. Use --sobrescribir para "
             f"reemplazar los datos del editor.")
 
-    datos, entradas = construir_datos_editor(carpeta_paquetes, ruta_formato, carpeta_salida)
+    datos, entradas = construir_datos_editor(carpeta_paquetes, ruta_formato, carpeta_salida,
+                                             carpeta_notas)
     formato = cargar_formato(ruta_formato)
+    if datos["rotulo"] is not None:
+        simbolos, avisos = simbolos_editor(formato.rotulo, carpeta_salida)
+        datos["rotulo"]["simbolos"] = simbolos
+        datos["rotulo"]["avisos"] += avisos
 
     miniaturas = carpeta_salida / CARPETA_MINIATURAS
     miniaturas.mkdir(parents=True, exist_ok=True)

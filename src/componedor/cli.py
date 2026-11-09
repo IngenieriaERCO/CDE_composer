@@ -1,6 +1,7 @@
 """Interfaz de línea de comandos: python -m componedor.cli <subcomando> ..."""
 
 import argparse
+import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -455,7 +456,38 @@ def texto_preparar_editor(datos: dict, salida: Path) -> str:
         lineas.append(f"  {r['prefijo']}: rechazado ({len(r['motivos'])} motivo(s))")
     lineas += ["", f"{len(detalles)} aceptado(s), {len(rechazados)} rechazado(s), {caben} "
                    f"cabrían en {ZONA_EDITABLE}."]
+    lineas += texto_rotulo_editor(datos)
     return "\n".join(lineas)
+
+
+def texto_rotulo_editor(datos: dict) -> list[str]:
+    """Qué trae el editor del rótulo (subfase 4.3a): notas típicas, símbolos y avisos."""
+    rotulo = datos.get("rotulo")
+    if not rotulo:
+        return []
+    lineas = [""]
+    notas = rotulo.get("notas")
+    if notas is None:
+        lineas.append("Rótulo: sin catálogo de notas típicas (use --notas <carpeta>).")
+    else:
+        archivos = [a for g in notas["grupos"] for a in g["archivos"]]
+        total = sum(len(a["notas"]) for a in archivos)
+        vinetas = sum(len(n["vinetas"]) for a in archivos for n in a["notas"])
+        lineas.append(f"Rótulo: {total} nota(s) típica(s) ({vinetas} viñeta(s)) en "
+                      f"{len(archivos)} archivo(s) y {len(notas['grupos'])} grupo(s): "
+                      + ", ".join(g["titulo"] for g in notas["grupos"]) + ".")
+        for a in archivos:
+            for problema in a["problemas"]:
+                lineas.append(f"  - Problema: {problema}")  # ya empieza con el archivo
+            for aviso in a["avisos"]:
+                lineas.append(f"  - {aviso}")
+        for aviso in notas["avisos"]:
+            lineas.append(f"  - {aviso}")
+    lineas.append(f"Símbolos de convenciones: {len(rotulo['simbolos'])} (PNG a 20 px/mm, solo para "
+                  f"mostrar). Firmas en imagen: no se incrustan.")
+    for aviso in rotulo["avisos"]:
+        lineas.append(f"  - {aviso}")
+    return lineas
 
 
 def texto_candidatos(candidatos: list[Candidato], salida: Path) -> str:
@@ -586,6 +618,9 @@ def main(argv: list[str] | None = None) -> int:
     p_html.add_argument("--salida", type=Path, required=True,
                         help="Carpeta del editor: editor.html, datos e imágenes (y ahí va el "
                              "plano.json).")
+    p_html.add_argument("--notas", type=Path,
+                        help="Carpeta con las notas típicas (.txt, una nota por línea; cada "
+                             "subcarpeta es un grupo del catálogo).")
     p_html.add_argument("--sobrescribir", action="store_true",
                         help="Reemplaza lo que genera el editor si la carpeta ya tiene contenido.")
 
@@ -596,6 +631,8 @@ def main(argv: list[str] | None = None) -> int:
                       help="Formato de hoja (p. ej. formatos/A1_ERCO.json).")
     p_ed.add_argument("--salida", type=Path, required=True,
                       help="Carpeta donde escribir editor_datos.json, plantilla.png y miniaturas/.")
+    p_ed.add_argument("--notas", type=Path,
+                      help="Carpeta con las notas típicas (.txt; cada subcarpeta es un grupo).")
     p_ed.add_argument("--sobrescribir", action="store_true",
                       help="Reemplaza los datos del editor si la carpeta ya tiene contenido.")
 
@@ -700,15 +737,21 @@ def main(argv: list[str] | None = None) -> int:
                              for v in verificaciones or [] for r in v)
             return 0 if todos_completos and sin_fallas else 1
         elif args.subcomando == "editor":
-            ruta_html = generar_editor(args.carpeta, args.formato, args.salida, args.sobrescribir)
+            ruta_html = generar_editor(args.carpeta, args.formato, args.salida, args.sobrescribir,
+                                       carpeta_notas=args.notas)
             carpeta = ruta_html.parent.resolve()
-            print(f"Editor generado: {ruta_html.resolve()}")
+            print(f"Editor generado: {ruta_html.resolve()} "
+                  f"({ruta_html.stat().st_size / 1024:.0f} KB)")
+            datos_html = json.loads((ruta_html.parent / ARCHIVO_DATOS).read_text(encoding="utf-8"))
+            for linea in texto_rotulo_editor(datos_html)[1:]:
+                print(linea)
             print("Ábralo con doble clic (Edge o Chrome); no necesita servidor ni internet.")
             print(f"Guarde el plano.json en la MISMA carpeta que editor.html: {carpeta}")
             print(f"Luego: python -m componedor.cli componer \"{carpeta / 'plano.json'}\" "
                   f"--salida \"{carpeta / 'plano.pdf'}\"")
         elif args.subcomando == "preparar-editor":
-            datos = preparar_editor(args.carpeta, args.formato, args.salida, args.sobrescribir)
+            datos = preparar_editor(args.carpeta, args.formato, args.salida, args.sobrescribir,
+                                    carpeta_notas=args.notas)
             print(texto_preparar_editor(datos, args.salida))
         elif args.subcomando == "detectar-elementos":
             _exigir_que_no_exista(args.salida, args.sobrescribir)

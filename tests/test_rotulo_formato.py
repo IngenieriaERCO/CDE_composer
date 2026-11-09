@@ -35,7 +35,7 @@ def test_a1_erco_trae_los_campos_medidos_del_rotulo_v2():
                              "rev", "notas", "convenciones"}
     revisiones = r.campos["revisiones"]
     assert isinstance(revisiones, CampoTabla)
-    assert revisiones.filas == ("0", "C", "B", "A") and revisiones.orden == ("0", "A", "B", "C")
+    assert revisiones.filas == ("0", "C", "B", "A") and revisiones.orden == ("A", "B", "C", "0")
     assert revisiones.columna_clave == "ver"
     assert revisiones.celdas[("A", "fecha")].rect == (680.5, 112.5, 699.7, 118.8)
     firmas = r.campos["firmas"]

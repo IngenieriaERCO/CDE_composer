@@ -15,7 +15,7 @@ formato (todo en mm de papel, Y hacia arriba). Esquema (versión 1):
         "<nombre>": {"tipo": "tabla", "altura_mm": 2.0, "altura_min_mm": 2.0,
                      "filas": {"<fila>": {"y_mm": [y0, y1], "lineas_max": 1}},
                      "columnas": {"<columna>": {"x_mm": [x0, x1], "alinear": "centro"}},
-                     "columna_clave": "ver", "orden": ["0", "A", "B", "C"]},
+                     "columna_clave": "ver", "orden": ["A", "B", "C", "0"]},
         "<nombre>": {"tipo": "notas", "rect_mm": [x0, y0, x1, y1], "altura_mm": 1.8,
                      "altura_min_mm": 1.5, "separacion_notas": 0.5}
       }
@@ -48,6 +48,7 @@ Campos desconocidos se rechazan. Todos los problemas se juntan en un solo error.
 
 import math
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -59,7 +60,11 @@ ALINEACIONES = ("izq", "centro", "der")
 CALCULADOS = ("escala_comun", "ultima_revision")
 TABLA_REVISIONES = "revisiones"  # la que usa "ultima_revision"
 
-CLAVES_ROTULO = {"version", "fuente", "relleno_mm", "interlineado", "campos", "carpeta_firmas"}
+CLAVES_ROTULO = {"version", "fuente", "relleno_mm", "interlineado", "campos", "carpeta_firmas",
+                 "formato_fecha"}
+FORMATO_FECHA_POR_DEFECTO = "dd/mm/aa"
+# Día, mes y año, una vez cada uno, separados por el mismo «/», «-» o «.» (aa o aaaa).
+FORMATO_FECHA = re.compile(r"^(dd|mm|aa|aaaa)([/.-])(dd|mm|aa|aaaa)\2(dd|mm|aa|aaaa)$")
 CLAVES_TEXTO = {"tipo", "rect_mm", "alinear", "altura_mm", "altura_min_mm", "lineas_max",
                 "por_defecto", "calculado"}
 CLAVES_TABLA = {"tipo", "altura_mm", "altura_min_mm", "filas", "columnas", "columna_clave",
@@ -137,6 +142,7 @@ class DefinicionRotulo:
     interlineado: float
     campos: dict[str, CampoTexto | CampoTabla | CampoNotas | CampoConvenciones]
     carpetas_firmas: tuple[Path, ...] = ()  # dónde se buscan las firmas en imagen (rutas resueltas)
+    formato_fecha: str = FORMATO_FECHA_POR_DEFECTO  # cómo escribe las fechas el editor (4.3)
 
     def celdas(self) -> list[Celda]:
         """Todas las celdas, en el orden del formato."""
@@ -187,6 +193,14 @@ def leer_definicion_rotulo(datos, zona_rotulo: RectMM, base: Path | None = None)
         _revisar_celdas(campos, zona_rotulo, relleno, errores)
     _revisar_calculados(campos, errores)
     carpetas = _carpetas_firmas(datos.get("carpeta_firmas"), base, errores)
+    formato_fecha = datos.get("formato_fecha", FORMATO_FECHA_POR_DEFECTO)
+    fecha_ok = isinstance(formato_fecha, str) and FORMATO_FECHA.match(formato_fecha)
+    if not fecha_ok or sorted(formato_fecha.replace("aaaa", "aa")[i:i + 2]
+                              for i in (0, 3, 6)) != ["aa", "dd", "mm"]:
+        errores.append(f"rotulo.formato_fecha: se esperaba día, mes y año una vez cada uno, "
+                       f"separados por «/», «-» o «.» (p. ej. \"dd/mm/aa\" o \"aaaa-mm-dd\"); "
+                       f"tiene {formato_fecha!r}")
+        formato_fecha = FORMATO_FECHA_POR_DEFECTO
     if not carpetas and "carpeta_firmas" not in datos and any(
             c.acepta_imagen for campo in campos.values() for c in _celdas(campo)):
         errores.append("rotulo.carpeta_firmas: hay celdas que aceptan imagen (\"acepta_imagen\": "
@@ -197,7 +211,8 @@ def leer_definicion_rotulo(datos, zona_rotulo: RectMM, base: Path | None = None)
         raise RotuloFormatoInvalido(
             f"La sección 'rotulo' del formato no es válida ({n} "
             f"{'problema' if n == 1 else 'problemas'}):\n" + "\n".join(f"- {e}" for e in errores))
-    return DefinicionRotulo(version, fuente, relleno, interlineado, campos, carpetas)
+    return DefinicionRotulo(version, fuente, relleno, interlineado, campos, carpetas,
+                            formato_fecha)
 
 
 def _carpetas_firmas(valor, base: Path | None, errores: list[str]) -> tuple[Path, ...]:

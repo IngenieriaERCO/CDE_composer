@@ -377,7 +377,7 @@ def test_falla_forzada_si_la_opacidad_no_se_aplica(entorno, monkeypatch):
         nuevo.insert_pdf(doc, from_page=pagina, to_page=pagina)
         return nuevo
 
-    monkeypatch.setattr(modulo_simbolos, "_con_opacidad", sin_opacidad)
+    monkeypatch.setattr(modulo_simbolos, "con_opacidad", sin_opacidad)
     with pytest.raises(PlanoNoComponible, match=r"convenciones, casilla 1 \('corte'\): el símbolo "
                                                 r"debía tener opacidad 0.5 y en el PDF tiene 1"):
         componer_plano(_plano(entorno, [{"simbolo": "corte"}]), entorno / "p.pdf")

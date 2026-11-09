@@ -22,20 +22,24 @@ ARCHIVO_HTML = "editor.html"
 MARCADORES = {
     "/*@@CSS@@*/": "editor.css",
     "/*@@JS_LOGICA@@*/": "editor_logica.js",
+    "/*@@JS_ROTULO@@*/": "editor_rotulo.js",
     "/*@@JS_UI@@*/": "editor_ui.js",
 }
 MARCADOR_DATOS = "@@DATOS_EDITOR@@"
 
 
 def generar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
-                   carpeta_salida: Path | str, sobrescribir: bool = False) -> Path:
+                   carpeta_salida: Path | str, sobrescribir: bool = False,
+                   carpeta_notas: Path | str | None = None) -> Path:
     """Escribe en `carpeta_salida` los datos del editor y `editor.html`. Devuelve su ruta.
 
     Mismas reglas que `preparar-editor`: no pisa una carpeta con contenido salvo con
-    `sobrescribir`, y en ese caso reemplaza solo lo que genera.
+    `sobrescribir`, y en ese caso reemplaza solo lo que genera. `carpeta_notas`: notas típicas
+    para el catálogo del rótulo (se incrustan; las firmas nunca).
     """
     carpeta_salida = Path(carpeta_salida)
-    datos = preparar_editor(carpeta_paquetes, ruta_formato, carpeta_salida, sobrescribir)
+    datos = preparar_editor(carpeta_paquetes, ruta_formato, carpeta_salida, sobrescribir,
+                            carpeta_notas=carpeta_notas)
     ruta = carpeta_salida / ARCHIVO_HTML
     ruta.write_text(construir_html(datos, carpeta_salida), encoding="utf-8", newline="\n")
     return ruta
@@ -51,6 +55,8 @@ def construir_html(datos: dict, carpeta_salida: Path) -> str:
     rosa = incrustados.get("rosa_vientos")
     if rosa and rosa.get("imagen"):
         rosa["imagen"]["data_url"] = _data_url(carpeta_salida / rosa["imagen"]["archivo"])
+    for simbolo in (incrustados.get("rotulo") or {}).get("simbolos", []):
+        simbolo["imagen"]["data_url"] = _data_url(carpeta_salida / simbolo["imagen"]["archivo"])
     incrustados["advertencias"] = PLANTILLAS
     # Solo informativa: dentro de un HTML no se conoce la ruta real del disco.
     incrustados["carpeta_editor"] = str(Path(carpeta_salida).resolve())

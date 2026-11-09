@@ -277,39 +277,96 @@
    * en un detalle, el plano es versión 2; si no, versión 1.
    */
   function serializarPlano(colocaciones, datos, extra) {
+    return JSON.stringify(objetoPlano(colocaciones, datos, extra), null, 2)
+      .replace(/\r\n/g, "\n") + "\n";
+  }
+
+  const mismaPos = (a, b) => !!a && !!b && a[0] === b[0] && a[1] === b[1];
+
+  /**
+   * El objeto plano.json. Con extra.original (el plano que se abrió, subfase 4.3a) se conserva
+   * TODO lo que el usuario no tocó: cada detalle que no se movió sale tal como vino (incluso
+   * con "centrar"), el formato y la plantilla originales, la rosa si su estado no cambió, y el
+   * rótulo tal cual (o el que devuelve el modelo del rótulo). Abrir y guardar sin tocar nada
+   * da un JSON idéntico. La rosa solo se escribe si el plano ya la traía o si dejó de estar
+   * visible y en su lugar.
+   */
+  function objetoPlano(colocaciones, datos, extra) {
     extra = extra || {};
+    const original = esObjeto(extra.original) ? extra.original : null;
     const zona = zonaEditable(datos);
     let v2 = false;
-    const plano = {
-      version: 1,
-      formato: datos.formato,
-      plantilla: null,
-      detalles: colocaciones.map((c) => {
-        const d = {
-          id: c.id,
-          manifiesto: c.detalle.manifiesto,
-          posicion_mm: redondearDentro(c.pos, c.detalle.tamano_pagina_mm, zona),
-        };
-        if (c.etiqueta_escala === false) {
-          d.etiqueta_escala = false;
-          v2 = true;
-        }
-        return d;
-      }),
-    };
-    if (datos.rosa_vientos && extra.rosa) {
-      plano.rosa_vientos = {
-        visible: extra.rosa.visible !== false,
-        posicion_mm: redondearDentro(extra.rosa.pos, tamanoRosa(datos.rosa_vientos.rect_mm), zona),
+    const detalles = colocaciones.map((c) => {
+      const etiqueta = c.etiqueta_escala === false ? false : undefined;
+      const etiquetaOriginal = c.original && c.original.etiqueta_escala === false ? false : undefined;
+      if (c.original && mismaPos(c.pos, c.posOriginal) && etiqueta === etiquetaOriginal) {
+        if (etiqueta === false) v2 = true;
+        return JSON.parse(JSON.stringify(c.original));
+      }
+      const d = {
+        id: c.id,
+        manifiesto: c.detalle.manifiesto,
+        posicion_mm: redondearDentro(c.pos, c.detalle.tamano_pagina_mm, zona),
       };
+      if (etiqueta === false) {
+        d.etiqueta_escala = false;
+        v2 = true;
+      }
+      return d;
+    });
+    const nuevo = {
+      version: 1,
+      formato: original && original.formato !== undefined &&
+        normalizarRuta(original.formato) === normalizarRuta(datos.formato) ? original.formato : datos.formato,
+      plantilla: original && "plantilla" in original ? original.plantilla : null,
+      detalles: detalles,
+    };
+    const rosa = rosaParaGuardar(extra.rosa, datos, zona, original);
+    if (rosa !== undefined) {
+      nuevo.rosa_vientos = rosa;
       v2 = true;
     }
     if (extra.rotulo) {
-      plano.rotulo = extra.rotulo;
+      nuevo.rotulo = extra.rotulo;
       v2 = true;
     }
-    if (v2) plano.version = 2;
-    return JSON.stringify(plano, null, 2).replace(/\r\n/g, "\n") + "\n";
+    if (v2) nuevo.version = 2;
+    if (original && !v2 && original.version === 2) nuevo.version = 2; // no se baja de versión
+    if (!original) return nuevo;
+    // Mismo orden de claves que el original; lo que no estaba, al final.
+    const salida = {};
+    for (const clave of Object.keys(original)) {
+      if (clave in nuevo) salida[clave] = nuevo[clave];
+      else if (!["rosa_vientos", "rotulo"].includes(clave)) salida[clave] = original[clave];
+    }
+    for (const clave of Object.keys(nuevo)) {
+      // "plantilla": null es lo mismo que no tenerla: si el original no la traía, no se agrega.
+      if (!(clave in salida) && clave !== "plantilla") salida[clave] = nuevo[clave];
+    }
+    return salida;
+  }
+
+  /** "rosa_vientos" para guardar, o undefined si no hace falta escribirla. */
+  function rosaParaGuardar(estado, datos, zona, original) {
+    if (!datos.rosa_vientos || !estado) return undefined;
+    const r = datos.rosa_vientos.rect_mm;
+    const enSuSitio = estado.visible !== false && estado.pos[0] === r[0] && estado.pos[1] === r[1];
+    const previa = original && esObjeto(original.rosa_vientos) ? original.rosa_vientos : null;
+    if (previa) {
+      const visiblePrevia = previa.visible !== false;
+      const posPrevia = Array.isArray(previa.posicion_mm) ? previa.posicion_mm : [r[0], r[1]];
+      const posActual = redondearDentro(estado.pos, tamanoRosa(r), zona);
+      if (visiblePrevia === (estado.visible !== false) &&
+          (mismaPos(estado.pos, posPrevia) || mismaPos(posActual, posPrevia))) {
+        return JSON.parse(JSON.stringify(previa)); // no cambió: tal como vino
+      }
+    } else if (enSuSitio) {
+      return undefined; // visible y en su lugar: es lo mismo que no escribirla
+    }
+    return {
+      visible: estado.visible !== false,
+      posicion_mm: redondearDentro(estado.pos, tamanoRosa(r), zona),
+    };
   }
 
   const esObjeto = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -458,12 +515,14 @@
         avisos.push("'" + item.id + "' se salía del área de dibujo: se movió a (" +
           ajustada[0].toFixed(2) + ", " + ajustada[1].toFixed(2) + ") mm.");
       }
-      const colocacion = { id: item.id, detalle: detalle, pos: ajustada };
+      // original / posOriginal: para guardar el detalle tal como vino si no se mueve (4.3a).
+      const colocacion = { id: item.id, detalle: detalle, pos: ajustada, original: item,
+        posOriginal: ajustada[0] === pos[0] && ajustada[1] === pos[1] ? ajustada.slice() : null };
       if (item.etiqueta_escala === false) colocacion.etiqueta_escala = false;
       colocaciones.push(colocacion);
     });
     if (errores.length) return vacio(errores);
-    return { colocaciones, errores, avisos, rosa, rotulo };
+    return { colocaciones, errores, avisos, rosa, rotulo, original: plano };
   }
 
   return {
@@ -492,6 +551,7 @@
     idUnico,
     zonaEditable,
     serializarPlano,
+    objetoPlano,
     leerPlano,
   };
 });

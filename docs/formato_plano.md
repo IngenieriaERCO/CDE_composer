@@ -134,7 +134,7 @@ falta queda vacío, salvo su valor por defecto. `null` o `""` dejan la celda vac
 | `notas` | objeto | `{"archivos": [...], "adicionales": [...]}`: notas numeradas (ver «Notas»). |
 | `convenciones` | lista (máx. 24) | `[{"simbolo": "corte"}, {"simbolo": "via_existente", "descripcion": "…"}]` (ver «Convenciones»). |
 | `escala` | **calculada** | No se escribe: es la escala de los detalles si todos tienen la misma (`1:1.000`), si no `INDICADAS`. |
-| `rev` | **calculada** | No se escribe: la letra de mayor orden con revisión llena (0 < A < B < C); sin revisiones, vacía. |
+| `rev` | **calculada** | No se escribe: si hay una revisión con `ver` "0" (emisión final, para construcción), REV. = 0; si no, la mayor letra llena entre C, B y A (emisiones previas); sin revisiones, vacía. Orden en el formato: A < B < C < 0. |
 
 **Revisiones**: cada revisión lleva su propia letra `"ver"` (`"0"`, `"A"`, `"B"` o `"C"`) y
 se escribe en **la fila de esa letra** (no por orden de llegada); la letra se imprime en la
@@ -219,6 +219,11 @@ archivo donde esté. Por eso: las imágenes van **fuera de git** (toda la carpet
 nombre de la persona (no la imagen) y conviene ponerlas **solo en los PDF emitidos** (no en
 borradores), con la autorización de cada persona. Cada persona tiene su propia carpeta: es
 fácil ver qué firmas hay de quién y retirarlas.
+
+**Fechas**: `componer` escribe las fechas tal como vienen (texto). El formato define cómo las
+escribirá el editor con su selector de fecha (subfase 4.3b): `rotulo.formato_fecha`, por defecto
+`"dd/mm/aa"` (A1 ERCO); se admiten día, mes y año una vez cada uno, con `aa` o `aaaa`,
+separados por `/`, `-` o `.` (p. ej. `"aaaa-mm-dd"`).
 
 **Escalas**: siempre con punto de miles: `1:50`, `1:1.000`, `1:10.000` (celda ESCALA y
 etiquetas «ESC: 1:N»).

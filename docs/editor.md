@@ -14,6 +14,17 @@ python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --sal
 ```
 
 - `data/input`: carpeta con los paquetes del exportador (PDF + manifiesto).
+- `--notas <carpeta>` (opcional, subfase 4.3a): las **notas típicas** del catálogo del rótulo.
+  Se leen todos los `.txt` de la carpeta y sus subcarpetas, con las mismas reglas que
+  `componer` (una nota por línea, viñetas con `- `, comentarios con `#`). **Cada subcarpeta es
+  un grupo** del catálogo y su nombre es el título del grupo (`vias`, `mov_tierras`,
+  `hidraulica`…); los `.txt` de la carpeta raíz van en el grupo **«General»**. Los problemas de
+  lectura (archivo que no está en UTF-8, viñeta antes de una nota…) se muestran al generar el
+  editor y quedan en los datos.
+
+  ```powershell
+  python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --salida data/editor --notas "C:\...\notas_tipicas"
+  ```
 - `data/editor`: carpeta del editor. Queda ahí `editor.html` (más `editor_datos.json`,
   `plantilla.png` y `miniaturas/`, que son los mismos datos de `preparar-editor`).
 - Si la carpeta ya tiene contenido, agregue `--sobrescribir`: se reemplaza solo lo que genera
@@ -68,6 +79,29 @@ La rosa de la plantilla se puede mover o quitar, como en el Layout se mueve un b
   rosa; el editor la dibuja solo en su posición actual, y `componer` hace lo mismo en el PDF
   (la quita de la plantilla y la vuelve a dibujar como vector donde usted la dejó).
 - Se guarda en el plano.json como `"rosa_vientos": {"visible": ..., "posicion_mm": [x, y]}`.
+
+## 2c. Rótulo (subfase 4.3a: datos y modelo; los formularios llegan en la 4.3b)
+
+El editor ya trae incrustado todo lo que necesitarán los formularios del rótulo:
+
+- la **definición del rótulo** del formato (celdas en mm, alturas, líneas, formato de fecha:
+  `dd/mm/aa` en A1 ERCO, configurable con `rotulo.formato_fecha`);
+- la **tabla de anchos** de Arial (para medir los textos igual que `componer`);
+- el **catálogo de notas típicas** (si se generó con `--notas`), por grupos;
+- los **símbolos de convenciones** en PNG transparente a 20 px/mm, dibujados con su opacidad
+  (si falta la biblioteca, un aviso dice cómo generarla).
+
+Las **firmas en imagen nunca se incrustan** en editor.html: el plano.json solo guarda el nombre
+de la persona y `componer` busca la imagen en la carpeta de firmas.
+
+Panel **Rótulo** (a la derecha, informativo): cuántas notas típicas y símbolos trae el editor,
+si el plano abierto tiene rótulo y qué partes del rótulo el editor conservará sin poder
+editarlas (por ejemplo, notas tomadas de archivos `.txt` o un nombre en dos líneas).
+
+**Abrir y guardar sin tocar nada deja el plano.json idéntico.** El editor recuerda el plano
+abierto y solo cambia lo que usted toca: un detalle que no se movió sale tal como venía
+(incluso con `"centrar": true`), el formato, la plantilla y el rótulo se conservan, y la rosa
+solo se escribe si el plano ya la traía o si usted la movió u ocultó.
 
 ## 3. Qué se ve en la hoja
 
@@ -164,12 +198,14 @@ fondo que está debajo no tapa al de encima.
 - **Guardar plano** escribe un `plano.json` (ver [formato_plano.md](formato_plano.md)): el
   formato, `plantilla: null`, los detalles en el orden de apilado con `id`, `manifiesto` y
   `posicion_mm` redondeada a 0,01 mm (siempre hacia dentro del área de dibujo, para no salirse
-  por un redondeo) y, si el formato tiene rosa, `rosa_vientos` (visible y posición, con el
-  mismo redondeo). Con la rosa (o con un `rotulo` o un `"etiqueta_escala": false` que venían
-  en el plano abierto) el plano es **versión 2**; si no, versión 1. Texto con saltos de
-  línea LF.
-- El editor **no edita el rótulo** (todavía): si abre un plano versión 2 con `rotulo`, lo
-  **conserva tal cual** al guardar. Lo mismo con `"etiqueta_escala": false` de cada detalle.
+  por un redondeo) y, si la rosa no está visible y en su lugar, `rosa_vientos` (visible y
+  posición, con el mismo redondeo). Con la rosa (o con un `rotulo` o un
+  `"etiqueta_escala": false`) el plano es **versión 2**; si no, versión 1. Texto con saltos
+  de línea LF.
+- Si el plano se **abrió**, lo que no se tocó sale **tal como venía** (ver «2c. Rótulo»):
+  abrir y guardar sin cambios da el mismo JSON.
+- El editor **no edita el rótulo** todavía (formularios: subfase 4.3b): si abre un plano con
+  `rotulo`, lo **conserva tal cual** al guardar. Lo mismo con `"etiqueta_escala": false`.
 - En Edge y Chrome aparece el diálogo de **Guardar como** (nombre sugerido `plano.json`). Si el
   navegador no lo ofrece o falla (permisos, archivo abierto desde el disco), el plano se
   **descarga** a la carpeta de descargas: **muévalo** a la carpeta de `editor.html` antes de

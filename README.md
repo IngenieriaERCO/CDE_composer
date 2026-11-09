@@ -192,7 +192,7 @@ los detalles dentro del área de dibujo (el rótulo está bloqueado), guarde el 
 la misma carpeta que `editor.html` y componga el PDF con el comando que el editor le muestra.
 
 ```powershell
-python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --salida data/editor
+python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --salida data/editor --notas "C:\...\notas_tipicas"
 # ... abrir data/editor/editor.html, armar el plano y guardar data/editor/plano.json ...
 python -m componedor.cli componer data/editor/plano.json --salida data/editor/plano.pdf
 ```
@@ -202,7 +202,10 @@ en vivo las mismas advertencias que `componer`. Con los paquetes nuevos del expo
 fondo blanco) las miniaturas son transparentes y se ve lo mismo que saldrá en el PDF; la
 **Vista limpia** (botón o tecla V) oculta las ayudas de edición. La rosa de los vientos se
 arrastra como un detalle, se oculta con una casilla y se devuelve a su sitio con «Restaurar
-posición». El editor todavía no muestra los textos del rótulo (los escribe `componer`).
+posición». El editor trae incrustados los datos del rótulo (catálogo de notas típicas de
+`--notas`, agrupadas por subcarpeta; símbolos de convenciones; anchos de la fuente) y abrir y
+guardar un plano sin tocar nada deja el plano.json idéntico; los formularios del rótulo llegan
+en la subfase 4.3b. Las firmas en imagen nunca se incrustan.
 Guía completa en [docs/editor.md](docs/editor.md).
 Si Node está instalado, `pytest` prueba también la lógica del editor (JavaScript).
 

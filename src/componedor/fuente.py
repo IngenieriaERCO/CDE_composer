@@ -48,6 +48,13 @@ class Fuente:
         tamano = pt_a_mm(self.tamano_pt(altura_mm))
         return -self._font.descender * tamano, self._font.ascender * tamano
 
+    def anchos_em(self, caracteres: str) -> dict[str, float]:
+        """Ancho de avance de cada carácter que la fuente tiene, en fracciones del em (el
+        ancho de un texto = suma de avances × tamaño en pt; PyMuPDF no aplica kerning). Para la
+        tabla de anchos del editor."""
+        return {c: self._font.glyph_advance(ord(c)) for c in dict.fromkeys(caracteres)
+                if self._font.has_glyph(ord(c))}
+
     def glifo(self, caracter: str) -> int:
         """Número de glifo del carácter en la fuente (0 si no lo tiene)."""
         return self._font.has_glyph(ord(caracter))
