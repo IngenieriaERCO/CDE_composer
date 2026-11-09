@@ -22,7 +22,7 @@ from pathlib import Path
 
 from componedor.fuente import Fuente
 from componedor.maquetacion import TextoMaquetado, TextoNoCabe, maquetar
-from componedor.notas import NotasMaquetadas, leer_notas, maquetar_notas
+from componedor.notas import SIGNO_VINETA, NotasMaquetadas, leer_notas, maquetar_notas
 from componedor.rotulo_formato import (
     CampoConvenciones,
     CampoNotas,
@@ -210,7 +210,8 @@ def _notas(campo: CampoNotas, valor, definicion: DefinicionRotulo, fuente: Fuent
     advertencias += avisos
     problemas += errores
     for k, nota in enumerate(lista, start=1):
-        faltan = fuente.caracteres_faltantes(nota.texto)
+        texto = " ".join((nota.texto, *nota.vinetas)) + (f" {SIGNO_VINETA}" if nota.vinetas else "")
+        faltan = fuente.caracteres_faltantes(texto)
         if faltan:
             errores.append(f"rotulo.notas: la nota {k} ({nota.origen}) tiene caracteres que la "
                            f"fuente {fuente.nombre} no tiene: {' '.join(repr(c) for c in faltan)}")

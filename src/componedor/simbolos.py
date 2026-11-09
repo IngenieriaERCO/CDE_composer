@@ -14,7 +14,9 @@ indice.json (versión 1):
                    "pagina": 11, "rect_mm": [x0, y0, x1, y1], "trazos": 5}, ...]}
 `casilla_origen` es la casilla de la leyenda del plano de origen (1 a 12 la columna izquierda
 de arriba abajo, 13 a 24 la derecha); `rect_mm` la caja del dibujo del símbolo en ese plano
-(mm de papel) y `trazos` cuántos trazos tiene (para verificar).
+(mm de papel) y `trazos` cuántos trazos tiene (para verificar). `opacidad` (opcional, 0 a 1,
+por defecto 1) dibuja el símbolo con transparencia al colocarlo (subfase 4.2c): sigue siendo
+vector y sus trazos no cambian; `extraer-simbolos` la conserva al regenerar.
 
 `extraer_simbolos` (comando `extraer-simbolos`, una sola vez):
   1. normaliza la página del plano (quita /Rotate, como `colocar.insertar_pagina`);
@@ -70,6 +72,7 @@ class Simbolo:
     pagina: int  # 1, 2, ... en la biblioteca
     rect_mm: RectMM  # caja del dibujo en el plano de origen
     trazos: int
+    opacidad: float = 1.0  # 0 < opacidad <= 1; se aplica al colocarlo (sigue siendo vector)
 
     @property
     def tamano_mm(self) -> tuple[float, float]:
@@ -131,7 +134,7 @@ def cargar_biblioteca(ruta_indice: Path | str) -> Biblioteca:
         simbolos[item["id"]] = Simbolo(item["id"], str(item.get("descripcion", "")),
                                        int(item.get("casilla_origen", 0)), int(item["pagina"]),
                                        tuple(float(v) for v in item["rect_mm"]),
-                                       int(item["trazos"]))
+                                       int(item["trazos"]), _opacidad(item, ruta_indice))
     if sin_medir:
         raise BibliotecaInvalida(f"en el índice '{ruta_indice}' hay símbolos sin medir "
                                  f"({', '.join(sin_medir)}). {COMO_GENERAR}")
@@ -148,6 +151,17 @@ def cargar_biblioteca(ruta_indice: Path | str) -> Biblioteca:
                                  f"pide otras para {', '.join(fuera)}. {COMO_GENERAR}")
     margen = float(datos.get("origen", {}).get("margen_mm", MARGEN_MM))
     return Biblioteca(ruta_indice, ruta_pdf, margen, simbolos)
+
+
+def _opacidad(item: dict, ruta_indice: Path) -> float:
+    """"opacidad" opcional de un símbolo del índice: número con 0 < opacidad <= 1 (defecto 1)."""
+    valor = item.get("opacidad", 1)
+    if (not isinstance(valor, (int, float)) or isinstance(valor, bool)
+            or not 0 < valor <= 1):
+        raise BibliotecaInvalida(f"en el índice '{ruta_indice}', la opacidad del símbolo "
+                                 f"'{item['id']}' debe ser un número mayor que 0 y hasta 1 "
+                                 f"(1 = opaco); tiene {valor!r}")
+    return float(valor)
 
 
 # --- colocar y verificar -------------------------------------------------------------------
@@ -174,23 +188,55 @@ def dibujar_simbolos(page: pymupdf.Page, colocaciones: list[ColocacionSimbolo],
     with pymupdf.open(biblioteca.ruta_pdf) as doc:
         for c in colocaciones:
             origen = doc[c.simbolo.pagina - 1]
-            page.show_pdf_page(rect_papel_a_pdf(c.destino_pagina, alto_hoja_mm), doc,
-                               c.simbolo.pagina - 1, clip=origen.rect)
+            destino = rect_papel_a_pdf(c.destino_pagina, alto_hoja_mm)
+            if c.simbolo.opacidad < 1:
+                with _con_opacidad(doc, c.simbolo.pagina - 1, c.simbolo.opacidad) as transparente:
+                    page.show_pdf_page(destino, transparente, 0, clip=transparente[0].rect)
+            else:
+                page.show_pdf_page(destino, doc, c.simbolo.pagina - 1, clip=origen.rect)
+
+
+def _con_opacidad(doc: pymupdf.Document, pagina: int, opacidad: float) -> pymupdf.Document:
+    """Página intermedia con el símbolo dentro de un estado gráfico de opacidad
+    (ExtGState /CA y /ca): `q /GSopacidad gs ... Q`. Los trazos no cambian y siguen siendo
+    vector; solo se dibujan con transparencia. `show_pdf_page` no tiene parámetro de opacidad."""
+    origen = doc[pagina]
+    nuevo = pymupdf.open()
+    page = nuevo.new_page(width=origen.rect.width, height=origen.rect.height)
+    page.show_pdf_page(page.rect, doc, pagina)
+    tipo, valor = nuevo.xref_get_key(page.xref, "Resources")
+    recursos = int(valor.split()[0]) if tipo == "xref" else page.xref
+    clave = "ExtGState/GSopacidad" if tipo == "xref" else "Resources/ExtGState/GSopacidad"
+    nuevo.xref_set_key(recursos, clave, f"<</Type/ExtGState/CA {opacidad:g}/ca {opacidad:g}>>")
+    contenidos = page.get_contents()
+    actual = b"".join(nuevo.xref_stream(x) for x in contenidos)
+    nuevo.update_stream(contenidos[0], b"q /GSopacidad gs\n" + actual + b"\nQ")
+    for x in contenidos[1:]:
+        nuevo.update_stream(x, b"")
+    return nuevo
 
 
 def verificar_simbolos(page: pymupdf.Page, colocaciones: list[ColocacionSimbolo],
                        alto_hoja_mm: float) -> list[str]:
     """En el PDF: trazos en la casilla = trazos del índice; caja = la esperada y dentro de la
     casilla (±0,1 mm)."""
-    rects = [rect_pdf_a_papel(d["rect"], alto_hoja_mm) for d in page.get_drawings()]
+    trazos = [(rect_pdf_a_papel(d["rect"], alto_hoja_mm), d) for d in page.get_drawings()]
     problemas = []
     for c in colocaciones:
         donde = f"convenciones, casilla {c.posicion} ('{c.simbolo.id}')"
-        propios = [r for r in rects if _dentro(r, c.casilla, TOL_MM)]
+        mios = [(r, d) for r, d in trazos if _dentro(r, c.casilla, TOL_MM)]
+        propios = [r for r, _ in mios]
         if len(propios) != c.simbolo.trazos:
             problemas.append(f"{donde}: en la casilla hay {len(propios)} trazos y el símbolo "
                              f"tiene {c.simbolo.trazos}")
             continue
+        if c.simbolo.opacidad < 1:
+            # Transparencia aplicada: ningún trazo más opaco que lo pedido (±0,01).
+            leida = max(max(d.get("fill_opacity") or 0, d.get("stroke_opacity") or 0)
+                        for _, d in mios)
+            if leida > c.simbolo.opacidad + 0.01:
+                problemas.append(f"{donde}: el símbolo debía tener opacidad "
+                                 f"{c.simbolo.opacidad:g} y en el PDF tiene {leida:g}")
         caja = _union(propios)
         dif = max(abs(a - b) for a, b in zip(caja, c.destino_dibujo))
         if dif > TOL_MM:
@@ -237,7 +283,8 @@ def extraer_simbolos(ruta_plano: Path | str, formato: Formato, ruta_indice: Path
                 + ", ".join(f"'{e['id']}' (casilla {e['casilla_origen']})" for e in faltan))
         usadas = {e["casilla_origen"] for e in entradas}
         simbolos = [Simbolo(e["id"], e["descripcion"], e["casilla_origen"], i,
-                            medidas[e["casilla_origen"]][0], medidas[e["casilla_origen"]][1])
+                            medidas[e["casilla_origen"]][0], medidas[e["casilla_origen"]][1],
+                            e.get("opacidad", 1.0))
                     for i, e in enumerate(entradas, start=1)]
         ruta_pdf = ruta_indice.parent / NOMBRE_PDF
         _armar_biblioteca(hoja, campo, simbolos, formato, ruta_pdf)
@@ -269,7 +316,10 @@ def _entradas_del_indice(ruta: Path) -> list[dict]:
     try:
         datos = json.loads(ruta.read_text(encoding="utf-8"))
         entradas = [{"id": s["id"], "descripcion": s.get("descripcion", ""),
-                     "casilla_origen": int(s["casilla_origen"])} for s in datos["simbolos"]]
+                     "casilla_origen": int(s["casilla_origen"]),
+                     "opacidad": _opacidad(s, ruta)} for s in datos["simbolos"]]
+    except BibliotecaInvalida as e:
+        raise ExtraccionFallida(str(e)) from e
     except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
         raise ExtraccionFallida(f"el índice existente '{ruta}' no se puede leer ({e}); cada "
                                 f"símbolo necesita \"id\" y \"casilla_origen\"") from e
@@ -392,7 +442,9 @@ def _escribir_indice(ruta: Path, simbolos: list[Simbolo], plano: str, pagina: in
         "origen": {"plano": plano, "pagina": pagina, "margen_mm": MARGEN_MM},
         "simbolos": [{"id": s.id, "descripcion": s.descripcion,
                       "casilla_origen": s.casilla_origen, "pagina": s.pagina,
-                      "rect_mm": list(s.rect_mm), "trazos": s.trazos} for s in simbolos],
+                      "rect_mm": list(s.rect_mm), "trazos": s.trazos,
+                      **({"opacidad": s.opacidad} if s.opacidad != 1 else {})}
+                     for s in simbolos],
     }
     ruta.parent.mkdir(parents=True, exist_ok=True)
     ruta.write_text(json.dumps(datos, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",

@@ -805,11 +805,47 @@ tipo).
 reducido, sin advertencias; la hoja sigue con 1 sola imagen (el logo).
 
 **Pendiente**
-- **Pregunta para Alan: ¿«límite de predio proyectado» debe verse distinto de «límite de
-  predio»?** En el plano de origen los dos son idénticos (mismo naranja, 13,25 × 0,51 mm).
+- ~~Pregunta para Alan: ¿«límite de predio proyectado» debe verse distinto de «límite de
+  predio»?~~ En el plano de origen los dos son idénticos (mismo naranja, 13,25 × 0,51 mm).
+  Decisión (2026-11-09): mismo naranja con transparencia 0,5 (subfase 4.2c).
 - La biblioteca tiene 12 símbolos de un solo plano; sumar otros cuando aparezcan (otra
   leyenda: otro `extraer-simbolos` con su índice).
 - El editor todavía no edita notas ni convenciones.
+
+### Subfase 4.2c — Viñetas en las notas y opacidad por símbolo ✅ (2026-11-09, sin commit)
+
+**Qué se hizo**
+- **Viñetas** (`notas.py`): en los .txt, una línea que empieza con `- ` es una viñeta de la
+  nota anterior del mismo archivo (error claro si no hay nota antes; un `-` solo se ignora);
+  en el plano.json, cada elemento de `adicionales` es un texto o `{"texto": ..., "vinetas":
+  [...]}` (campos desconocidos, texto vacío o viñetas mal formadas: error). Se dibujan con
+  «•» donde empieza el texto de la nota y su texto un poco más adentro (ancho de «• »),
+  con sangría francesa; sin espacio extra entre la nota y sus viñetas ni entre viñetas (el
+  medio renglón va solo entre notas). Misma reducción 1,8 → 1,5 mm y mismos errores (el de
+  ancho dice «nota k, viñeta j»). Verificación: líneas escritas = leídas (las de las viñetas
+  cuentan), dentro de la celda, y numeración 1…N (las viñetas no se numeran).
+- **Opacidad por símbolo** (`simbolos.py`): campo opcional `"opacidad"` (0 < o ≤ 1, por
+  defecto 1) en `simbolos/indice.json`; `extraer-simbolos` lo conserva al regenerar.
+  Se aplica al colocar el símbolo envolviéndolo en un estado gráfico `ExtGState` (`/CA`,
+  `/ca`) en una página intermedia: sigue siendo vector, sin imágenes y con los mismos trazos.
+  La verificación de trazos no cambia; además comprueba que ningún trazo del símbolo quede
+  más opaco que lo pedido. `limite_predio_proyectado` usa 0,5.
+
+**Pruebas**: 568, todas pasan (11 nuevas): viñetas en el txt (con sangría, comentario,
+«-» solo y número que se conserva dentro de la viñeta), viñeta antes de una nota (también al
+pasar de un archivo a otro), adicionales como objeto y sus errores, maquetación (signo en la
+X del texto, texto más adentro, sangría francesa, sin medio renglón dentro de la nota, medio
+renglón al final, numeración sin viñetas), reducción (36 líneas sueltas se reducen; las
+mismas 36 como notas con viñetas caben a 1,8 mm), error de ancho de una viñeta, verificación
+en el PDF, `componer` de punta a punta y el error sin PDF; opacidad leída, validada y
+conservada por `extraer-simbolos`, aplicada en el PDF (mismo color, trazos y opacidad 0,5;
+el otro símbolo opaco; sin imágenes nuevas) y falla forzada si no se aplica. Prueba
+existente ajustada: `test_notas.test_verificar_notas_en_el_pdf` (la cantidad de líneas ahora
+es un dato del resultado, no se recalcula).
+
+**Ejemplo**: `data/output/ejemplo_rotulo_v2.pdf` regenerado; «límite de predio proyectado»
+con el mismo naranja (1,0; 0,498; 0) y opacidad 0,5, vector; la hoja sigue con una sola
+imagen (el logo).
 
 ## Pendientes (después de las Fases 1 y 2)
 

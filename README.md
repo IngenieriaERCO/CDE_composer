@@ -174,7 +174,8 @@ detalles son advertencias. El PDF se verifica antes de entregarlo (posición de 
 
 **Rótulo y rosa (plano.json versión 2)**: la sección `rotulo` del plano trae los textos
 (título, revisiones, firmas, No. PLANO, HOJA/DE, coordenadas…), las **notas** (archivos .txt
-con una nota por línea más notas adicionales, numeradas solas, con sangría francesa) y las
+con una nota por línea y viñetas con «- », más notas adicionales; numeradas solas, con
+sangría francesa) y las
 **convenciones** (símbolos copiados como vector de la biblioteca `simbolos/`, que se arma una
 vez con `extraer-simbolos`, más su descripción); ESCALA (`1:1.000` o
 `INDICADAS`) y REV. (la última letra de las revisiones) se calculan solos. Los textos se

@@ -216,8 +216,7 @@ def test_verificar_notas_en_el_pdf(fuente, tmp_path):
         assert verificar_textos(d[0], m.textos, ALTO) == []  # posición y dentro de la celda
         assert verificar_notas(d[0], m, ALTO) == []
         # Se esperaba una línea más de las que hay: no cuadra el conteo.
-        de_mas = replace(m, textos=m.textos[:-1] + [replace(m.textos[-1], lineas=(
-            *m.textos[-1].lineas, Linea("FANTASMA.", (700.0, 300.0), 15.0)))])
+        de_mas = replace(m, lineas=m.lineas + 1)
         assert verificar_notas(d[0], de_mas, ALTO) == [
             f"notas: se escribieron {m.lineas + 1} líneas y en la celda del PDF se leen "
             f"{m.lineas}"]
@@ -234,3 +233,110 @@ def test_verificar_notas_detecta_numeracion_con_saltos(fuente, tmp_path):
         assert verificar_notas(d[0], m, ALTO) == [
             "notas: la numeración leída en el PDF es ['1.', '2.', '4.'] y debía ser 1. a 3. "
             "sin saltos"]
+
+
+# --- viñetas (subfase 4.2c) ------------------------------------------------------------------
+
+def test_vinetas_en_el_txt(tmp_path):
+    ruta = _txt(tmp_path, "drenaje.txt",
+                "LAS ALCANTARILLAS SERÁN:\n- DE CONCRETO REFORZADO.\n  - CON PENDIENTE   MÍNIMA DEL 2 %.\n"
+                "-\n# comentario\nOTRA NOTA.\n- 3. VIÑETA CON NÚMERO (SE CONSERVA).\n")
+    notas, avisos, problemas = leer_archivo_notas(ruta)
+    assert problemas == [] and avisos == []
+    assert notas == [
+        Nota("LAS ALCANTARILLAS SERÁN:", "drenaje.txt, línea 1",
+             ("DE CONCRETO REFORZADO.", "CON PENDIENTE MÍNIMA DEL 2 %.")),  # «-» solo: se ignora
+        Nota("OTRA NOTA.", "drenaje.txt, línea 6", ("3. VIÑETA CON NÚMERO (SE CONSERVA).",))]
+
+
+def test_vineta_antes_de_cualquier_nota_es_error(tmp_path):
+    ruta = _txt(tmp_path, "mal.txt", "# comentario\n- VIÑETA SUELTA.\nNOTA.\n")
+    _, _, problemas = leer_archivo_notas(ruta)
+    assert problemas == ["rotulo.notas: la línea 2 de 'mal.txt' es una viñeta («- VIÑETA "
+                         "SUELTA.») y no hay ninguna nota antes en ese archivo; una viñeta va "
+                         "debajo de su nota"]
+    # Tampoco vale como continuación de la última nota de OTRO archivo.
+    _txt(tmp_path, "a.txt", "NOTA A.\n")
+    _txt(tmp_path, "b.txt", "- VIÑETA EN B.\n")
+    assert "la línea 1 de 'b.txt' es una viñeta" in leer_notas(
+        {"archivos": ["a.txt", "b.txt"]}, tmp_path)[2][0]
+
+
+def test_vinetas_en_adicionales(tmp_path):
+    notas, _, problemas = leer_notas({"adicionales": [
+        "SIMPLE.", {"texto": "CON VIÑETAS:", "vinetas": ["UNA.", "  ", "DOS."]},
+        {"texto": "SIN VIÑETAS."}]}, tmp_path)
+    assert problemas == []
+    assert [(n.texto, n.vinetas) for n in notas] == [
+        ("SIMPLE.", ()), ("CON VIÑETAS:", ("UNA.", "DOS.")), ("SIN VIÑETAS.", ())]
+    _, _, problemas = leer_notas({"adicionales": [
+        {"texto": "X", "viñetas": ["A"]}, {"vinetas": ["A"]}, {"texto": "Y", "vinetas": "A"},
+        {"texto": "Z", "vinetas": ["A\nB"]}, 3]}, tmp_path)
+    assert problemas == [
+        "rotulo.notas.adicionales[0].viñetas: campo no reconocido (campos válidos: texto, vinetas)",
+        "rotulo.notas.adicionales[1].texto: se esperaba el texto de la nota (una línea, no vacío); "
+        "tiene null",
+        "rotulo.notas.adicionales[2].vinetas: se esperaba una lista de textos de una línea; tiene "
+        "texto 'A'",
+        "rotulo.notas.adicionales[3].vinetas: se esperaba una lista de textos de una línea; tiene "
+        "una lista con elementos que no son texto",
+        "rotulo.notas.adicionales[4]: se esperaba un texto o {\"texto\": ..., \"vinetas\": [...]}; "
+        "tiene int 3"]
+
+
+@requiere_arial
+def test_vinetas_sangria_mas_profunda_sin_medio_renglon_y_sin_numero(fuente):
+    larga = "VIÑETA LARGA QUE NO CABE EN UNA SOLA LÍNEA DE LA CELDA DE NOTAS DEL RÓTULO " * 2
+    notas = [Nota("PRIMERA NOTA:", "a", ("CORTA.", larga.strip())), Nota("SEGUNDA.", "b")]
+    m = maquetar_notas(_campo(), notas, fuente, RELLENO, INTERLINEADO)
+    primera, segunda = m.textos
+    paso = 1.6 * 1.8
+    x_texto = 673.8 + fuente.ancho_mm("2. ", 1.8)
+    x_vineta = x_texto + fuente.ancho_mm("• ", 1.8)
+    lineas = primera.lineas
+    assert [l.texto for l in lineas[:4]] == ["1.", "PRIMERA NOTA:", "•", "CORTA."]
+    texto_nota, signo1, vineta1, signo2, *vineta2 = lineas[1:]
+    assert signo1.base_mm[0] == pytest.approx(x_texto)  # «•» donde empieza el texto de la nota
+    assert vineta1.base_mm[0] == pytest.approx(x_vineta)  # su texto, más adentro
+    assert all(l.base_mm[0] == pytest.approx(x_vineta) for l in vineta2)  # sangría francesa
+    assert len(vineta2) >= 2  # la viñeta larga se partió
+    # Sin medio renglón entre la nota y sus viñetas, ni entre viñetas: un renglón exacto.
+    assert texto_nota.base_mm[1] - signo1.base_mm[1] == pytest.approx(paso)
+    assert signo1.base_mm[1] == pytest.approx(vineta1.base_mm[1])
+    assert vineta1.base_mm[1] - signo2.base_mm[1] == pytest.approx(paso)
+    # El medio renglón va solo entre notas (después de la última viñeta).
+    assert vineta2[-1].base_mm[1] - segunda.lineas[0].base_mm[1] == pytest.approx(1.5 * paso)
+    assert segunda.lineas[0].texto == "2."  # las viñetas no se numeran
+    assert m.lineas == 1 + 1 + len(vineta2) + 1  # nota, viñeta corta, viñeta larga, segunda
+
+
+@requiere_arial
+def test_vinetas_cuentan_para_la_reduccion_y_el_error(fuente):
+    # 36 líneas: como 36 notas sueltas (35 medios renglones) no caben a 1,8 y se reducen; como
+    # 12 notas con 2 viñetas (solo 11 medios renglones) caben a 1,8.
+    sueltas = [Nota(f"NOTA {i}.", "x") for i in range(1, 37)]
+    m = maquetar_notas(_campo(), sueltas, fuente, RELLENO, INTERLINEADO)
+    assert m.lineas == 36 and m.reducido_desde == 1.8
+    con_vinetas = [Nota(f"NOTA {i}.", "x", ("VIÑETA A.", "VIÑETA B.")) for i in range(1, 13)]
+    m = maquetar_notas(_campo(), con_vinetas, fuente, RELLENO, INTERLINEADO)
+    assert m.lineas == 36 and m.reducido_desde is None and m.altura_mm == 1.8
+    muchas = [Nota(f"NOTA {i}.", f"x, línea {i}", ("A.", "B.", "C.")) for i in range(1, 20)]
+    with pytest.raises(TextoNoCabe, match=r"campo 'notas': 19 notas \(76 líneas a 1.5 mm \(la "
+                                          r"mínima permitida\)\) ocupan .* no caben desde la nota"):
+        maquetar_notas(_campo(), muchas, fuente, RELLENO, INTERLINEADO)
+    estrecha = _campo(rect=(673.2, 271.3, 710.0, 419.3))
+    with pytest.raises(TextoNoCabe, match=r"campo 'notas', nota 1, viñeta 1 \(a\): «PALABRAMUYLARGA"
+                                          r"PALABRAMUYLARGA» mide .* el ancho para el texto de "
+                                          r"las viñetas es"):
+        maquetar_notas(estrecha, [Nota("N.", "a", ("PALABRAMUYLARGAPALABRAMUYLARGA",))], fuente,
+                       RELLENO, INTERLINEADO)
+
+
+@requiere_arial
+def test_vinetas_en_el_pdf_se_verifican(fuente, tmp_path):
+    notas = [Nota("NOTA CON VIÑETAS:", "a", ("UNA.", "DOS.")), Nota("OTRA.", "b", ("TRES.",))]
+    m = maquetar_notas(_campo(), notas, fuente, RELLENO, INTERLINEADO)
+    with _pdf(m.textos, fuente, tmp_path) as d:
+        assert verificar_textos(d[0], m.textos, ALTO) == []  # «•» y textos, dentro de la celda
+        assert verificar_notas(d[0], m, ALTO) == []  # 5 líneas; numeración 1. 2.
+        assert m.lineas == 5 and "•" in d[0].get_text()

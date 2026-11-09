@@ -190,6 +190,12 @@ No se compone el plano. El rótulo tiene 1 problema:
   `f = min(1, ancho útil / ancho, alto útil / alto)`, con advertencia («se redujo al 90.6 %»).
   Con la biblioteca actual, solo `curvas_nivel` (9,23 mm de alto) se reduce, y solo si cae
   en las filas 9 a 12.
+- **Opacidad** (subfase 4.2c): un símbolo del índice puede llevar `"opacidad"` (mayor que 0 y
+  hasta 1; por defecto 1). Se aplica al colocarlo con un estado gráfico del PDF (`ExtGState`
+  `/CA` y `/ca`): **sigue siendo vector**, no se rasteriza y sus trazos no cambian.
+  `limite_predio_proyectado` usa **0,5**: el mismo naranja que `limite_predio`, con
+  transparencia. La verificación además comprueba que ningún trazo del símbolo quede más
+  opaco que lo pedido.
 - **La descripción** se acomoda como cualquier texto: 1,8 mm (mín. 1,5), hasta 2 líneas,
   alineada a la izquierda; si no cabe, error con el campo, el texto y el tamaño.
 - **Errores juntos**: símbolo inexistente (con la lista de los válidos), símbolo repetido,
@@ -231,16 +237,28 @@ tenga). El PDF de la biblioteca sale de un plano de ERCO y **no se versiona**; e
   # Notas generales de vías
   LAS DIMENSIONES ESTÁN EN METROS, SALVO QUE SE INDIQUE OTRA UNIDAD.
   LAS COORDENADAS ESTÁN REFERIDAS AL SISTEMA MAGNA-SIRGAS ORIGEN NACIONAL.
+  LAS ALCANTARILLAS SERÁN:
+  - DE CONCRETO REFORZADO.
+  - CON PENDIENTE MÍNIMA DEL 2 %.
   ```
 
-- **Adicionales**: lista de textos, una nota por texto (sin saltos de línea).
+- **Viñetas** (subfase 4.2c): una línea que empieza con `- ` es una **viñeta de la nota
+  anterior** del mismo archivo: sin número, con «•» y su texto con una sangría más profunda
+  que la de la nota. Una viñeta antes de cualquier nota del archivo es **error**.
+- **Adicionales**: lista; cada elemento es un texto (una nota) o un objeto
+  `{"texto": "LOS MATERIALES CUMPLIRÁN:", "vinetas": ["NORMA A.", "NORMA B."]}` (sin saltos de
+  línea; campos desconocidos son error).
 - **Orden y numeración**: primero las de los archivos (en el orden de la lista), luego las
   adicionales; numeración continua 1, 2, 3, …
 - **Cómo quedan** (celda NOTAS: X 673,2–827,4, Y 271,3–419,3 mm):
   - número a la izquierda y texto con **sangría francesa** (las líneas que siguen de una nota
     empiezan donde empieza su texto, no bajo el número; la sangría es el ancho del número más
     largo más un espacio);
-  - corte por palabras; **medio renglón** extra entre una nota y la siguiente;
+  - viñetas: «•» donde empieza el texto de la nota y el texto de la viñeta más adentro (el
+    ancho de «• »), también con sangría francesa; **sin** espacio extra entre la nota y sus
+    viñetas ni entre viñetas;
+  - corte por palabras; **medio renglón** extra entre una nota y la siguiente (después de la
+    última viñeta);
   - el bloque va **pegado arriba** de la celda (no centrado). La celda termina 1,7 mm por
     debajo de la etiqueta «NOTAS» de la plantilla (Y 420,96–422,99): la primera línea, con su
     caja completa, queda a 1,8 mm de ella.
@@ -256,8 +274,8 @@ tenga). El PDF de la biblioteca sale de un plano de ERCO y **no se versiona**; e
   caracteres que la fuente no tiene, campos desconocidos y tipos equivocados salen todos a la
   vez, con la nota y su origen («generales.txt, línea 7», «adicionales[1]»).
 - **Verificación en el PDF**: cada línea, como todo texto, en su sitio y dentro de la celda
-  (±0,1 mm); además, en la celda se leen **tantas líneas como se escribieron** y la
-  numeración leída es **1…N sin saltos**.
+  (±0,1 mm); además, en la celda se leen **tantas líneas como se escribieron** (con las de
+  las viñetas) y la numeración leída es **1…N sin saltos** (las viñetas no se numeran).
 
 ## Etiqueta «ESC: 1:N» de cada detalle
 

@@ -312,3 +312,73 @@ def test_cli_resume_las_convenciones(entorno, capsys):
     assert main(["componer", str(entorno / "plano.json"), "--salida", str(entorno / "p.pdf")]) == 0
     out = capsys.readouterr().out
     assert "Convenciones: 2 símbolo(s): 1 a escala 1:1, 1 reducido(s) (linea_larga al 96.4 %)." in out
+
+
+# --- opacidad por símbolo (subfase 4.2c) -------------------------------------------------------
+
+def _con_opacidad_en_indice(carpeta, ident, opacidad):
+    ruta = carpeta / "simbolos" / "indice.json"
+    datos = json.loads(ruta.read_text(encoding="utf-8"))
+    for s in datos["simbolos"]:
+        if s["id"] == ident:
+            s["opacidad"] = opacidad
+    ruta.write_text(json.dumps(datos, ensure_ascii=False), encoding="utf-8")
+
+
+def test_opacidad_se_lee_se_valida_y_extraer_la_conserva(biblioteca):
+    carpeta, _ = biblioteca
+    ruta = carpeta / "simbolos" / "indice.json"
+    _con_opacidad_en_indice(carpeta, "limite_2", 0.5)
+    b = cargar_biblioteca(ruta)
+    assert b.simbolos["limite_2"].opacidad == 0.5 and b.simbolos["corte"].opacidad == 1.0
+    # Regenerar la biblioteca no la pierde.
+    formato = cargar_formato(carpeta / "formato.json", usar_plantilla=False)
+    extraer_simbolos(carpeta / "plano_con_leyenda.pdf", formato, ruta)
+    escrito = {s["id"]: s for s in json.loads(ruta.read_text(encoding="utf-8"))["simbolos"]}
+    assert escrito["limite_2"]["opacidad"] == 0.5 and "opacidad" not in escrito["corte"]
+    for malo in (0, 1.5, "media", True):
+        _con_opacidad_en_indice(carpeta, "limite_2", malo)
+        with pytest.raises(BibliotecaInvalida, match=r"la opacidad del símbolo 'limite_2' debe "
+                                                     r"ser un número mayor que 0 y hasta 1"):
+            cargar_biblioteca(ruta)
+    with pytest.raises(ExtraccionFallida, match="la opacidad del símbolo 'limite_2'"):
+        extraer_simbolos(carpeta / "plano_con_leyenda.pdf", formato, ruta)
+
+
+@requiere_arial
+def test_opacidad_al_colocar_vector_y_mismos_trazos(entorno):
+    _con_opacidad_en_indice(entorno, "corte", 0.5)  # relleno naranja con borde
+    r = componer_plano(_plano(entorno, [{"simbolo": "corte"}, {"simbolo": "panel"}]),
+                       entorno / "p.pdf")
+    assert [c.simbolo.opacidad for c in r.simbolos] == [0.5, 1.0]
+    k = 72 / 25.4
+    with pymupdf.open(entorno / "p.pdf") as doc:
+        page = doc[0]
+        assert len(page.get_image_info()) == 1  # solo el logo: nada rasterizado
+        def en(casilla):
+            c = pymupdf.Rect(casilla[0] * k - 0.3, (594 - casilla[3]) * k - 0.3,
+                             casilla[2] * k + 0.3, (594 - casilla[1]) * k + 0.3)
+            return [d for d in page.get_drawings() if c.contains(d["rect"])]
+        corte, panel = en(casilla_conv(1)), en(casilla_conv(2))
+    assert len(corte) == TRAZOS_POR_TIPO["relleno"] and len(panel) == TRAZOS_POR_TIPO["malla"]
+    assert all(d["fill_opacity"] == pytest.approx(0.5) and d["stroke_opacity"] == pytest.approx(0.5)
+               for d in corte)
+    assert corte[0]["fill"] == pytest.approx((1, 0.55, 0.1), abs=0.01)  # mismo color
+    assert all(d.get("stroke_opacity", 1) == pytest.approx(1) for d in panel)  # el otro, opaco
+
+
+@requiere_arial
+def test_falla_forzada_si_la_opacidad_no_se_aplica(entorno, monkeypatch):
+    from componedor import simbolos as modulo_simbolos
+    _con_opacidad_en_indice(entorno, "corte", 0.5)
+
+    def sin_opacidad(doc, pagina, opacidad):  # copia la página tal cual, opaca
+        nuevo = pymupdf.open()
+        nuevo.insert_pdf(doc, from_page=pagina, to_page=pagina)
+        return nuevo
+
+    monkeypatch.setattr(modulo_simbolos, "_con_opacidad", sin_opacidad)
+    with pytest.raises(PlanoNoComponible, match=r"convenciones, casilla 1 \('corte'\): el símbolo "
+                                                r"debía tener opacidad 0.5 y en el PDF tiene 1"):
+        componer_plano(_plano(entorno, [{"simbolo": "corte"}]), entorno / "p.pdf")
+    assert not (entorno / "p.pdf").exists()

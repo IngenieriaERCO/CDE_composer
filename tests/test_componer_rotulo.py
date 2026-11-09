@@ -253,6 +253,30 @@ def test_notas_desde_txt_y_adicionales_en_el_pdf(entorno, capsys):
         assert esperado in texto, esperado
 
 
+def test_notas_con_vinetas_en_el_pdf(entorno, capsys):
+    _notas_txt(entorno, "drenaje.txt", ["LAS ALCANTARILLAS SERÁN:", "- DE CONCRETO REFORZADO.",
+                                        "- CON PENDIENTE MÍNIMA DEL 2 %.", "OTRA NOTA."])
+    rotulo = dict(ROTULO, notas={"archivos": ["drenaje.txt"], "adicionales": [
+        {"texto": "LOS MATERIALES CUMPLIRÁN:", "vinetas": ["NORMA A.", "NORMA B."]}]})
+    _plano(entorno, [("d1", "a", (40, 300))], rotulo=rotulo)
+    assert main(["componer", str(entorno / "plano.json"), "--salida", str(entorno / "p.pdf")]) == 0
+    assert "Notas: 3 nota(s) en 7 línea(s), a 1.8 mm." in capsys.readouterr().out
+    texto = _texto_pdf(entorno / "p.pdf")
+    assert texto.count("•") == 4  # 2 viñetas del txt y 2 de la adicional, sin número
+    for linea in ["1. LAS ALCANTARILLAS SERÁN:", "• DE CONCRETO REFORZADO.", "2. OTRA NOTA.",
+                  "3. LOS MATERIALES CUMPLIRÁN:", "• NORMA B."]:
+        assert linea in texto, linea
+    assert "\n4. " not in texto
+
+
+def test_vineta_antes_de_una_nota_error_sin_pdf(entorno):
+    _notas_txt(entorno, "mal.txt", ["- VIÑETA SUELTA.", "NOTA."])
+    plano = _plano(entorno, [("d1", "a", (40, 300))], rotulo={"notas": {"archivos": ["mal.txt"]}})
+    with pytest.raises(PlanoNoComponible, match=r"la línea 1 de 'mal.txt' es una viñeta"):
+        componer_plano(plano, entorno / "p.pdf")
+    assert not (entorno / "p.pdf").exists()
+
+
 def test_notas_que_no_caben_error_sin_pdf(entorno):
     _notas_txt(entorno, "muchas.txt", [f"NOTA DE PRUEBA NÚMERO {i}." for i in range(1, 70)])
     plano = _plano(entorno, [("d1", "a", (40, 300))], rotulo={"notas": {"archivos": ["muchas.txt"]}})
