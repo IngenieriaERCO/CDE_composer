@@ -48,6 +48,9 @@ def construir_html(datos: dict, carpeta_salida: Path) -> str:
         carpeta_salida / datos["imagen_plantilla"]["archivo"])
     for detalle in incrustados["detalles"]:
         detalle["miniatura"]["data_url"] = _data_url(carpeta_salida / detalle["miniatura"]["archivo"])
+    rosa = incrustados.get("rosa_vientos")
+    if rosa and rosa.get("imagen"):
+        rosa["imagen"]["data_url"] = _data_url(carpeta_salida / rosa["imagen"]["archivo"])
     incrustados["advertencias"] = PLANTILLAS
     # Solo informativa: dentro de un HTML no se conoce la ruta real del disco.
     incrustados["carpeta_editor"] = str(Path(carpeta_salida).resolve())

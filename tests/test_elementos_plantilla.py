@@ -26,11 +26,11 @@ def datos_a1():
 # --- lectura y validación en el formato ----------------------------------------------------
 
 def test_a1_erco_trae_los_elementos_confirmados():
-    # Medidos con detectar-elementos y confirmados a ojo (2026-11-05). Exactos, sin holgura.
+    # Plantilla v2: medidos con detectar-elementos y confirmados a ojo (2026-11-06). Exactos,
+    # sin holgura. El recuadro «LAYERS AUTORIZADOS» ya no existe en la v2.
     formato = cargar_formato(RUTA_A1, usar_plantilla=False)
     assert [(e.nombre, e.rect) for e in formato.elementos_plantilla] == [
-        ("rosa_vientos", (612.56, 51.55, 651.52, 90.50)),
-        ("recuadro_capas", (611.67, 25.48, 659.60, 34.84)),
+        ("rosa_vientos", (615.94, 25.21, 654.92, 64.21)),
     ]
 
 

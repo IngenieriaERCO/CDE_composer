@@ -5,6 +5,12 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from componedor.rotulo_formato import (
+    DefinicionRotulo,
+    RotuloFormatoInvalido,
+    leer_definicion_rotulo,
+)
+
 RectMM = tuple[float, float, float, float]  # (xmin, ymin, xmax, ymax) en mm
 
 ZONAS_REQUERIDAS = ("area_dibujo", "rotulo", "localizacion", "notas", "convenciones", "cajetin")
@@ -41,6 +47,11 @@ class Formato:
     grosores_mm: dict[str, float]
     plantilla: Path | None = None  # PDF del rótulo, ruta ya resuelta
     elementos_plantilla: tuple[ElementoPlantilla, ...] = ()
+    rotulo: DefinicionRotulo | None = None  # campos de texto del rótulo (subfase 4.1)
+
+    def elemento(self, nombre: str) -> ElementoPlantilla | None:
+        """El elemento fijo de la plantilla con ese nombre, o None."""
+        return next((e for e in self.elementos_plantilla if e.nombre == nombre), None)
 
     @property
     def ancho_mm(self) -> float:
@@ -116,6 +127,13 @@ def validar_formato(datos: dict, base: Path | None = None,
     if usar_plantilla and "plantilla" in datos:
         plantilla = _leer_plantilla(datos["plantilla"], base)
 
+    rotulo = None
+    if "rotulo" in datos:
+        try:
+            rotulo = leer_definicion_rotulo(datos["rotulo"], zonas["rotulo"], base)
+        except RotuloFormatoInvalido as e:
+            raise FormatoInvalido(str(e)) from e
+
     return Formato(
         nombre=str(datos.get("nombre", "sin nombre")),
         hoja=hoja,
@@ -124,6 +142,7 @@ def validar_formato(datos: dict, base: Path | None = None,
         grosores_mm=grosores,
         plantilla=plantilla,
         elementos_plantilla=_leer_elementos(datos.get("elementos_plantilla", []), hoja),
+        rotulo=rotulo,
     )
 
 

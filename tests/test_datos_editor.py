@@ -123,6 +123,42 @@ def test_tiene_fondo_y_miniatura_transparente_u_opaca(entorno):
                for x in range(transparente.width)) > 100
 
 
+def test_rosa_aparte_y_plantilla_sin_rosa(entorno):
+    # WYSIWYG (subfase 4.1): plantilla.png NO trae la rosa (el editor la dibuja donde esté);
+    # rosa.png es la rosa sola, transparente, recortada a su rectángulo.
+    salida = entorno / "editor"
+    datos = preparar_editor(entorno / "input", entorno / "formato.json", salida)
+    rosa = datos["rosa_vientos"]
+    assert rosa["nombre"] == "rosa_vientos" and rosa["rect_mm"] == ROSA
+    assert rosa["imagen"]["archivo"] == "rosa.png"
+    png = pymupdf.Pixmap(str(salida / "rosa.png"))
+    assert (png.width, png.height) == (rosa["imagen"]["ancho_px"], rosa["imagen"]["alto_px"])
+    assert max(png.width, png.height) == 600 and png.alpha == 1
+    # Centro del cuadro: transparente; borde izquierdo del cuadro y diagonal: con tinta.
+    assert png.pixel(png.width // 4, png.height // 2)[3] == 0
+    assert max(png.pixel(x, png.height // 2)[3] for x in range(4)) > 100
+
+    hoja = pymupdf.Pixmap(str(salida / "plantilla.png"))
+    escala = hoja.width / 841.0
+    # En plantilla.png, donde estaba el borde izquierdo de la rosa (X 612) no queda tinta.
+    x = round(612.0 * escala)
+    filas = range(round((594 - 91) * escala) + 3, round((594 - 51) * escala) - 3)
+    assert all(hoja.pixel(xx, y)[0] > 200 for y in filas for xx in (x - 1, x, x + 1))
+
+
+def test_sin_plantilla_la_rosa_va_sin_imagen(tmp_path):
+    escribir_formato(tmp_path / "formato.json",
+                     elementos_plantilla=[{"nombre": "rosa_vientos", "rect_mm": ROSA}])
+    crear_paquete_real(tmp_path / "input", "a")
+    datos = preparar_editor(tmp_path / "input", tmp_path / "formato.json", tmp_path / "editor")
+    assert datos["rosa_vientos"] == {"nombre": "rosa_vientos", "rect_mm": ROSA, "imagen": None}
+    assert not (tmp_path / "editor" / "rosa.png").exists()
+    escribir_formato(tmp_path / "formato.json")  # sin rosa
+    datos = preparar_editor(tmp_path / "input", tmp_path / "formato.json", tmp_path / "editor",
+                            sobrescribir=True)
+    assert datos["rosa_vientos"] is None
+
+
 def test_tamano_de_imagen_configurable(entorno):
     datos = preparar_editor(entorno / "input", entorno / "formato.json", entorno / "editor",
                             max_px_hoja=400, max_px_miniatura=100)

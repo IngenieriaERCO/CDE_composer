@@ -599,6 +599,110 @@ las mismas advertencias que el editor.
 con que se generó; los paquetes antiguos con fondo siguen tapando lo que queda debajo
 (reexportarlos con el exportador nuevo lo resuelve).
 
+## Fase 4 — Rótulo con datos (rama `fase-4`, en curso)
+
+### Subfase 4.1 — Rótulo en blanco v2, campos de texto y rosa movible ✅ (2026-11-06, sin commit)
+
+**Qué se hizo**
+- **Plantilla v2**: `A1_ERCO.json` apunta a `plantillas/rotulo_A1_ERCO_v2.pdf` (reemplaza a
+  la v1; marco, área de dibujo y columna del rótulo no cambian). `elementos_plantilla`: solo
+  la rosa, medida con `detectar-elementos` y confirmada a ojo: X 615,94 a 654,92, Y 25,21 a
+  64,21 mm. El recuadro «LAYERS AUTORIZADOS» ya no existe en la v2.
+- **Sección `"rotulo"` del formato** (`rotulo_formato.py`, esquema versión 1): fuente
+  (Arial, ruta configurable), relleno 0,6 mm, interlineado 1,6, y los campos medidos del
+  rótulo v2: `texto` (celda, alineación, altura de mayúsculas, altura mínima, líneas, valor
+  por defecto o calculado) y `tabla` (filas y columnas en mm; revisiones con
+  `columna_clave: "ver"` y orden 0 < A < B < C; firmas por fila). Se valida: campos
+  desconocidos, tipos, celdas dentro de la zona `rotulo`, sin traslapes, alto suficiente,
+  calculados conocidos. Todos los problemas en un solo error.
+- **plano.json versión 2** (`plano.py`): `rotulo` (objeto; su contenido lo valida
+  `componer` contra el formato), `rosa_vientos` (`visible`, `posicion_mm`) y
+  `etiqueta_escala` por detalle. La versión 1 sigue válida (sin esas claves).
+- **Texto**: `fuente.py` (altura de mayúsculas leída de la tabla OS/2: Arial 1467/2048 =
+  0,716; caracteres que la fuente no tiene = error), `maquetacion.py` (alineación, bloque
+  centrado en alto, corte por palabras, líneas explícitas, reducción de 0,1 en 0,1 mm hasta
+  la mínima con advertencia, error claro con campo, texto y medidas), `textos_pdf.py`
+  (escribe con `insert_text` y Arial embebida completa; reemplaza la tabla ToUnicode de esa
+  fuente para que «-» y el espacio se lean y busquen bien —Arial comparte glifo con el guion
+  blando y el espacio no separable—; verificación por carácter, ±0,1 mm),
+  `texto_escala.py` («1:1.000», punto de miles siempre).
+- **Rótulo** (`rotulo.py`): valores del plano, `localizacion_escala` = DEFINIR por defecto,
+  ESCALA calculada (común o INDICADAS), REV. = la letra de mayor orden llena (vacía si no hay
+  revisiones), cada revisión en la fila de SU letra (repetidas = error; la letra se imprime
+  en VER solo en filas llenas), DISEÑADOR / REVISOR a izquierda y derecha del logo, FIRMA
+  como texto opcional.
+- **Etiqueta «ESC: 1:N»** por detalle (`etiquetas_escala.py`): 2,5 mm, centrada 3 mm bajo
+  el dibujo; si no cabe, encima; nunca sobre otro dibujo, la rosa ni otra etiqueta; si no
+  cabe, advertencia. `"etiqueta_escala": false` la quita.
+- **Rosa movible** (`rosa.py`, `composicion.hoja_base_con_rosa`): `componer` siempre la
+  quita (redacción solo en su rectángulo + 2 mm, trazos completamente contenidos y texto;
+  se comprueba que el resto de la plantilla quedó idéntico) y, si es visible, la vuelve a
+  dibujar como vectores (`show_pdf_page` con `clip`, desde una copia de la plantilla con
+  todo lo demás borrado). Debe quedar dentro de `area_dibujo` (error claro). Advertencias con
+  la posición nueva; oculta no avisa. Con la plantilla real, en su sitio: 536 trazos, misma
+  geometría que la plantilla sin tocar (diferencia 0,000 mm) y las mismas letras N S E W.
+- **Editor**: `plantilla.png` sin la rosa y `rosa.png` transparente aparte (`rosa_vientos`
+  en editor_datos.json, aditivo). La rosa se arrastra (paso de ajuste, flechas, X/Y), casilla
+  «Mostrar rosa de los vientos», botón «Restaurar posición»; oculta desaparece y no avisa.
+  Guarda plano.json v2 con `rosa_vientos`; abre v1 y v2 y conserva `rotulo` y
+  `etiqueta_escala` tal cual. Advertencias con `elementosVisibles` (igual que
+  `rosa.elementos_visibles`).
+- `cli componer`: el resumen informa la rosa, ESCALA, REV. y las etiquetas.
+- **Textos dentro de su celda en el PDF guardado** (agregado tras la revisión, 2026-11-09):
+  `textos_pdf.verificar_textos` hace, además de la comprobación de posición, una segunda:
+  la unión de los bboxes de los caracteres de cada línea (`get_text("rawdict")`) debe
+  quedar dentro del rectángulo de su celda (`TextoMaquetado.celda_mm`), ±0,1 mm; si no,
+  error con campo, texto y mm que se sale por cada lado, y no queda PDF. Las etiquetas ESC
+  usan como celda su caja reservada, que ahora incluye el ascenso y el descenso de la fuente
+  (`Fuente.caja_vertical_mm`); con esa misma caja se revisan sus choques con otros dibujos,
+  la rosa y otras etiquetas. En el ejemplo real (52 líneas) la holgura mínima en las
+  celdas del rótulo es 0,51 mm (ESCALA, en alto).
+- docs: formato_plano.md (v2, rótulo, rosa, etiquetas), editor.md, formato_editor_datos.md,
+  README.
+
+**Pruebas**: 514, todas pasan (123 nuevas; 6 de ellas por la comprobación de celda: lados
+que se salen, caja vertical de la fuente, textos dentro de su celda que pasan, un texto
+forzado 0,3 mm fuera de su celda que falla, `componer` sin PDF en ese caso, y la caja de la
+etiqueta ESC): fuente (OS/2, medidas, errores), escalas,
+maquetación (alineación, centrado, cortes, reducción, los tres tipos de error), esquema del
+rótulo (A1 ERCO, 21 casos inválidos, celdas fuera o traslapadas), llenado del rótulo (defectos, calculados, revisiones
+por letra, todos los problemas juntos), etiquetas (debajo, encima, obstáculos, opción),
+textos en el PDF (búsqueda con guion y tildes, una sola fuente embebida, altura real de las
+mayúsculas 5,0 ± 0,05 mm, verificación de un texto corrido), rosa (en su sitio = plantilla
+sin tocar ±0,1 mm, movida, oculta, «resto idéntico», verificación de una rosa corrida, copia
+vectorial), componer con rótulo y rosa (completo, v1 con defectos, texto que no cabe sin
+PDF, etiqueta que no cabe, rosa movida / oculta / fuera del área / sin rosa en el formato,
+resumen del CLI), plano.json v2, editor JS (v2 de ida y vuelta con componer, paridad de
+advertencias con la rosa movida y oculta) y datos del editor (rosa.png, plantilla sin rosa).
+Pruebas existentes ajustadas: la plantilla v2 y los elementos confirmados
+(`test_formato`, `test_elementos_plantilla`), versión no soportada 2 → 3 (`test_plano`,
+`test_editor_js.test_leer_plano`) y `rosa.png` en la carpeta del editor (`test_editor_html`).
+
+**Verificación en Edge** (`data/verificacion_editor/verificar_rosa.mjs`, fuera del repo, con
+data/input_sinfondo y el formato real): 26 comprobaciones OK, sin errores de JavaScript:
+rosa en su lugar al abrir, arrastre con paso de 1 mm y tope en el área, X/Y y flechas,
+advertencia sobre la rosa movida y ninguna sobre su sitio viejo, ocultar (desaparece, sin
+advertencias), guardar v2 y componer con las mismas advertencias, restaurar posición,
+abrir un plano con rótulo y conservarlo, vista limpia. El PDF compuesto coincide con lo que
+muestra el editor.
+
+**Ejemplos** (datos de prueba, en `data/`, no se versionan): `data/planos/ejemplo_rotulo_v2.json`
+→ `data/output/ejemplo_rotulo_v2.pdf` (todos los campos llenos, título de 3 líneas, dos
+detalles a 1:5.000 y 1:50 → ESCALA «INDICADAS», REV. «B», rosa movida);
+`data/planos/ejemplo_rotulo_v2_no_cabe.json` (No. PLANO demasiado largo → error claro, sin
+PDF).
+
+**Pendiente**
+- **«Dirigido a»**: la plantilla v2 trae en el margen izquierdo la anotación «ESTE DOCUMENTO
+  ES PROPIEDAD DE ERCO ENERGY DIRIGDO A XXXX» sin trazos (solo anotación, que no pasa al
+  PDF). No se agrega por ahora; **consultar con Alan** si debe ser un campo del rótulo.
+- Subfase 4.2: notas y símbolos de convenciones.
+- El editor no muestra ni edita los textos del rótulo ni las etiquetas «ESC: 1:N».
+- La fuente va embebida completa (~0,5 MB por plano): no se usa `subset_fonts` porque
+  reduciría también las fuentes de los detalles y de la plantilla.
+- La ruta de Arial es la de Windows (`C:/Windows/Fonts/arial.ttf`); en otro equipo se
+  cambia en el formato.
+
 ## Pendientes (después de las Fases 1 y 2)
 
 - **Mayúsculas/minúsculas del nombre del PDF en Windows**: `localizar_paquetes` busca
@@ -609,9 +713,9 @@ con que se generó; los paquetes antiguos con fondo siguen tapando lo que queda 
 - **Fondo blanco del exportador**: cada detalle trae un rectángulo blanco de página
   completa que tapa lo que haya debajo en la hoja (rótulo, rosa, otros detalles si se
   traslapan). Decidir con el exportador si se quita o si el componedor lo omite.
-- **Rosa de los vientos y recuadro «LAYERS AUTORIZADOS»** dentro del área de dibujo del
-  rótulo: `colocar` no los tiene en cuenta (un detalle puede quedar encima). Decidir si se
-  tratan como zonas ocupadas o se quitan del rótulo.
+- ~~Rosa de los vientos y recuadro «LAYERS AUTORIZADOS»~~: resuelto. `componer` y el editor
+  advierten si un detalle los tapa (3.2); la v2 ya no trae el recuadro y la rosa se mueve u
+  oculta (4.1). `colocar` (un solo detalle) sigue sin tenerla en cuenta.
 - **Anotaciones SHX perdidas**: las 83 anotaciones con el texto SHX del rótulo no pasan al
   PDF final (`show_pdf_page` no copia anotaciones); el aspecto no cambia, pero ese texto no
   se puede buscar.

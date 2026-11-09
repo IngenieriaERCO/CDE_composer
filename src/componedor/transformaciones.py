@@ -30,6 +30,11 @@ def punto_papel_a_pagina(x_mm: float, y_mm: float, alto_pagina_mm: float,
     return x_mm - origen_mm[0], alto_pagina_mm - (y_mm - origen_mm[1])
 
 
+def punto_papel_a_pdf(x_mm: float, y_mm: float, alto_hoja_mm: float) -> pymupdf.Point:
+    """Punto de papel (mm, Y arriba) a un Point de PyMuPDF (pt, Y abajo) en la hoja."""
+    return pymupdf.Point(mm_a_pt(x_mm), mm_a_pt(alto_hoja_mm - y_mm))
+
+
 def rect_papel_a_pdf(rect_mm: RectMM, alto_hoja_mm: float) -> pymupdf.Rect:
     """Convierte un rectángulo de papel (mm, Y arriba) a un Rect de PyMuPDF (pt, Y abajo)."""
     xmin, ymin, xmax, ymax = rect_mm

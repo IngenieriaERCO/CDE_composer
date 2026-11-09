@@ -10,10 +10,16 @@ python -m componedor.cli preparar-editor data/input --formato formatos/A1_ERCO.j
 ```
 data/editor/
   editor_datos.json      estructura de abajo
-  plantilla.png          la hoja con el rótulo, SIN detalles (lado mayor: 1600 px)
+  plantilla.png          la hoja con el rótulo, SIN detalles y SIN la rosa de los vientos
+                         (lado mayor: 1600 px)
+  rosa.png               la rosa sola, transparente (lado mayor: 600 px); solo si el formato
+                         tiene plantilla y declara la rosa
   miniaturas/<id>.png    una por detalle aceptado (lado mayor: 1400 px; transparente si el
                          detalle no tiene fondo de página, opaca si lo tiene)
 ```
+
+Desde la subfase 4.1 la rosa se puede mover u ocultar: por eso `plantilla.png` sale sin ella
+(se quita igual que en `componer`) y el editor la dibuja con `rosa.png` en su posición actual.
 
 Las imágenes son **solo para mostrar** en el editor. El editor escribe un `plano.json`
 (ver [formato_plano.md](formato_plano.md)) y el PDF final lo genera siempre `componer`,
@@ -47,8 +53,13 @@ miniaturas, borrando las viejas) y no toca nada más.
     {"nombre": "rotulo", "rect_mm": [672.4, 12.7, 828.3, 581.3], "editable": false}
   ],
   "elementos_plantilla": [
-    {"nombre": "rosa_vientos", "rect_mm": [612.56, 51.55, 651.52, 90.50]}
+    {"nombre": "rosa_vientos", "rect_mm": [615.94, 25.21, 654.92, 64.21]}
   ],
+  "rosa_vientos": {
+    "nombre": "rosa_vientos",
+    "rect_mm": [615.94, 25.21, 654.92, 64.21],
+    "imagen": {"archivo": "rosa.png", "ancho_px": 600, "alto_px": 601}
+  },
   "detalles": [
     {
       "id": "perfil_k0010",
@@ -77,7 +88,8 @@ miniaturas, borrando las viejas) y no toca nada más.
 | `hoja` | Tamaño de la hoja en mm. |
 | `imagen_plantilla` | `plantilla.png` y su tamaño real en píxeles. |
 | `zonas[]` | Cada zona del formato con `rect_mm` `[x0, y0, x1, y1]`. **Solo `area_dibujo` es `editable: true`**; el rótulo y las demás zonas están bloqueadas. |
-| `elementos_plantilla[]` | Cosas fijas del rótulo dentro del área de dibujo (rosa de los vientos, recuadro de capas). Se pueden tapar, pero `componer` lo advierte. |
+| `elementos_plantilla[]` | Cosas fijas del rótulo dentro del área de dibujo, en su lugar de la plantilla (hoy solo la rosa de los vientos). Se pueden tapar, pero `componer` lo advierte. |
+| `rosa_vientos` | **(Agregado en la subfase 4.1; aditivo.)** La rosa movible: `rect_mm` es su lugar original en la plantilla y `imagen` su PNG (`null` si el formato no tiene plantilla). `null` si el formato no declara la rosa. Para las advertencias, el editor reemplaza en `elementos_plantilla` la rosa por su rectángulo actual (u omite la rosa si está oculta), igual que `rosa.elementos_visibles` en `componer`. |
 | `detalles[]` | Solo paquetes **aceptados** (completos, íntegros, coherentes, escala garantizada). |
 | `detalles[].id` | Id sugerido para el plano (= prefijo del paquete; único). |
 | `detalles[].manifiesto` | Ruta del manifiesto, para escribir en `plano.json`. |

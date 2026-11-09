@@ -60,8 +60,9 @@ def test_datos_incrustados(entorno):
 def test_tambien_deja_los_datos_del_editor(entorno):
     _generar(entorno)
     carpeta = entorno / "editor"
+    # rosa.png: la rosa de los vientos aparte, para moverla (subfase 4.1).
     assert {p.name for p in carpeta.iterdir()} == {"editor.html", "editor_datos.json",
-                                                   "plantilla.png", "miniaturas"}
+                                                   "plantilla.png", "rosa.png", "miniaturas"}
     assert (carpeta / "miniaturas" / "a.png").is_file()
 
 

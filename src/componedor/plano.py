@@ -1,14 +1,22 @@
-"""Lectura y validación del plano.json (versión 1): qué detalles van en la hoja y dónde.
+"""Lectura y validación del plano.json (versiones 1 y 2): qué detalles van en la hoja y dónde.
 
 Formato: docs/formato_plano.md. Todas las rutas son relativas a la carpeta del plano.json.
 Las posiciones van en mm de papel (origen en la esquina inferior izquierda de la hoja, Y
 hacia arriba): `posicion_mm` es la esquina inferior izquierda de la PÁGINA del detalle,
 igual que `colocar --posicion`.
 
-El plano.json lo escribirá el editor HTML (subfase 3.3), pero el componedor SIEMPRE lo
-revalida: el editor nunca es la fuente de la verdad. Los campos desconocidos se rechazan
-(un error de tipeo como "centar" no debe pasar en silencio). Todos los problemas se juntan
-en un solo `PlanoInvalido`, uno por línea, con la ruta del campo.
+Versión 2 (subfase 4.1) = versión 1 más, todo opcional:
+  - "rotulo": {...} valores de los campos del rótulo. Aquí solo se exige que sea un objeto;
+    sus claves las define el formato y las valida `componer` (rotulo.py).
+  - "rosa_vientos": {"visible": true|false, "posicion_mm": [x, y]} (esquina inferior
+    izquierda del rectángulo de la rosa). Por defecto visible y en su lugar.
+  - en cada detalle, "etiqueta_escala": false para no poner su etiqueta "ESC: 1:N".
+La versión 1 sigue siendo válida (sin esas claves).
+
+El plano.json lo escribe el editor HTML, pero el componedor SIEMPRE lo revalida: el editor
+nunca es la fuente de la verdad. Los campos desconocidos se rechazan (un error de tipeo como
+"centar" no debe pasar en silencio). Todos los problemas se juntan en un solo
+`PlanoInvalido`, uno por línea, con la ruta del campo.
 """
 
 import json
@@ -16,9 +24,12 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
-VERSIONES_SOPORTADAS = (1,)
+VERSIONES_SOPORTADAS = (1, 2)
 CLAVES_PLANO = {"version", "formato", "plantilla", "detalles"}
 CLAVES_DETALLE = {"id", "manifiesto", "posicion_mm", "centrar"}
+CLAVES_PLANO_V2 = CLAVES_PLANO | {"rotulo", "rosa_vientos"}
+CLAVES_DETALLE_V2 = CLAVES_DETALLE | {"etiqueta_escala"}
+CLAVES_ROSA = {"visible", "posicion_mm"}
 
 
 class PlanoInvalido(ValueError):
@@ -31,6 +42,13 @@ class DetallePlano:
     manifiesto: Path  # ruta ya resuelta respecto de la carpeta del plano
     posicion_mm: tuple[float, float] | None  # esquina inferior izquierda de la página
     centrar: bool  # True: centrado en el área de dibujo (posicion_mm es None)
+    etiqueta_escala: bool = True  # versión 2: false = sin etiqueta "ESC: 1:N"
+
+
+@dataclass(frozen=True)
+class RosaPlano:
+    visible: bool = True
+    posicion_mm: tuple[float, float] | None = None  # None: en su lugar original
 
 
 @dataclass(frozen=True)
@@ -40,6 +58,8 @@ class Plano:
     formato: Path  # resuelta
     plantilla: Path | None  # None: la del formato
     detalles: tuple[DetallePlano, ...]  # en orden de apilado (el último queda encima)
+    rotulo: dict | None = None  # versión 2: valores del rótulo (los valida componer)
+    rosa: RosaPlano | None = None  # versión 2: None = la rosa como viene (visible, en su sitio)
 
     @property
     def carpeta(self) -> Path:
@@ -65,10 +85,15 @@ def leer_plano(ruta: Path | str) -> Plano:
 
     errores: list[str] = []
     carpeta = ruta.parent
+    v2 = datos.get("version") == 2
+    validas = CLAVES_PLANO_V2 if v2 else CLAVES_PLANO
 
-    for clave in sorted(set(datos) - CLAVES_PLANO):
-        errores.append(f"{clave}: campo no reconocido (campos válidos: "
-                       f"{', '.join(sorted(CLAVES_PLANO))})")
+    for clave in sorted(set(datos) - validas):
+        if clave in CLAVES_PLANO_V2:
+            errores.append(f"{clave}: solo existe en la versión 2 del plano (use \"version\": 2)")
+        else:
+            errores.append(f"{clave}: campo no reconocido (campos válidos: "
+                           f"{', '.join(sorted(validas))})")
 
     version = datos.get("version")
     if "version" not in datos:
@@ -76,8 +101,8 @@ def leer_plano(ruta: Path | str) -> Plano:
     elif not isinstance(version, int) or isinstance(version, bool):
         errores.append(f"version: se esperaba un número entero; tiene {_tipo(version)}")
     elif version not in VERSIONES_SOPORTADAS:
-        errores.append(f"version: versión {version} no soportada; el componedor entiende la "
-                       f"versión {', '.join(map(str, VERSIONES_SOPORTADAS))}")
+        errores.append(f"version: versión {version} no soportada; el componedor entiende las "
+                       f"versiones {' y '.join(map(str, VERSIONES_SOPORTADAS))}")
 
     formato = _ruta(datos, "formato", carpeta, errores, obligatoria=True)
     plantilla = _ruta(datos, "plantilla", carpeta, errores, obligatoria=False)
@@ -93,7 +118,7 @@ def leer_plano(ruta: Path | str) -> Plano:
     else:
         vistos: dict[str, int] = {}
         for i, item in enumerate(lista):
-            detalle = _detalle(item, f"detalles[{i}]", carpeta, errores)
+            detalle = _detalle(item, f"detalles[{i}]", carpeta, errores, v2)
             # El id repetido se informa aunque el detalle tenga otros problemas.
             ident = item.get("id") if isinstance(item, dict) else None
             if isinstance(ident, str) and ident.strip():
@@ -105,23 +130,61 @@ def leer_plano(ruta: Path | str) -> Plano:
             if detalle is not None:
                 detalles.append(detalle)
 
+    rotulo = None
+    if v2 and "rotulo" in datos:
+        rotulo = datos["rotulo"]
+        if not isinstance(rotulo, dict):
+            errores.append(f"rotulo: se esperaba un objeto {{...}} con los valores del rótulo; "
+                           f"tiene {_tipo(rotulo)}")
+    rosa = _rosa(datos["rosa_vientos"], errores) if v2 and "rosa_vientos" in datos else None
+
     if errores:
         n = len(errores)
         raise PlanoInvalido(
             f"El plano '{ruta}' no es válido ({n} {'problema' if n == 1 else 'problemas'}):\n"
             + "\n".join(f"- {e}" for e in errores)
         )
-    return Plano(ruta, version, formato, plantilla, tuple(detalles))
+    return Plano(ruta, version, formato, plantilla, tuple(detalles), rotulo, rosa)
 
 
-def _detalle(item, donde: str, carpeta: Path, errores: list[str]) -> DetallePlano | None:
+def _rosa(valor, errores: list[str]) -> RosaPlano | None:
+    """"rosa_vientos": {"visible": bool, "posicion_mm": [x, y]}, ambos opcionales."""
+    if not isinstance(valor, dict):
+        errores.append(f"rosa_vientos: se esperaba un objeto {{\"visible\": ..., "
+                       f"\"posicion_mm\": [x, y]}}; tiene {_tipo(valor)}")
+        return None
+    n = len(errores)
+    for clave in sorted(set(valor) - CLAVES_ROSA):
+        errores.append(f"rosa_vientos.{clave}: campo no reconocido (campos válidos: "
+                       f"{', '.join(sorted(CLAVES_ROSA))})")
+    visible = valor.get("visible", True)
+    if not isinstance(visible, bool):
+        errores.append(f"rosa_vientos.visible: se esperaba true o false; tiene {_tipo(visible)}")
+    posicion = None
+    if "posicion_mm" in valor:
+        p = valor["posicion_mm"]
+        if not isinstance(p, list) or len(p) != 2 or not all(_es_numero(v) for v in p):
+            errores.append(f"rosa_vientos.posicion_mm: se esperaba [x, y] con 2 números finitos "
+                           f"en mm; tiene {p!r}")
+        else:
+            posicion = (float(p[0]), float(p[1]))
+    return RosaPlano(visible, posicion) if len(errores) == n else None
+
+
+def _detalle(item, donde: str, carpeta: Path, errores: list[str],
+             v2: bool = False) -> DetallePlano | None:
     if not isinstance(item, dict):
         errores.append(f"{donde}: se esperaba un objeto {{...}}; tiene {_tipo(item)}")
         return None
     n_errores = len(errores)
-    for clave in sorted(set(item) - CLAVES_DETALLE):
-        errores.append(f"{donde}.{clave}: campo no reconocido (campos válidos: "
-                       f"{', '.join(sorted(CLAVES_DETALLE))})")
+    validas = CLAVES_DETALLE_V2 if v2 else CLAVES_DETALLE
+    for clave in sorted(set(item) - validas):
+        if clave in CLAVES_DETALLE_V2:
+            errores.append(f"{donde}.{clave}: solo existe en la versión 2 del plano "
+                           f"(use \"version\": 2)")
+        else:
+            errores.append(f"{donde}.{clave}: campo no reconocido (campos válidos: "
+                           f"{', '.join(sorted(validas))})")
 
     ident = item.get("id")
     if "id" not in item:
@@ -151,9 +214,13 @@ def _detalle(item, donde: str, carpeta: Path, errores: list[str]) -> DetallePlan
         else:
             posicion = (float(valor[0]), float(valor[1]))
 
+    etiqueta = item.get("etiqueta_escala", True)
+    if not isinstance(etiqueta, bool):
+        errores.append(f"{donde}.etiqueta_escala: se esperaba true o false; tiene {_tipo(etiqueta)}")
+
     if len(errores) > n_errores:
         return None
-    return DetallePlano(ident, manifiesto, posicion, bool(centrar))
+    return DetallePlano(ident, manifiesto, posicion, bool(centrar), etiqueta)
 
 
 def _ruta(datos: dict, clave: str, carpeta: Path, errores: list[str], obligatoria: bool,

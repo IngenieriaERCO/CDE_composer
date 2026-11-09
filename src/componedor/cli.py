@@ -348,15 +348,42 @@ def texto_composicion(plano_ruta: Path, r: ResultadoComposicion) -> str:
         lineas.append(f"  {c.id}: paquete {c.prefijo}, esquina inferior izquierda "
                       f"({x0:.2f}, {y0:.2f}) mm; página X {x0:.2f} a {x1:.2f}, "
                       f"Y {y0:.2f} a {y1:.2f}")
+    lineas += texto_rosa_y_rotulo(r)
     if r.advertencias:
         lineas += ["", f"Advertencias ({len(r.advertencias)}):"]
         lineas += [f"  - {a}" for a in r.advertencias]
     else:
         lineas += ["", "Advertencias: ninguna (sin traslapes entre detalles)."]
-    lineas += ["", "Verificación: el dibujo de cada detalle está donde dice el plano "
-                   "(±0,1 mm), el marco del rótulo no se movió y no hay imágenes nuevas.",
-               f"PDF: {r.ruta_pdf}"]
+    verificado = ("el dibujo de cada detalle está donde dice el plano (±0,1 mm), el marco del "
+                  "rótulo no se movió y no hay imágenes nuevas")
+    if r.rosa is not None:
+        verificado += "; la rosa quedó donde se pidió (±0,1 mm)"
+    if r.rotulo or r.etiquetas:
+        verificado += "; cada texto está en su sitio (±0,1 mm) y dentro de su celda"
+    lineas += ["", f"Verificación: {verificado}.", f"PDF: {r.ruta_pdf}"]
     return "\n".join(lineas)
+
+
+def texto_rosa_y_rotulo(r: ResultadoComposicion) -> list[str]:
+    """Líneas del resumen sobre la rosa, el rótulo y las etiquetas de escala (subfase 4.1)."""
+    lineas = []
+    if r.rosa is not None:
+        if r.rosa.destino is None:
+            estado = "oculta"
+        elif r.rosa.destino == r.rosa.original:
+            estado = "en su sitio"
+        else:
+            estado = (f"movida: esquina inferior izquierda ({r.rosa.destino[0]:.2f}, "
+                      f"{r.rosa.destino[1]:.2f}) mm")
+        lineas += ["", f"Rosa de los vientos: {estado}."]
+    if r.rotulo:
+        llenos = sum(1 for v in r.rotulo.values() if v)
+        lineas += ["", f"Rótulo: {llenos} campo(s) de texto con valor; ESCALA "
+                       f"{r.rotulo.get('escala') or '(vacía)'}, REV. {r.rotulo.get('rev') or '(vacía)'}."]
+    if r.rotulo or r.etiquetas:
+        ids = ", ".join(r.etiquetas) if r.etiquetas else "ninguno"
+        lineas.append(f"Etiquetas \"ESC: 1:N\": {len(r.etiquetas)} ({ids}).")
+    return lineas
 
 
 def texto_preparar_editor(datos: dict, salida: Path) -> str:

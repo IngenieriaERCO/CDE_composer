@@ -219,7 +219,7 @@ def test_leer_plano(entorno):
         "ok": {"version": 1, "formato": "../formato.json", "detalles": [
             {"id": "x", "manifiesto": "../input/a.manifest.json", "posicion_mm": [30, 40]},
             {"id": "c", "manifiesto": "..\\input\\a.manifest.json", "centrar": True}]},
-        "version": {"version": 2, "detalles": [
+        "version": {"version": 3, "detalles": [
             {"id": "x", "manifiesto": "../input/a.manifest.json", "posicion_mm": [30, 40]}]},
         "desconocido": {"version": 1, "detalles": [
             {"id": "x", "manifiesto": "../input/otro.manifest.json", "posicion_mm": [30, 40]}]},
@@ -242,7 +242,8 @@ def test_leer_plano(entorno):
     assert r["ok"]["errores"] == [] and r["ok"]["avisos"] == []
     assert [c["pos"] for c in r["ok"]["colocaciones"]] == [
         [30, 40], list(posicion_centrada((260.0, 120.0), tuple(AREA)))]
-    assert r["version"]["errores"] == ["version: versión 2 no soportada; el editor entiende la versión 1."]
+    assert r["version"]["errores"] == [
+        "version: versión 3 no soportada; el editor entiende las versiones 1 y 2."]
     assert "no está en el catálogo del editor" in r["desconocido"]["errores"][0]
     assert "el paquete 'malo' está rechazado" in r["rechazado"]["errores"][0]
     assert "'x' está repetido" in r["repetido"]["errores"][0]
@@ -252,3 +253,134 @@ def test_leer_plano(entorno):
     assert r["roto"]["errores"][0].startswith("El archivo no es un JSON válido")
     for clave in ("version", "desconocido", "rechazado", "repetido", "roto"):
         assert r[clave]["colocaciones"] == []  # con errores no se carga nada
+
+
+# --- rosa de los vientos movible y plano.json versión 2 (subfase 4.1) ------------------------
+
+def test_datos_traen_la_rosa(entorno):
+    _, datos = entorno
+    assert datos["rosa_vientos"] == {"nombre": "rosa_vientos", "rect_mm": ROSA,
+                                     "imagen": {"archivo": "rosa.png"}}
+
+
+@pytest.mark.parametrize("rosa", [None, {"visible": True, "pos": [100, 300]},
+                                  {"visible": False, "pos": [612, 51]}])
+def test_elementos_visibles_igual_que_python(entorno, rosa):
+    from componedor.formato import cargar_formato
+    from componedor.rosa import elementos_visibles, rect_destino
+    carpeta, datos = entorno
+    elementos = [{"nombre": "otro", "rect_mm": [30, 30, 40, 40]}] + datos["elementos_plantilla"]
+    r = js("""
+        const rosa = entrada.rosa && {visible: entrada.rosa.visible,
+                                      rect: L.rectRosa(entrada.original, entrada.rosa.pos)};
+        return L.elementosVisibles(entrada.e, rosa);
+    """, {"e": elementos, "rosa": rosa, "original": ROSA})
+    if rosa is None:
+        assert r == elementos  # sin rosa en el formato: sin cambios
+        return
+    formato = cargar_formato(carpeta / "formato.json")
+    destino = rect_destino(tuple(ROSA), tuple(rosa["pos"])) if rosa["visible"] else None
+    python = [{"nombre": e.nombre, "rect_mm": list(e.rect)}
+              for e in elementos_visibles(formato, destino)]
+    assert r[1:] == python and r[0]["nombre"] == "otro"
+
+
+@pytest.mark.parametrize("rosa_plano, detalles", [
+    ({"posicion_mm": [100, 300]}, [("d1", "a", [400, 40]), ("d2", "s", [40, 260])]),
+    ({"visible": False}, [("d1", "a", [400, 40]), ("d2", "a", [360, 40])]),
+    ({"posicion_mm": [500, 200]}, [("d1", "a", [300, 150]), ("d2", "s", [380, 160])]),
+])
+def test_advertencias_con_la_rosa_movida_u_oculta_iguales_que_componer(entorno, rosa_plano,
+                                                                       detalles):
+    carpeta, datos = entorno
+    plano = carpeta / "plano.json"
+    plano.write_text(json.dumps({"version": 2, "formato": "formato.json",
+                                 "rosa_vientos": rosa_plano, "detalles": [
+        {"id": i, "manifiesto": f"input/{p}.manifest.json", "posicion_mm": pos}
+        for i, p, pos in detalles]}), encoding="utf-8")
+    resultado = componer_plano(leer_plano(plano), carpeta / "p.pdf", sobrescribir=True)
+    catalogo = {d["id"]: d for d in datos["detalles"]}
+    colocados = [{"id": c.id, "pagina": list(c.ocupado), "dibujo": list(c.dibujo),
+                  "tiene_fondo": catalogo[c.prefijo]["tiene_fondo"]} for c in resultado.detalles]
+    r = js("""
+        const v = entrada.rosa.visible !== false;
+        const pos = entrada.rosa.posicion_mm || [entrada.datos.rosa_vientos.rect_mm[0],
+                                                 entrada.datos.rosa_vientos.rect_mm[1]];
+        const rosa = {visible: v, rect: L.rectRosa(entrada.datos.rosa_vientos.rect_mm, pos)};
+        const elementos = L.elementosVisibles(entrada.datos.elementos_plantilla, rosa);
+        return L.advertencias(entrada.c, elementos, entrada.p).map((a) => a.texto);
+    """, {"c": colocados, "datos": datos, "rosa": rosa_plano, "p": PLANTILLAS})
+    assert r == resultado.advertencias
+    if rosa_plano.get("visible", True):
+        assert any("rosa_vientos" in a for a in r)  # la rosa movida sí avisa
+    else:
+        assert not any("rosa_vientos" in a for a in r)  # oculta: nunca avisa
+
+
+def test_editor_guarda_version_2_con_rosa_rotulo_y_etiqueta_y_componer_lo_acepta(entorno):
+    carpeta, datos = entorno
+    rotulo = {"titulo": "PLANTA", "revisiones": [{"ver": "A", "fecha": "2026-11-06"}]}
+    texto = js("""
+        const d = entrada.datos.detalles[0];
+        const colocaciones = [{id: "x", detalle: d, pos: [40, 300], etiqueta_escala: false},
+                              {id: "y", detalle: d, pos: [40, 100]}];
+        return L.serializarPlano(colocaciones, entrada.datos,
+                                 {rosa: {visible: true, pos: [100.004, 450.006]},
+                                  rotulo: entrada.rotulo});
+    """, {"datos": datos, "rotulo": rotulo})
+    guardado = json.loads(texto)
+    assert guardado["version"] == 2
+    assert guardado["rosa_vientos"] == {"visible": True, "posicion_mm": [100.0, 450.01]}
+    assert guardado["rotulo"] == rotulo
+    assert guardado["detalles"][0]["etiqueta_escala"] is False
+    assert "etiqueta_escala" not in guardado["detalles"][1]
+    ruta = carpeta / "editor" / "plano.json"
+    ruta.write_text(texto, encoding="utf-8")
+    plano = leer_plano(ruta)
+    assert plano.rosa.posicion_mm == (100.0, 450.01) and plano.rotulo == rotulo
+    resultado = componer_plano(plano, carpeta / "editor" / "plano.pdf")
+    assert resultado.rosa.destino == (100.0, 450.01, 140.0, 490.01)
+
+
+def test_sin_nada_nuevo_el_editor_guarda_version_1(entorno):
+    _, datos = entorno
+    sin_rosa = dict(datos, rosa_vientos=None)
+    texto = js("""
+        const d = entrada.detalles[0];
+        return L.serializarPlano([{id: "x", detalle: d, pos: [40, 300]}], entrada, {});
+    """, sin_rosa)
+    assert json.loads(texto)["version"] == 1 and "rosa_vientos" not in json.loads(texto)
+
+
+def test_leer_plano_version_2(entorno):
+    _, datos = entorno
+    d = {"id": "x", "manifiesto": "../input/a.manifest.json", "posicion_mm": [30, 40]}
+    planos = {
+        "ok": {"version": 2, "detalles": [dict(d, etiqueta_escala=False)],
+               "rosa_vientos": {"visible": False, "posicion_mm": [100, 300]},
+               "rotulo": {"titulo": "PLANTA"}},
+        "sin_rosa": {"version": 2, "detalles": [d]},
+        "rosa_fuera": {"version": 2, "detalles": [d], "rosa_vientos": {"posicion_mm": [650, 300]}},
+        "rosa_mala": {"version": 2, "detalles": [d], "rosa_vientos": {"visble": True}},
+        "rotulo_malo": {"version": 2, "detalles": [d], "rotulo": "PLANTA"},
+        "v1_con_rosa": {"version": 1, "detalles": [d], "rosa_vientos": {}},
+        "etiqueta_mala": {"version": 2, "detalles": [dict(d, etiqueta_escala="no")]},
+    }
+    r = js("""
+        const res = {};
+        for (const [k, v] of Object.entries(entrada.planos)) res[k] = L.leerPlano(JSON.stringify(v), entrada.datos);
+        return res;
+    """, {"planos": planos, "datos": datos})
+    ok = r["ok"]
+    assert ok["errores"] == [] and ok["rosa"] == {"visible": False, "pos": [100, 300]}
+    assert ok["rotulo"] == {"titulo": "PLANTA"}
+    assert ok["colocaciones"][0]["etiqueta_escala"] is False
+    assert r["sin_rosa"]["rosa"] is None and r["sin_rosa"]["rotulo"] is None
+    assert r["rosa_fuera"]["rosa"]["pos"] == pytest.approx([662.4 - 40, 300])
+    assert "La rosa de los vientos se salía del área de dibujo" in r["rosa_fuera"]["avisos"][0]
+    assert r["rosa_mala"]["errores"] == [
+        "rosa_vientos.visble: campo no reconocido (campos válidos: posicion_mm, visible)."]
+    assert r["rotulo_malo"]["errores"] == ["rotulo: se esperaba un objeto {...} con los valores del rótulo."]
+    assert r["v1_con_rosa"]["errores"] == [
+        "rosa_vientos: solo existe en la versión 2 del plano (use \"version\": 2)."]
+    assert r["etiqueta_mala"]["errores"] == ["detalles[0].etiqueta_escala: se esperaba true o false."]

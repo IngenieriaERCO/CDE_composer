@@ -17,15 +17,21 @@
   const ANCHO_PX = DATOS.imagen_plantilla.ancho_px;
   const ALTO_PX = DATOS.imagen_plantilla.alto_px;
   const CATALOGO = DATOS.detalles;
+  // Rosa de los vientos (subfase 4.1): null si el formato no la declara (datos anteriores).
+  const ROSA = DATOS.rosa_vientos || null;
+  const ROSA_ORIGEN = ROSA ? [ROSA.rect_mm[0], ROSA.rect_mm[1]] : null;
 
   const estado = {
     colocaciones: [], // [{id, detalle, pos: [x, y]}], en orden de apilado
     seleccion: null, // id
+    rosa: ROSA ? { visible: true, pos: ROSA_ORIGEN.slice() } : null,
+    rosaSeleccionada: false,
+    rotulo: null, // "rotulo" de un plano abierto: se conserva tal cual al guardar
     paso: 1,
     cambios: false,
     vista: { x: 0, y: 0, ancho: ANCHO_PX, alto: ALTO_PX },
   };
-  let arrastre = null; // {c, dx, dy} en mm
+  let arrastre = null; // {c, dx, dy} en mm (c: detalle) o {rosa: true, dx, dy}
   let paneo = null; // {x, y, vista} en px de pantalla
   let ultimasAdvertencias = [];
 
@@ -102,9 +108,14 @@
   }
   if (ZONA) rectSvg(nodoSvg("rect", { class: "zona-activa" }, svg), ZONA);
 
+  // La rosa va debajo de los detalles, como en el PDF (es parte de la hoja base). plantilla.png
+  // ya viene SIN la rosa: se dibuja solo aquí, en su posición actual.
+  const capaRosa = nodoSvg("g", {}, svg);
+
   const capaElementos = nodoSvg("g", {}, svg);
   const nodosElementos = new Map();
   for (const el of DATOS.elementos_plantilla) {
+    if (ROSA && el.nombre === L.ROSA) continue; // la rosa se dibuja en capaRosa
     const marco = nodoSvg("rect", { class: "elemento-fijo" }, capaElementos);
     const rect = rectSvg(marco, el.rect_mm);
     const etiqueta = nodoSvg("text", { class: "etiqueta-fijo", x: rect.x, y: rect.y - 3 }, capaElementos);
@@ -175,6 +186,32 @@
     }));
   }
 
+  /** Estado de la rosa para la lógica: {visible, rect} o null (el formato no tiene rosa). */
+  function rosaParaLogica() {
+    if (!estado.rosa) return null;
+    return { visible: estado.rosa.visible, rect: L.rectRosa(ROSA.rect_mm, estado.rosa.pos) };
+  }
+
+  function dibujarRosa(tapada) {
+    capaRosa.replaceChildren();
+    if (!estado.rosa || !estado.rosa.visible) return; // oculta: desaparece y la zona queda libre
+    const rect = L.rectRosa(ROSA.rect_mm, estado.rosa.pos);
+    const clases = ["rosa"];
+    if (estado.rosaSeleccionada) clases.push("sel");
+    const g = nodoSvg("g", { class: clases.join(" ") }, capaRosa);
+    const r = L.rectPapelAPantalla(rect, ESCALA);
+    if (ROSA.imagen && ROSA.imagen.data_url) {
+      const imagen = nodoSvg("image", { x: r.x, y: r.y, width: r.ancho, height: r.alto,
+        preserveAspectRatio: "none" }, g);
+      imagen.setAttribute("href", ROSA.imagen.data_url);
+    }
+    const marco = nodoSvg("rect", { class: "elemento-fijo rosa-marco" + (tapada ? " tapado" : "") }, g);
+    rectSvg(marco, rect);
+    const etiqueta = nodoSvg("text", { class: "etiqueta-fijo", x: r.x, y: r.y - 3 }, g);
+    etiqueta.textContent = L.ROSA + " (movible)";
+    g.addEventListener("pointerdown", empezarArrastreRosa);
+  }
+
   const ORDEN_NIVEL = { aviso: 1, fuerte: 2, muy_fuerte: 3 };
 
   function dibujarDetalles(niveles) {
@@ -198,8 +235,9 @@
   }
 
   function actualizar() {
-    const lista = L.advertencias(colocadosParaAdvertencias(), DATOS.elementos_plantilla,
-      DATOS.advertencias);
+    // Mismos elementos que usa componer: la rosa en su posición actual (oculta: no cuenta).
+    const elementos = L.elementosVisibles(DATOS.elementos_plantilla, rosaParaLogica());
+    const lista = L.advertencias(colocadosParaAdvertencias(), elementos, DATOS.advertencias);
     ultimasAdvertencias = lista;
     const niveles = new Map();
     const tapados = new Set();
@@ -211,7 +249,9 @@
       if (a.elemento) tapados.add(a.elemento);
     }
     for (const [nombre, rect] of nodosElementos) rect.classList.toggle("tapado", tapados.has(nombre));
+    dibujarRosa(tapados.has(L.ROSA));
     dibujarDetalles(niveles);
+    pintarRosa();
     pintarPropiedades();
     pintarListaPlano();
     pintarAdvertencias(lista);
@@ -272,8 +312,9 @@
     const panel = document.getElementById("propiedades");
     const c = seleccionada();
     if (!c) {
-      panel.replaceChildren(nodo("div", { class: "vacio" },
-        "Haga clic en un detalle del plano para moverlo o editar su posición."));
+      panel.replaceChildren(nodo("div", { class: "vacio" }, estado.rosaSeleccionada
+        ? "Rosa de los vientos seleccionada: arrástrela o muévala con las flechas; su posición exacta está en el panel «Rosa de los vientos»."
+        : "Haga clic en un detalle del plano para moverlo o editar su posición."));
       return;
     }
     const pagina = L.paginaEnPapel(c.detalle, c.pos);
@@ -349,13 +390,99 @@
     ul.replaceChildren(...lista.map((a) => nodo("li", { class: a.nivel }, a.texto)));
   }
 
+  /** Panel «Rosa de los vientos»: mostrar/ocultar, X / Y y restaurar posición. */
+  function pintarRosa() {
+    const panel = document.getElementById("panel-rosa");
+    if (!estado.rosa) {
+      panel.replaceChildren(nodo("div", { class: "vacio" }, "El formato no tiene rosa de los vientos."));
+      return;
+    }
+    const casilla = nodo("input", { type: "checkbox", id: "mostrar-rosa" });
+    casilla.checked = estado.rosa.visible;
+    casilla.addEventListener("change", () => mostrarRosa(casilla.checked));
+    const etiqueta = nodo("label", { class: "casilla", for: "mostrar-rosa" });
+    etiqueta.append(casilla, " Mostrar rosa de los vientos");
+    const filas = [etiqueta];
+    if (estado.rosa.visible) {
+      const tamano = L.tamanoRosa(ROSA.rect_mm);
+      const guardada = L.redondearDentro(estado.rosa.pos, tamano, ZONA);
+      filas.push(campoRosa("X (mm)", guardada[0], 0), campoRosa("Y (mm)", guardada[1], 1),
+        nodo("div", { class: "medida" }, "Esquina inferior izquierda del rectángulo de la rosa (" +
+          mm(tamano[0]) + " × " + mm(tamano[1]) + " mm)."));
+    } else {
+      filas.push(nodo("div", { class: "medida" }, "Oculta: no sale en el plano y no genera advertencias."));
+    }
+    const restaurar = nodo("button", { type: "button" }, "Restaurar posición");
+    restaurar.title = "Volver a su lugar original (" + mm(ROSA_ORIGEN[0]) + "; " + mm(ROSA_ORIGEN[1]) + ") mm";
+    restaurar.addEventListener("click", restaurarRosa);
+    const botones = nodo("div", { class: "botones" });
+    botones.appendChild(restaurar);
+    filas.push(botones);
+    panel.replaceChildren(...filas);
+  }
+
+  function campoRosa(etiqueta, valor, indice) {
+    const fila = nodo("div", { class: "fila" });
+    fila.appendChild(nodo("label", {}, etiqueta));
+    const input = nodo("input", { type: "text", inputmode: "decimal" });
+    input.value = mm(valor);
+    input.addEventListener("change", () => {
+      const numero = parseFloat(input.value.replace(",", "."));
+      if (!isFinite(numero)) {
+        pintarRosa();
+        return;
+      }
+      const pos = estado.rosa.pos.slice();
+      pos[indice] = numero;
+      moverRosa(pos);
+    });
+    fila.appendChild(input);
+    return fila;
+  }
+
   // ---------------------------------------------------------------------------------------
   // Acciones.
   // ---------------------------------------------------------------------------------------
 
   function seleccionar(id) {
     estado.seleccion = id;
+    if (id) estado.rosaSeleccionada = false;
     actualizar();
+  }
+
+  function seleccionarRosa() {
+    estado.seleccion = null;
+    estado.rosaSeleccionada = true;
+    actualizar();
+  }
+
+  /** Mueve la rosa: igual que un detalle, siempre COMPLETA dentro del área de dibujo. */
+  function moverRosa(pos) {
+    if (!estado.rosa) return;
+    const limitada = L.clampAZona(pos, L.tamanoRosa(ROSA.rect_mm), ZONA);
+    if (!limitada) return;
+    if (limitada[0] !== estado.rosa.pos[0] || limitada[1] !== estado.rosa.pos[1]) {
+      estado.rosa.pos = limitada;
+      marcarCambios();
+    }
+    actualizar();
+  }
+
+  function mostrarRosa(visible) {
+    if (!estado.rosa || estado.rosa.visible === visible) return;
+    estado.rosa.visible = visible;
+    if (!visible) estado.rosaSeleccionada = false;
+    marcarCambios();
+    actualizar();
+  }
+
+  function restaurarRosa() {
+    if (!estado.rosa) return;
+    if (!estado.rosa.visible) {
+      estado.rosa.visible = true;
+      marcarCambios();
+    }
+    moverRosa(ROSA_ORIGEN.slice()); // vuelve a su sitio y vuelve a dibujar
   }
 
   function agregar(detalle) {
@@ -434,6 +561,17 @@
     svg.setPointerCapture(ev.pointerId);
   }
 
+  /** La rosa se arrastra como un detalle (mismo paso de ajuste). Está debajo de los
+   * detalles: donde un detalle la tapa, el clic toma el detalle. */
+  function empezarArrastreRosa(ev) {
+    if (ev.button !== 0) return;
+    ev.stopPropagation();
+    const p = puntoPapel(ev);
+    if (!estado.rosaSeleccionada) seleccionarRosa();
+    arrastre = { rosa: true, dx: p.x - estado.rosa.pos[0], dy: p.y - estado.rosa.pos[1] };
+    svg.setPointerCapture(ev.pointerId);
+  }
+
   svg.addEventListener("pointerdown", (ev) => {
     if (ev.button !== 0 || arrastre) return;
     paneo = { x: ev.clientX, y: ev.clientY, vista: Object.assign({}, estado.vista) };
@@ -447,7 +585,8 @@
     if (arrastre) {
       const pos = [L.ajustarAPaso(p.x - arrastre.dx, estado.paso),
         L.ajustarAPaso(p.y - arrastre.dy, estado.paso)];
-      mover(arrastre.c, pos);
+      if (arrastre.rosa) moverRosa(pos);
+      else mover(arrastre.c, pos);
     } else if (paneo) {
       const caja = svg.getBoundingClientRect();
       const factor = paneo.vista.ancho / caja.width;
@@ -460,7 +599,10 @@
   function terminar(ev) {
     if ((arrastre || paneo) && svg.hasPointerCapture(ev.pointerId)) svg.releasePointerCapture(ev.pointerId);
     if (paneo && Math.abs(ev.clientX - paneo.x) + Math.abs(ev.clientY - paneo.y) < 3 && !arrastre) {
-      if (estado.seleccion) seleccionar(null); // clic en el fondo: quita la selección
+      if (estado.seleccion || estado.rosaSeleccionada) { // clic en el fondo: quita la selección
+        estado.rosaSeleccionada = false;
+        seleccionar(null);
+      }
     }
     arrastre = null;
     paneo = null;
@@ -515,10 +657,18 @@
       aplicarVistaLimpia();
       return;
     }
-    const c = seleccionada();
-    if (!c) return;
     const paso = estado.paso * (ev.shiftKey ? 10 : 1);
     const movimientos = { ArrowLeft: [-paso, 0], ArrowRight: [paso, 0], ArrowUp: [0, paso], ArrowDown: [0, -paso] };
+    if (estado.rosaSeleccionada && estado.rosa && estado.rosa.visible) {
+      if (movimientos[ev.key]) {
+        ev.preventDefault();
+        const [dx, dy] = movimientos[ev.key];
+        moverRosa([estado.rosa.pos[0] + dx, estado.rosa.pos[1] + dy]);
+      }
+      return; // Supr no quita la rosa: se oculta con la casilla
+    }
+    const c = seleccionada();
+    if (!c) return;
     if (movimientos[ev.key]) {
       ev.preventDefault();
       const [dx, dy] = movimientos[ev.key]; // en papel, Y hacia arriba: flecha arriba = +Y
@@ -569,7 +719,7 @@
       mensaje("El plano está vacío: agregue al menos un detalle antes de guardar.", "error");
       return;
     }
-    const texto = L.serializarPlano(estado.colocaciones, DATOS);
+    const texto = textoPlano();
     if (window.showSaveFilePicker) {
       try {
         const archivo = await window.showSaveFilePicker({
@@ -588,6 +738,11 @@
     }
     descargar(texto, "plano.json");
     guardado("plano.json", true);
+  }
+
+  /** plano.json con los detalles, la rosa y (si se abrió un plano que lo traía) el rótulo. */
+  function textoPlano() {
+    return L.serializarPlano(estado.colocaciones, DATOS, { rosa: estado.rosa, rotulo: estado.rotulo });
   }
 
   function guardado(nombre, descargado) {
@@ -609,6 +764,10 @@
     }
     estado.colocaciones = resultado.colocaciones;
     estado.seleccion = null;
+    estado.rosaSeleccionada = false;
+    // Sin "rosa_vientos" en el plano: visible y en su sitio (lo mismo que hace componer).
+    if (ROSA) estado.rosa = resultado.rosa || { visible: true, pos: ROSA_ORIGEN.slice() };
+    estado.rotulo = resultado.rotulo; // el editor no lo edita: lo conserva al guardar
     estado.cambios = resultado.avisos.length > 0; // si se ajustó algo, hay cambios por guardar
     actualizar();
     const resumen = "Plano abierto: " + resultado.colocaciones.length + " detalle(s).";
@@ -666,7 +825,8 @@
   // Para la verificación automática del reporte (no la usa la interfaz).
   window.EditorPrueba = { estado, agregar: (id) => agregar(CATALOGO.find((d) => d.id === id)),
     mover: (id, pos) => mover(estado.colocaciones.find((c) => c.id === id), pos),
-    texto: () => L.serializarPlano(estado.colocaciones, DATOS), advertencias: () => ultimasAdvertencias };
+    texto: textoPlano, advertencias: () => ultimasAdvertencias,
+    moverRosa, mostrarRosa, restaurarRosa, abrir };
 
   pintarCatalogo();
   pintarDondeGuardar();

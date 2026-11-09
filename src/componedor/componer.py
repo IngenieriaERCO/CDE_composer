@@ -15,6 +15,15 @@ Pasos (si uno falla, no se genera el PDF):
      detalle está donde dice el plano (±0,1 mm), el marco del rótulo no se movió y no hay
      imágenes nuevas. Solo entonces se renombra a la salida. Si algo falla, el temporal se
      borra.
+
+Subfase 4.1 (si el formato trae la sección "rotulo"):
+  - Rosa de los vientos (rosa.py): siempre se quita de la plantilla y, si es visible, se
+    vuelve a dibujar en su sitio o donde diga el plano (completa dentro de `area_dibujo`).
+    Las advertencias de "detalle sobre elemento" usan su posición nueva; oculta no avisa.
+  - Rótulo (rotulo.py): los valores del plano, ESCALA y REV. calculadas; si un texto no cabe,
+    error con el campo, el texto y las medidas.
+  - Etiqueta "ESC: 1:N" junto a cada detalle (etiquetas_escala.py); si no cabe, advertencia.
+  - Los textos se verifican en el PDF guardado (posición de cada línea ±0,1 mm).
 """
 
 import os
@@ -37,16 +46,30 @@ from componedor.colocar import (
     posicion_centrada,
     tamano_visible_mm,
 )
-from componedor.composicion import hoja_base
+from componedor.composicion import MANTENER, hoja_base_con_rosa
 from componedor.comprobacion_dibujo import (
     es_fondo_blanco,
     limites_de_trazos,
     tiene_fondo_de_pagina,
 )
-from componedor.formato import EPS_MM, Formato, RectMM, cargar_formato
+from componedor.etiquetas_escala import DetalleParaEtiqueta, colocar_etiquetas
+from componedor.formato import EPS_MM, ElementoPlantilla, Formato, RectMM, cargar_formato
+from componedor.fuente import Fuente, FuenteInvalida, cargar_fuente
 from componedor.importador import PaqueteAceptado, PaqueteRechazado, importar_paquete
+from componedor.maquetacion import TextoMaquetado
 from componedor.plano import Plano
 from componedor.plantilla import TOLERANCIA_MARCO_MM, InformePlantilla, buscar_marco
+from componedor.rosa import NOMBRE as ROSA
+from componedor.rosa import (
+    InformeRosa,
+    RosaInvalida,
+    elementos_visibles,
+    motivo_fuera,
+    rect_destino,
+    verificar_rosa,
+)
+from componedor.rotulo import RotuloInvalido, preparar_rotulo
+from componedor.textos_pdf import escribir_textos, verificar_textos
 from componedor.transformaciones import rect_papel_a_pdf
 
 ZONA = "area_dibujo"
@@ -64,6 +87,7 @@ class DetalleColocado:
     ocupado: RectMM  # página del detalle en la hoja, mm de papel
     dibujo: RectMM  # page_bounds_mm trasladado a mm de papel
     tiene_fondo: bool = True  # paquete antiguo con fondo blanco de página (tapa lo de abajo)
+    escala: float | None = None  # N de 1:N (manifiesto)
 
 
 @dataclass
@@ -72,6 +96,17 @@ class ResultadoComposicion:
     plantilla: InformePlantilla | None
     detalles: list[DetalleColocado]
     advertencias: list[str] = field(default_factory=list)
+    rosa: InformeRosa | None = None  # None: el formato no tiene rosa (o no tiene plantilla)
+    rotulo: dict[str, str] = field(default_factory=dict)  # valor final de cada campo de texto
+    etiquetas: list[str] = field(default_factory=list)  # ids de detalles con etiqueta ESC
+
+
+@dataclass
+class _Textos:
+    """Lo que se escribe como texto en la hoja (rótulo y etiquetas) y con qué fuente."""
+    fuente: Fuente | None = None
+    rotulo: list[TextoMaquetado] = field(default_factory=list)
+    etiquetas: list[TextoMaquetado] = field(default_factory=list)
 
 
 def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
@@ -83,16 +118,24 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
             f"El archivo '{salida}' ya existe. Use --sobrescribir para reemplazarlo.")
 
     formato = _formato(plano)
+    destino_rosa = _destino_rosa(plano, formato)
+    elementos = (list(formato.elementos_plantilla) if destino_rosa == MANTENER
+                 else elementos_visibles(formato, destino_rosa))
     aceptados = _importar(plano)
     documentos: dict[Path, pymupdf.Document] = {}
     try:
         colocados = _posiciones(plano, formato, aceptados, documentos)
-        advertencias = _traslapes(colocados) + _sobre_elementos(colocados, formato)
-        resultado = _componer_y_verificar(formato, colocados, salida, guias)
+        advertencias = _traslapes(colocados) + _sobre_elementos(colocados, elementos)
+        textos, valores, avisos = _textos(plano, formato, colocados, elementos)
+        advertencias += avisos
+        resultado = _componer_y_verificar(formato, colocados, salida, guias, destino_rosa,
+                                          textos)
     finally:
         for doc in documentos.values():
             doc.close()
     resultado.advertencias = advertencias
+    resultado.rotulo = valores
+    resultado.etiquetas = [t.ruta.split(".", 1)[1] for t in textos.etiquetas]
     return resultado
 
 
@@ -105,6 +148,28 @@ def _formato(plano: Plano) -> Formato:
         raise PlanoNoComponible(f"plantilla: no se encontró el PDF '{plano.plantilla}'.")
     formato = cargar_formato(plano.formato, usar_plantilla=False)
     return replace(formato, plantilla=plano.plantilla)
+
+
+def _destino_rosa(plano: Plano, formato: Formato) -> RectMM | None | str:
+    """Dónde va la rosa: su rectángulo (mm de papel), None (oculta) o `MANTENER` si el formato
+    no declara la rosa (entonces no se toca nada)."""
+    elemento = formato.elemento(ROSA)
+    if elemento is None:
+        if plano.rosa is not None:
+            raise PlanoNoComponible(
+                f"rosa_vientos: el formato no declara el elemento '{ROSA}' en "
+                f"elementos_plantilla; no hay rosa que mostrar, ocultar ni mover.")
+        return MANTENER
+    if plano.rosa is None:
+        return elemento.rect
+    if not plano.rosa.visible:
+        return None
+    destino = rect_destino(elemento.rect, plano.rosa.posicion_mm)
+    motivo = motivo_fuera(destino, formato)
+    if motivo:
+        raise PlanoNoComponible(f"rosa_vientos.posicion_mm: {motivo} La rosa debe quedar "
+                                f"completa dentro del área de dibujo.")
+    return destino
 
 
 # --- 3. importar todos los paquetes -----------------------------------------------------
@@ -167,7 +232,8 @@ def _posiciones(plano: Plano, formato: Formato, aceptados: dict[Path, PaqueteAce
                                          alto, (x, y))
         colocados.append((detalle, aceptado, doc,
                           DetalleColocado(detalle.id, aceptado.paquete.prefijo, ocupado, dibujo,
-                                          con_fondo[ruta_pdf])))
+                                          con_fondo[ruta_pdf],
+                                          aceptado.manifiesto.escala.denominador)))
     if errores:
         raise PlanoNoComponible(
             f"No se compone el plano: {len(errores)} detalle(s) fuera de '{ZONA}' "
@@ -192,12 +258,13 @@ def _traslapes(colocados: list[tuple]) -> list[str]:
     return avisos
 
 
-def _sobre_elementos(colocados: list[tuple], formato: Formato) -> list[str]:
+def _sobre_elementos(colocados: list[tuple], elementos: list[ElementoPlantilla]) -> list[str]:
     """Detalles que tapan elementos fijos de la plantilla dentro del área de dibujo (p. ej.
-    la rosa de los vientos). Advertencia, no error: misma filosofía que los traslapes."""
+    la rosa de los vientos, en su posición final; oculta no está en la lista). Advertencia,
+    no error: misma filosofía que los traslapes."""
     avisos = []
     for _, _, _, c in colocados:
-        for elemento in formato.elementos_plantilla:
+        for elemento in elementos:
             dibujo = _interseccion(c.dibujo, elemento.rect)
             pagina = _interseccion(c.ocupado, elemento.rect)
             clave = clave_sobre_elemento(bool(dibujo), bool(pagina), c.tiene_fondo)
@@ -207,28 +274,68 @@ def _sobre_elementos(colocados: list[tuple], formato: Formato) -> list[str]:
     return avisos
 
 
+# --- 5b. textos: rótulo y etiquetas de escala ---------------------------------------------
+
+def _textos(plano: Plano, formato: Formato, colocados: list[tuple],
+            elementos: list[ElementoPlantilla]) -> tuple[_Textos, dict[str, str], list[str]]:
+    """Maqueta el rótulo y las etiquetas "ESC: 1:N". Sin sección "rotulo" en el formato no se
+    escribe nada. Devuelve (textos, valores finales del rótulo, advertencias)."""
+    if formato.rotulo is None:
+        return _Textos(), {}, []
+    try:
+        fuente = cargar_fuente(formato.rotulo.fuente)
+    except FuenteInvalida as e:
+        raise PlanoNoComponible(f"No se compone el plano: {e}") from e
+    escalas = [c.escala for *_, c in colocados]
+    try:
+        rotulo = preparar_rotulo(formato.rotulo, plano.rotulo, escalas, fuente)
+    except RotuloInvalido as e:
+        raise PlanoNoComponible(f"No se compone el plano. {e}") from e
+    etiquetas, avisos = colocar_etiquetas(
+        [DetalleParaEtiqueta(c.id, c.dibujo, c.escala, detalle.etiqueta_escala)
+         for detalle, _, _, c in colocados],
+        formato.zonas[ZONA], [(e.nombre, e.rect) for e in elementos], fuente)
+    return (_Textos(fuente, rotulo.textos, etiquetas), rotulo.valores,
+            rotulo.advertencias + avisos)
+
+
 # --- 6 y 7. componer, guardar en temporal, verificar y renombrar -------------------------
 
 def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path,
-                          guias: bool) -> ResultadoComposicion:
+                          guias: bool, destino_rosa: RectMM | None | str = MANTENER,
+                          textos: _Textos | None = None) -> ResultadoComposicion:
+    textos = textos or _Textos()
     salida.parent.mkdir(parents=True, exist_ok=True)
     temporal = salida.with_name(f".{salida.name}.componiendo.pdf")
     try:
-        doc, informe = hoja_base(formato, guias)
+        try:
+            doc, informe, informe_rosa = hoja_base_con_rosa(formato, guias, rosa=destino_rosa)
+        except RosaInvalida as e:
+            raise PlanoNoComponible(f"No se compone el plano: {e}") from e
         try:
             base = doc[0]
             trazos_base = len(base.get_drawings())
             imagenes_base = len(base.get_image_info())
+            if informe_rosa is not None:
+                # La rosa se mide ANTES de poner los detalles: así nada de ellos se confunde
+                # con sus trazos o sus letras.
+                problemas = verificar_rosa(base, informe_rosa, formato, trazos_base)
+                if problemas:
+                    raise PlanoNoComponible(
+                        "La verificación de la rosa de los vientos falló; no se generó el "
+                        "plano:\n" + "\n".join(f"- {p}" for p in problemas))
             trazos_por_detalle = []
             for _, _, doc_detalle, colocado in colocados:
                 trazos_por_detalle.append(len(doc_detalle[0].get_drawings()))
                 insertar_pagina(base, formato, doc_detalle, 0, colocado.ocupado[:2])
+            todos = textos.rotulo + textos.etiquetas
+            escribir_textos(base, todos, textos.fuente, formato.alto_mm)
             doc.save(temporal)
         finally:
             doc.close()
 
         problemas = _verificar(temporal, formato, informe, [c for *_, c in colocados],
-                               trazos_base, trazos_por_detalle, imagenes_base)
+                               trazos_base, trazos_por_detalle, imagenes_base, todos)
         if problemas:
             raise PlanoNoComponible(
                 "La verificación del PDF compuesto falló; no se generó el plano:\n"
@@ -237,15 +344,17 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
     finally:
         if temporal.exists():
             temporal.unlink()  # cualquier falla: no queda un PDF a medias
-    return ResultadoComposicion(salida, informe, [c for *_, c in colocados])
+    return ResultadoComposicion(salida, informe, [c for *_, c in colocados], rosa=informe_rosa)
 
 
 def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
                colocados: list[DetalleColocado], trazos_base: int,
-               trazos_por_detalle: list[int], imagenes_base: int) -> list[str]:
+               trazos_por_detalle: list[int], imagenes_base: int,
+               textos: list[TextoMaquetado] = ()) -> list[str]:
     """Mide el PDF guardado. Devuelve la lista de problemas (vacía si todo está bien)."""
     with pymupdf.open(ruta) as final:
         page = final[0]
+        textos_mal = verificar_textos(page, list(textos), formato.alto_mm)
         trazos = page.get_drawings()
         esperados = trazos_base + sum(trazos_por_detalle)
         if len(trazos) != esperados:
@@ -285,6 +394,7 @@ def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
         if imagenes != imagenes_base:
             problemas.append(f"la hoja tiene {imagenes} imágenes y la hoja base tenía "
                              f"{imagenes_base}: no se debe rasterizar ningún detalle")
+        problemas += textos_mal
     return problemas
 
 

@@ -4,7 +4,7 @@
   "unidades": "mm",
   "origen": "inferior_izquierdo",
   "orientacion": "horizontal",
-  "plantilla": "../plantillas/rotulo_A1_ERCO.pdf",
+  "plantilla": "../plantillas/rotulo_A1_ERCO_v2.pdf",
   "hoja": [0, 0, 841, 594],
   "marco": [12.7, 12.7, 828.3, 581.3],
   "zonas": {
@@ -16,11 +16,73 @@
     "cajetin": [672.4, 12.7, 828.3, 137.7]
   },
   "elementos_plantilla": [
-    {"nombre": "rosa_vientos", "rect_mm": [612.56, 51.55, 651.52, 90.50]},
-    {"nombre": "recuadro_capas", "rect_mm": [611.67, 25.48, 659.60, 34.84]}
+    {"nombre": "rosa_vientos", "rect_mm": [615.94, 25.21, 654.92, 64.21]}
   ],
   "grosores_mm": {
     "marco": 0.5,
     "guias": 0.13
+  },
+  "rotulo": {
+    "version": 1,
+    "fuente": {"archivo": "C:/Windows/Fonts/arial.ttf"},
+    "relleno_mm": 0.6,
+    "interlineado": 1.6,
+    "campos": {
+      "localizacion_escala": {"tipo": "texto", "rect_mm": [809.4, 447.6, 827.4, 454.8],
+                              "alinear": "izq", "altura_mm": 2.0, "por_defecto": "DEFINIR"},
+      "este": {"tipo": "texto", "rect_mm": [715.6, 425.1, 749.5, 434.0],
+               "alinear": "izq", "altura_mm": 2.0},
+      "norte": {"tipo": "texto", "rect_mm": [794.6, 425.1, 827.4, 434.0],
+                "alinear": "izq", "altura_mm": 2.0},
+      "revisiones": {
+        "tipo": "tabla", "altura_mm": 2.0, "columna_clave": "ver", "orden": ["0", "A", "B", "C"],
+        "filas": {
+          "0": {"y_mm": [131.5, 137.7]},
+          "C": {"y_mm": [125.2, 131.5]},
+          "B": {"y_mm": [118.8, 125.2]},
+          "A": {"y_mm": [112.5, 118.8]}
+        },
+        "columnas": {
+          "ver": {"x_mm": [672.4, 680.5], "alinear": "centro"},
+          "fecha": {"x_mm": [680.5, 699.7], "alinear": "centro"},
+          "descripcion": {"x_mm": [699.7, 771.0], "alinear": "izq"},
+          "dibujo": {"x_mm": [771.0, 782.5], "alinear": "centro"},
+          "diseno": {"x_mm": [782.5, 793.9], "alinear": "centro"},
+          "reviso": {"x_mm": [793.9, 816.8], "alinear": "centro"},
+          "aprobo": {"x_mm": [816.8, 828.2], "alinear": "centro"}
+        }
+      },
+      "disenador": {"tipo": "texto", "rect_mm": [673.2, 76.5, 714.7, 97.5],
+                    "alinear": "centro", "altura_mm": 2.0, "lineas_max": 3},
+      "revisor": {"tipo": "texto", "rect_mm": [789.5, 76.5, 827.4, 97.5],
+                  "alinear": "centro", "altura_mm": 2.0, "lineas_max": 3},
+      "titulo": {"tipo": "texto", "rect_mm": [673.2, 48.8, 827.4, 73.5],
+                 "alinear": "centro", "altura_mm": 2.5, "altura_min_mm": 2.0, "lineas_max": 3},
+      "firmas": {
+        "tipo": "tabla", "altura_mm": 2.0,
+        "filas": {
+          "dibujo": {"y_mm": [39.0, 43.5]},
+          "diseno": {"y_mm": [34.5, 39.0]},
+          "reviso": {"y_mm": [25.4, 34.5], "lineas_max": 2},
+          "aprobo": {"y_mm": [20.9, 25.4]}
+        },
+        "columnas": {
+          "nombre": {"x_mm": [685.9, 721.2], "alinear": "izq"},
+          "matricula": {"x_mm": [721.2, 757.6], "alinear": "centro"},
+          "firma": {"x_mm": [757.6, 775.8], "alinear": "centro"},
+          "fecha": {"x_mm": [775.8, 802.6], "alinear": "centro"}
+        }
+      },
+      "hoja": {"tipo": "texto", "rect_mm": [812.9, 38.3, 827.4, 43.6],
+               "alinear": "centro", "altura_mm": 2.0},
+      "de": {"tipo": "texto", "rect_mm": [809.4, 32.3, 827.4, 37.6],
+             "alinear": "centro", "altura_mm": 2.0},
+      "escala": {"tipo": "texto", "rect_mm": [803.4, 21.4, 827.4, 25.6],
+                 "alinear": "centro", "altura_mm": 2.0, "calculado": "escala_comun"},
+      "no_plano": {"tipo": "texto", "rect_mm": [690.9, 13.5, 807.0, 20.1],
+                   "alinear": "izq", "altura_mm": 2.5},
+      "rev": {"tipo": "texto", "rect_mm": [818.2, 13.5, 827.4, 20.1],
+              "alinear": "centro", "altura_mm": 2.5, "calculado": "ultima_revision"}
+    }
   }
 }

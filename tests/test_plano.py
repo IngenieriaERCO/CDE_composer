@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from componedor.plano import PlanoInvalido, leer_plano
+from componedor.plano import PlanoInvalido, RosaPlano, leer_plano
 
 
 def _escribir(carpeta, datos, nombre="plano.json"):
@@ -89,7 +89,7 @@ def test_detalles_invalidos(tmp_path, detalles, esperado):
 
 
 @pytest.mark.parametrize("cambio, esperado", [
-    ({"version": 2}, "- version: versión 2 no soportada; el componedor entiende la versión 1"),
+    ({"version": 3}, "- version: versión 3 no soportada; el componedor entiende las versiones 1 y 2"),
     ({"version": "1"}, "- version: se esperaba un número entero; tiene texto '1'"),
     ({"version": True}, "- version: se esperaba un número entero; tiene un booleano"),
     ({"formato": None}, "- formato: se esperaba una ruta (texto); tiene null"),
@@ -125,3 +125,58 @@ def test_json_mal_formado_no_objeto_e_inexistente(tmp_path):
         leer_plano(_escribir(tmp_path, "[1, 2]"))
     with pytest.raises(PlanoInvalido, match="No se encontró el plano"):
         leer_plano(tmp_path / "no_existe.json")
+
+
+# --- versión 2 (subfase 4.1): rótulo, rosa de los vientos y etiqueta_escala -------------------
+
+def test_version_2_completa(tmp_path):
+    datos = _base(version=2, rotulo={"titulo": "PLANTA", "hoja": 1},
+                  rosa_vientos={"visible": True, "posicion_mm": [600, 500.5]})
+    datos["detalles"][0]["etiqueta_escala"] = False
+    plano = leer_plano(_escribir(tmp_path, datos))
+    assert plano.version == 2
+    assert plano.rotulo == {"titulo": "PLANTA", "hoja": 1}  # el contenido lo valida componer
+    assert plano.rosa == RosaPlano(True, (600.0, 500.5))
+    assert [d.etiqueta_escala for d in plano.detalles] == [False, True]
+
+
+def test_version_2_todo_opcional(tmp_path):
+    plano = leer_plano(_escribir(tmp_path, _base(version=2)))
+    assert plano.rotulo is None and plano.rosa is None
+    assert leer_plano(_escribir(tmp_path, _base(version=2, rosa_vientos={}))).rosa == RosaPlano()
+    oculta = leer_plano(_escribir(tmp_path, _base(version=2, rosa_vientos={"visible": False})))
+    assert oculta.rosa == RosaPlano(False, None)
+
+
+def test_version_1_sigue_valida_y_no_admite_lo_nuevo(tmp_path):
+    plano = leer_plano(_escribir(tmp_path, _base()))
+    assert plano.version == 1 and plano.rotulo is None and plano.rosa is None
+    datos = _base(rotulo={}, rosa_vientos={})
+    datos["detalles"][0]["etiqueta_escala"] = False
+    mensaje = _error(tmp_path, datos)
+    assert "- rotulo: solo existe en la versión 2 del plano (use \"version\": 2)" in mensaje
+    assert "- rosa_vientos: solo existe en la versión 2 del plano" in mensaje
+    assert "- detalles[0].etiqueta_escala: solo existe en la versión 2 del plano" in mensaje
+
+
+@pytest.mark.parametrize("cambio, esperado", [
+    ({"rotulo": ["PLANTA"]}, "- rotulo: se esperaba un objeto {...} con los valores del rótulo; "
+                             "tiene una lista"),
+    ({"rosa_vientos": True}, "- rosa_vientos: se esperaba un objeto"),
+    ({"rosa_vientos": {"visble": False}}, "- rosa_vientos.visble: campo no reconocido (campos "
+                                          "válidos: posicion_mm, visible)"),
+    ({"rosa_vientos": {"visible": "no"}}, "- rosa_vientos.visible: se esperaba true o false; "
+                                          "tiene texto 'no'"),
+    ({"rosa_vientos": {"posicion_mm": [1]}}, "- rosa_vientos.posicion_mm: se esperaba [x, y]"),
+    ({"leyenda": "x"}, "- leyenda: campo no reconocido (campos válidos: detalles, formato, "
+                       "plantilla, rosa_vientos, rotulo, version)"),
+])
+def test_version_2_invalida(tmp_path, cambio, esperado):
+    assert esperado in _error(tmp_path, _base(version=2, **cambio))
+
+
+def test_etiqueta_escala_invalida(tmp_path):
+    datos = _base(version=2)
+    datos["detalles"][1]["etiqueta_escala"] = "no"
+    assert ("- detalles[1].etiqueta_escala: se esperaba true o false; tiene texto 'no'"
+            in _error(tmp_path, datos))

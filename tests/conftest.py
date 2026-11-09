@@ -16,15 +16,25 @@ from componedor.unidades import mm_a_pt, pt_a_mm
 RUTA_A1 = Path(__file__).parent.parent / "formatos" / "A1_ERCO.json"
 TEXTO_DETALLE = "DETALLE A"
 MARCO_A1 = (12.7, 12.7, 828.3, 581.3)
+ARIAL = Path("C:/Windows/Fonts/arial.ttf")  # la del formato A1 ERCO (subfase 4.1)
+requiere_arial = pytest.mark.skipif(not ARIAL.is_file(), reason="Arial no está instalada")
+
+
+def rotulo_a1(**cambios) -> dict:
+    """Sección "rotulo" de A1_ERCO.json (campos medidos del rótulo v2), con cambios."""
+    datos = json.loads(RUTA_A1.read_text(encoding="utf-8"))["rotulo"]
+    datos.update(cambios)
+    return datos
 
 
 def escribir_formato(destino: Path, plantilla: Path | None = None, **cambios) -> Path:
-    """Copia de A1_ERCO.json sin la plantilla real ni sus elementos medidos (rosa, recuadro
-    de capas: son del rótulo real); opcionalmente con otra plantilla. Para probar elementos,
-    páselos en `cambios` (elementos_plantilla=[...])."""
+    """Copia de A1_ERCO.json sin la plantilla real, sin sus elementos medidos (la rosa: es del
+    rótulo real) y sin los campos de texto del rótulo; opcionalmente con otra plantilla. Para
+    probar elementos o campos, páselos en `cambios` (elementos_plantilla=[...], rotulo={...})."""
     datos = json.loads(RUTA_A1.read_text(encoding="utf-8"))
     datos.pop("plantilla", None)
     datos.pop("elementos_plantilla", None)
+    datos.pop("rotulo", None)
     if plantilla is not None:
         datos["plantilla"] = str(plantilla)
     datos.update(cambios)
@@ -33,7 +43,8 @@ def escribir_formato(destino: Path, plantilla: Path | None = None, **cambios) ->
 
 
 def crear_plantilla_sintetica(ruta: Path, ancho_pt: float = 2384, alto_pt: float = 1684,
-                              rotacion: int = 0, marco_mm=MARCO_A1, elementos_mm=()) -> Path:
+                              rotacion: int = 0, marco_mm=MARCO_A1, elementos_mm=(),
+                              letra_en_elementos: str | None = None) -> Path:
     """Rótulo de prueba: marco, columna del rótulo y un "logo" (imagen RGB pequeña).
 
     Por defecto 2384 x 1684 pt (841,02 x 594,08 mm), como redondea AutoCAD el A1.
@@ -62,10 +73,15 @@ def crear_plantilla_sintetica(ruta: Path, ancho_pt: float = 2384, alto_pt: float
     page.insert_image(r(761.0, 79.4, 817.2, 96.7), pixmap=logo)
     # Elementos fijos dentro del área de dibujo (como la rosa de los vientos): un cuadro y
     # una cruz por dentro, para que sean varios trazos agrupados en uno.
+    # Con `letra_en_elementos` (p. ej. "N"), además una letra de texto dentro de cada uno,
+    # como las letras N S E W de la rosa real (solo para plantillas sin /Rotate).
     for xmin, ymin, xmax, ymax in elementos_mm:
         page.draw_rect(r(xmin, ymin, xmax, ymax), color=(0, 0, 0), width=0.5)
         page.draw_line(r(xmin, ymin, xmax, ymax).tl, r(xmin, ymin, xmax, ymax).br,
                        color=(0, 0, 0), width=0.3)
+        if letra_en_elementos:
+            page.insert_text(r(xmin + 5, ymin + 5, xmin + 10, ymin + 10).bl, letra_en_elementos,
+                             fontsize=10)
     doc.save(ruta)
     doc.close()
     return ruta

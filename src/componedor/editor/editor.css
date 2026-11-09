@@ -109,6 +109,12 @@ main { flex: 1; display: flex; min-height: 0; }
 .elemento-fijo { fill: rgba(249,115,22,.08); stroke: var(--fijo); stroke-width: 2; stroke-dasharray: 6 4; pointer-events: none; vector-effect: non-scaling-stroke; }
 .elemento-fijo.tapado { fill: rgba(220,38,38,.12); }
 .etiqueta-fijo { fill: var(--fijo); font-size: 9px; font-weight: 600; pointer-events: none; }
+.rosa { cursor: move; }
+.rosa .rosa-marco { fill: none; pointer-events: all; }
+.rosa .rosa-marco.tapado { fill: rgba(220,38,38,.12); }
+.rosa.sel .rosa-marco { stroke: var(--acento); stroke-width: 3; stroke-dasharray: none; }
+.propiedades .casilla { width: auto; color: var(--texto); display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.propiedades .casilla input { width: auto; }
 .detalle { cursor: move; }
 .detalle .pagina { fill: none; stroke: #64748b; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .detalle .dibujo { fill: none; stroke: #0ea5e9; stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
@@ -123,6 +129,7 @@ main { flex: 1; display: flex; min-height: 0; }
 #hoja.vista-limpia .zona-bloqueada,
 #hoja.vista-limpia .zona-activa,
 #hoja.vista-limpia .elemento-fijo,
+#hoja.vista-limpia .rosa .rosa-marco,
 #hoja.vista-limpia .etiqueta-fijo,
 #hoja.vista-limpia .detalle .pagina,
 #hoja.vista-limpia .detalle .dibujo,

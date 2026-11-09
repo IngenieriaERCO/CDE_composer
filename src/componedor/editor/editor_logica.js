@@ -27,6 +27,7 @@
 
   const EPS_MM = 1e-6; // igual que formato.EPS_MM: solo ruido numérico
   const ZONA_EDITABLE = "area_dibujo";
+  const ROSA = "rosa_vientos"; // igual que rosa.NOMBRE
 
   // ---------------------------------------------------------------------------------------
   // Coordenadas: papel (mm, Y arriba) <-> pantalla (px de la imagen de la hoja, Y abajo).
@@ -140,6 +141,36 @@
     );
   }
 
+  // ---------------------------------------------------------------------------------------
+  // Rosa de los vientos (subfase 4.1): se puede mover u ocultar. Mismas reglas que rosa.py.
+  // ---------------------------------------------------------------------------------------
+
+  /** [ancho, alto] de la rosa (su rectángulo original en la plantilla). */
+  function tamanoRosa(original) {
+    return [original[2] - original[0], original[3] - original[1]];
+  }
+
+  /** Rectángulo de la rosa con su esquina inferior izquierda en pos. Igual que rosa.rect_destino. */
+  function rectRosa(original, pos) {
+    const [ancho, alto] = tamanoRosa(original);
+    return [pos[0], pos[1], pos[0] + ancho, pos[1] + alto];
+  }
+
+  /**
+   * Los elementos fijos tal como quedan en la hoja (igual que rosa.elementos_visibles): la
+   * rosa en su rectángulo actual, o fuera de la lista si está oculta; los demás sin cambios y
+   * en el mismo orden. rosa: {visible, rect} o null (el formato no tiene rosa).
+   */
+  function elementosVisibles(elementos, rosa) {
+    if (!rosa) return elementos.slice();
+    const lista = [];
+    for (const el of elementos) {
+      if (el.nombre !== ROSA) lista.push(el);
+      else if (rosa.visible) lista.push({ nombre: ROSA, rect_mm: rosa.rect });
+    }
+    return lista;
+  }
+
   /** [ancho, alto] del traslape, o null si solo se tocan o no se cruzan (como componer). */
   function interseccion(a, b) {
     const ancho = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
@@ -219,7 +250,7 @@
   }
 
   // ---------------------------------------------------------------------------------------
-  // plano.json (versión 1, docs/formato_plano.md).
+  // plano.json (versiones 1 y 2, docs/formato_plano.md).
   // ---------------------------------------------------------------------------------------
 
   /** id, id_2, id_3… el primero que no esté en `usados`. */
@@ -237,22 +268,91 @@
 
   /**
    * Texto de plano.json (saltos de línea LF) para las colocaciones en orden de apilado:
-   * [{id, detalle (entrada del catálogo), pos: [x, y]}]. Siempre posicion_mm, redondeada a
-   * 0,01 mm hacia dentro del área de dibujo.
+   * [{id, detalle (entrada del catálogo), pos: [x, y], etiqueta_escala}]. Siempre
+   * posicion_mm, redondeada a 0,01 mm hacia dentro del área de dibujo.
+   *
+   * extra (opcional): {rosa: {visible, pos}, rotulo: {...}}. Si el formato tiene rosa, se
+   * guarda siempre su estado ("rosa_vientos"); el rótulo de un plano abierto se conserva tal
+   * cual (el editor no lo edita). Con alguna de esas claves, o con "etiqueta_escala": false
+   * en un detalle, el plano es versión 2; si no, versión 1.
    */
-  function serializarPlano(colocaciones, datos) {
+  function serializarPlano(colocaciones, datos, extra) {
+    extra = extra || {};
     const zona = zonaEditable(datos);
+    let v2 = false;
     const plano = {
       version: 1,
       formato: datos.formato,
       plantilla: null,
-      detalles: colocaciones.map((c) => ({
-        id: c.id,
-        manifiesto: c.detalle.manifiesto,
-        posicion_mm: redondearDentro(c.pos, c.detalle.tamano_pagina_mm, zona),
-      })),
+      detalles: colocaciones.map((c) => {
+        const d = {
+          id: c.id,
+          manifiesto: c.detalle.manifiesto,
+          posicion_mm: redondearDentro(c.pos, c.detalle.tamano_pagina_mm, zona),
+        };
+        if (c.etiqueta_escala === false) {
+          d.etiqueta_escala = false;
+          v2 = true;
+        }
+        return d;
+      }),
     };
+    if (datos.rosa_vientos && extra.rosa) {
+      plano.rosa_vientos = {
+        visible: extra.rosa.visible !== false,
+        posicion_mm: redondearDentro(extra.rosa.pos, tamanoRosa(datos.rosa_vientos.rect_mm), zona),
+      };
+      v2 = true;
+    }
+    if (extra.rotulo) {
+      plano.rotulo = extra.rotulo;
+      v2 = true;
+    }
+    if (v2) plano.version = 2;
     return JSON.stringify(plano, null, 2).replace(/\r\n/g, "\n") + "\n";
+  }
+
+  const esObjeto = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+
+  /**
+   * "rosa_vientos" de un plano versión 2 -> {visible, pos} (pos dentro del área de dibujo;
+   * si se salía, se acomoda y se avisa). Sin la clave: null (el editor la deja en su sitio).
+   */
+  function leerRosa(valor, datos, errores, avisos) {
+    if (valor === undefined) return null;
+    if (!datos.rosa_vientos) {
+      errores.push("rosa_vientos: el formato del editor no tiene rosa de los vientos.");
+      return null;
+    }
+    if (!esObjeto(valor)) {
+      errores.push("rosa_vientos: se esperaba un objeto {\"visible\": ..., \"posicion_mm\": [x, y]}.");
+      return null;
+    }
+    const desconocidas = Object.keys(valor).filter((k) => k !== "visible" && k !== "posicion_mm");
+    if (desconocidas.length) {
+      errores.push("rosa_vientos." + desconocidas[0] + ": campo no reconocido (campos válidos: posicion_mm, visible).");
+      return null;
+    }
+    if (valor.visible !== undefined && typeof valor.visible !== "boolean") {
+      errores.push("rosa_vientos.visible: se esperaba true o false.");
+      return null;
+    }
+    const original = datos.rosa_vientos.rect_mm;
+    let pos = [original[0], original[1]];
+    if (valor.posicion_mm !== undefined) {
+      const p = valor.posicion_mm;
+      if (!Array.isArray(p) || p.length !== 2 || !p.every((v) => typeof v === "number" && isFinite(v))) {
+        errores.push("rosa_vientos.posicion_mm: se esperaba [x, y] con 2 números en mm.");
+        return null;
+      }
+      pos = p.slice();
+    }
+    const ajustada = clampAZona(pos, tamanoRosa(original), zonaEditable(datos));
+    if (ajustada[0] !== pos[0] || ajustada[1] !== pos[1]) {
+      avisos.push("La rosa de los vientos se salía del área de dibujo: se movió a (" +
+        ajustada[0].toFixed(2) + ", " + ajustada[1].toFixed(2) + ") mm.");
+    }
+    return { visible: valor.visible !== false, pos: ajustada };
   }
 
   function normalizarRuta(ruta) {
@@ -261,24 +361,38 @@
 
   /**
    * Lee un plano.json contra el catálogo del editor. Devuelve
-   * {colocaciones, errores, avisos}: con errores no se carga nada; los avisos (p. ej. un
-   * detalle fuera del área que se ajustó) se cargan igual.
+   * {colocaciones, errores, avisos, rosa, rotulo}: con errores no se carga nada; los avisos
+   * (p. ej. un detalle fuera del área que se ajustó) se cargan igual. rosa: {visible, pos} o
+   * null (sin "rosa_vientos"); rotulo: el objeto "rotulo" tal cual, o null.
    */
   function leerPlano(texto, datos) {
     const errores = [];
     const avisos = [];
     let plano;
+    const vacio = (lista) => ({ colocaciones: [], errores: lista, avisos, rosa: null, rotulo: null });
     try {
       plano = JSON.parse(texto);
     } catch (e) {
-      return { colocaciones: [], errores: ["El archivo no es un JSON válido: " + e.message], avisos };
+      return vacio(["El archivo no es un JSON válido: " + e.message]);
     }
-    if (plano === null || typeof plano !== "object" || Array.isArray(plano)) {
-      return { colocaciones: [], errores: ["El plano debe ser un objeto JSON {...}."], avisos };
+    if (!esObjeto(plano)) {
+      return vacio(["El plano debe ser un objeto JSON {...}."]);
     }
-    if (plano.version !== 1) {
+    if (plano.version !== 1 && plano.version !== 2) {
       errores.push("version: versión " + JSON.stringify(plano.version) +
-        " no soportada; el editor entiende la versión 1.");
+        " no soportada; el editor entiende las versiones 1 y 2.");
+    }
+    const v2 = plano.version === 2;
+    for (const clave of ["rotulo", "rosa_vientos"]) {
+      if (!v2 && plano[clave] !== undefined) {
+        errores.push(clave + ": solo existe en la versión 2 del plano (use \"version\": 2).");
+      }
+    }
+    const rosa = v2 ? leerRosa(plano.rosa_vientos, datos, errores, avisos) : null;
+    let rotulo = null;
+    if (v2 && plano.rotulo !== undefined) {
+      if (esObjeto(plano.rotulo)) rotulo = plano.rotulo;
+      else errores.push("rotulo: se esperaba un objeto {...} con los valores del rótulo.");
     }
     if (plano.formato !== undefined && normalizarRuta(plano.formato) !== normalizarRuta(datos.formato)) {
       avisos.push("El plano usa el formato '" + plano.formato + "' y el editor '" +
@@ -286,7 +400,7 @@
     }
     if (!Array.isArray(plano.detalles) || plano.detalles.length === 0) {
       errores.push("detalles: se esperaba una lista con al menos un detalle.");
-      return { colocaciones: [], errores, avisos };
+      return vacio(errores);
     }
     const catalogo = new Map(datos.detalles.map((d) => [normalizarRuta(d.manifiesto), d]));
     const rechazados = new Map(datos.rechazados.map((r) => [normalizarRuta(r.manifiesto), r]));
@@ -333,19 +447,32 @@
         errores.push(donde + " ('" + item.id + "'): lleva posicion_mm [x, y] o centrar: true (uno de los dos).");
         return;
       }
+      if (item.etiqueta_escala !== undefined &&
+          (!v2 || typeof item.etiqueta_escala !== "boolean")) {
+        errores.push(donde + ".etiqueta_escala: " + (v2 ? "se esperaba true o false."
+          : "solo existe en la versión 2 del plano (use \"version\": 2)."));
+        return;
+      }
       const ajustada = clampAZona(pos, detalle.tamano_pagina_mm, zona);
       if (ajustada[0] !== pos[0] || ajustada[1] !== pos[1]) {
         avisos.push("'" + item.id + "' se salía del área de dibujo: se movió a (" +
           ajustada[0].toFixed(2) + ", " + ajustada[1].toFixed(2) + ") mm.");
       }
-      colocaciones.push({ id: item.id, detalle: detalle, pos: ajustada });
+      const colocacion = { id: item.id, detalle: detalle, pos: ajustada };
+      if (item.etiqueta_escala === false) colocacion.etiqueta_escala = false;
+      colocaciones.push(colocacion);
     });
-    return { colocaciones: errores.length ? [] : colocaciones, errores, avisos };
+    if (errores.length) return vacio(errores);
+    return { colocaciones, errores, avisos, rosa, rotulo };
   }
 
   return {
     EPS_MM,
     ZONA_EDITABLE,
+    ROSA,
+    tamanoRosa,
+    rectRosa,
+    elementosVisibles,
     escalaDeImagen,
     papelAPantalla,
     pantallaAPapel,

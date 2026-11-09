@@ -48,6 +48,27 @@ Vuelva a generar el editor cuando cambien los paquetes de la carpeta de entrada.
    python -m componedor.cli componer "C:\...\data\editor\plano.json" --salida "C:\...\data\editor\plano.pdf"
    ```
 
+## 2b. Rosa de los vientos: mover u ocultar
+
+La rosa de la plantilla se puede mover o quitar, como en el Layout se mueve un bloque:
+
+- **Arrastrarla** con el mouse, igual que un detalle (con el **Paso** de ajuste elegido).
+  Siempre queda **completa dentro del área de dibujo**: si la lleva afuera, se detiene en el
+  borde. Al hacer clic queda seleccionada (borde azul) y se mueve también con las **flechas**
+  (Shift: 10 pasos).
+- Panel **Rosa de los vientos** (a la derecha):
+  - casilla **Mostrar rosa de los vientos**: desmarcada, la rosa desaparece de la hoja, no
+    sale en el PDF, **no genera advertencias** y su zona queda libre;
+  - **X** e **Y**: esquina inferior izquierda del rectángulo de la rosa (38,98 × 39,00 mm), en
+    mm de papel;
+  - **Restaurar posición**: la vuelve a su lugar original (615,94; 25,21) y la muestra.
+- La rosa va **debajo** de los detalles (como en el PDF): donde un detalle la tapa, el clic
+  toma el detalle.
+- **Lo que se ve es lo que sale**: la imagen de fondo (`plantilla.png`) ya viene **sin** la
+  rosa; el editor la dibuja solo en su posición actual, y `componer` hace lo mismo en el PDF
+  (la quita de la plantilla y la vuelve a dibujar como vector donde usted la dejó).
+- Se guarda en el plano.json como `"rosa_vientos": {"visible": ..., "posicion_mm": [x, y]}`.
+
 ## 3. Qué se ve en la hoja
 
 | Elemento | Aspecto |
@@ -55,7 +76,8 @@ Vuelva a generar el editor cuando cambien los paquetes de la carpeta de entrada.
 | Hoja A1 completa | `plantilla.png` de fondo (rótulo incluido, sin detalles). |
 | Área de dibujo | Borde azul discontinuo: es la ÚNICA zona activa. |
 | Rótulo, localización, notas, convenciones, cajetín | Capa gris rayada: bloqueadas, no se puede colocar nada encima. Salen solo de los datos `zonas` (el editor no deduce nada del dibujo). |
-| Elementos fijos (rosa de los vientos, recuadro de capas) | Borde naranja discontinuo con su nombre «(fijo)». Se pueden tapar, pero se advierte; el borde se pone rojo si algo los tapa. |
+| Rosa de los vientos | Dibujada por el editor en su posición actual, con borde naranja discontinuo y el nombre «rosa_vientos (movible)». Se arrastra (ver sección 2b). El borde se pone rojo si un detalle la tapa. |
+| Otros elementos fijos (si el formato los declara) | Borde naranja discontinuo con su nombre «(fijo)». Se pueden tapar, pero se advierte; el borde se pone rojo si algo los tapa. |
 | Detalle | Su miniatura; borde gris = página; borde celeste discontinuo = dibujo real (`page_bounds_mm`). Seleccionado: borde azul grueso. Con advertencias: borde amarillo, naranja o rojo. |
 
 ### Con o sin fondo: el editor muestra lo que saldrá en el PDF
@@ -73,8 +95,10 @@ vean nítidas al acercar.
 
 El botón **Vista limpia** (o mantener pulsada la tecla **V**) oculta todo lo que es ayuda de
 edición: el rayado de las zonas bloqueadas, el borde del área de dibujo, los contornos de
-página y de dibujo, las etiquetas de los detalles, las marcas de los elementos fijos y la
-selección. Queda solo la plantilla con los detalles, como saldrá impreso.
+página y de dibujo, las etiquetas de los detalles, las marcas de los elementos fijos (también
+el borde de la rosa, no la rosa) y la selección. Queda solo la plantilla con los detalles y
+la rosa, como saldrá impreso (salvo los textos del rótulo y las etiquetas «ESC: 1:N», que
+el editor todavía no muestra: ver Limitaciones).
 
 - El **botón** es un interruptor: queda presionado hasta que lo vuelva a pulsar.
 - La **tecla V** es momentánea: vista limpia mientras la mantiene; al soltarla vuelve todo.
@@ -109,7 +133,8 @@ La barra superior muestra la posición del **cursor** sobre la hoja, en mm de pa
 | Acercar / alejar | Rueda del mouse (hacia el cursor) o botones **+** / **−**. |
 | Ver la hoja completa | **Ajustar**. |
 | Paso de ajuste | Selector **Paso**: 0,1 / 1 / 5 / 10 mm (al arrastrar y con las flechas). |
-| Mover el seleccionado | Flechas: un paso (↑ = +Y, hacia arriba del papel). Con **Shift**: 10 pasos. |
+| Mover el seleccionado (detalle o rosa) | Flechas: un paso (↑ = +Y, hacia arriba del papel). Con **Shift**: 10 pasos. |
+| Mostrar / ocultar la rosa | Casilla **Mostrar rosa de los vientos**. **Restaurar posición** la devuelve a su sitio. |
 | Quitar el seleccionado | **Supr**. |
 | Quitar la selección | Clic en el fondo. |
 | Guardar | **Ctrl+S** o **Guardar plano**. |
@@ -128,15 +153,23 @@ Dependen de si el detalle de **encima** (o el que toca un elemento fijo) tiene f
 | ADVERTENCIA FUERTE (naranja) | La PÁGINA de un detalle toca un elemento fijo (p. ej. la rosa). | Su fondo blanco lo tapa, aunque el dibujo no lo toca. | **No se avisa**. |
 | ADVERTENCIA MUY FUERTE (rojo) | El DIBUJO de un detalle se monta sobre un elemento fijo. | El dibujo y su fondo blanco tapan el elemento. | Sus líneas quedarán encima del elemento. |
 
+La rosa cuenta **en su posición actual**; oculta, no cuenta. `componer` usa la misma regla
+con la posición guardada en el plano.json.
+
 Si dos detalles se cruzan y solo uno tiene fondo, cuenta el de **encima**: un detalle con
 fondo que está debajo no tapa al de encima.
 
 ## 6. Guardar y abrir
 
-- **Guardar plano** escribe un `plano.json` versión 1 (ver [formato_plano.md](formato_plano.md)):
-  el formato, `plantilla: null` y los detalles en el orden de apilado con `id`, `manifiesto` y
+- **Guardar plano** escribe un `plano.json` (ver [formato_plano.md](formato_plano.md)): el
+  formato, `plantilla: null`, los detalles en el orden de apilado con `id`, `manifiesto` y
   `posicion_mm` redondeada a 0,01 mm (siempre hacia dentro del área de dibujo, para no salirse
-  por un redondeo). Texto con saltos de línea LF.
+  por un redondeo) y, si el formato tiene rosa, `rosa_vientos` (visible y posición, con el
+  mismo redondeo). Con la rosa (o con un `rotulo` o un `"etiqueta_escala": false` que venían
+  en el plano abierto) el plano es **versión 2**; si no, versión 1. Texto con saltos de
+  línea LF.
+- El editor **no edita el rótulo** (todavía): si abre un plano versión 2 con `rotulo`, lo
+  **conserva tal cual** al guardar. Lo mismo con `"etiqueta_escala": false` de cada detalle.
 - En Edge y Chrome aparece el diálogo de **Guardar como** (nombre sugerido `plano.json`). Si el
   navegador no lo ofrece o falla (permisos, archivo abierto desde el disco), el plano se
   **descarga** a la carpeta de descargas: **muévalo** a la carpeta de `editor.html` antes de
@@ -145,10 +178,11 @@ fondo que está debajo no tapa al de encima.
   (`formato`, `manifiesto`) son relativas a esa carpeta. La pantalla muestra la carpeta en la
   que se generó el editor; es un dato informativo (desde una página no se puede saber la
   ruta real del disco): si movió el editor, use la carpeta donde está ahora.
-- **Abrir plano.json** carga un plano guardado. Debe ser versión 1 y cada manifiesto debe
+- **Abrir plano.json** carga un plano guardado. Debe ser versión 1 o 2 y cada manifiesto debe
   estar en el catálogo del editor; si no, un mensaje explica qué falla y no se carga nada. Un
   detalle con `centrar: true` se coloca centrado (igual que `componer`); uno que se sale del
-  área de dibujo se acomoda dentro y se avisa.
+  área de dibujo se acomoda dentro y se avisa (lo mismo la rosa). Sin `rosa_vientos`, la rosa
+  queda visible y en su lugar original.
 - Si cierra o recarga la página con cambios sin guardar, el navegador pide confirmación.
 
 ## 7. Limitaciones
@@ -161,3 +195,5 @@ fondo que está debajo no tapa al de encima.
 - Las miniaturas son imágenes de baja resolución, solo para ubicar; la exactitud la da
   `componer` (verifica cada dibujo a ±0,1 mm).
 - Un detalle que no cabe en el área de dibujo no se puede colocar (reexpórtelo a otra escala).
+- Todavía no muestra ni edita los **textos del rótulo** ni las **etiquetas «ESC: 1:N»** de
+  los detalles (los escribe `componer`; una etiqueta que no cabe se avisa al componer).

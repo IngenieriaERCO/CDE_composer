@@ -27,10 +27,10 @@ papel (origen en la esquina inferior izquierda de la hoja, Y hacia arriba).
 | `paquetes` | Localiza los paquetes del exportador en una carpeta y dice si están completos; con `--verificar`, agrega integridad (bytes, SHA-256, que abra, una página) y coherencia (geometría del manifiesto contra el PDF, escala física garantizada). |
 | `verificar-paquete` | Muestra todas las comprobaciones de integridad y coherencia de un paquete y «RESULTADO: PASA / FALLA». |
 | `inventario` | Lista los detalles de una carpeta: aceptados o rechazados (con motivos), tamaños, si caben en la zona y escala sugerida. |
-| `componer` | Compone un plano con varios detalles a partir de un `plano.json` (ver [docs/formato_plano.md](docs/formato_plano.md)). |
-| `editor` | Genera `editor.html`, un editor visual de planos de un solo archivo (arrastrar detalles y guardar el plano.json). Ver [docs/editor.md](docs/editor.md). |
-| `preparar-editor` | Prepara `editor_datos.json`, `plantilla.png` y miniaturas para el editor de planos (ver [docs/formato_editor_datos.md](docs/formato_editor_datos.md)). |
-| `detectar-elementos` | Mide los elementos fijos de la plantilla dentro del área de dibujo (rosa, recuadro de capas) y genera un PDF de verificación. |
+| `componer` | Compone un plano con varios detalles a partir de un `plano.json`: detalles, textos del rótulo, etiquetas «ESC: 1:N» y rosa de los vientos (ver [docs/formato_plano.md](docs/formato_plano.md)). |
+| `editor` | Genera `editor.html`, un editor visual de planos de un solo archivo (arrastrar detalles y la rosa, y guardar el plano.json). Ver [docs/editor.md](docs/editor.md). |
+| `preparar-editor` | Prepara `editor_datos.json`, `plantilla.png`, `rosa.png` y miniaturas para el editor de planos (ver [docs/formato_editor_datos.md](docs/formato_editor_datos.md)). |
+| `detectar-elementos` | Mide los elementos fijos de la plantilla dentro del área de dibujo (la rosa de los vientos) y genera un PDF de verificación. |
 
 Ejemplos rápidos (uno por comando):
 
@@ -168,7 +168,14 @@ python -m componedor.cli componer data/planos/mi_plano.json --salida data/output
 Cada detalle pasa por el importador; si alguno se rechaza, no se genera el PDF. Cada
 página debe quedar dentro del área de dibujo (el rótulo es inamovible). Los traslapes entre
 detalles son advertencias. El PDF se verifica antes de entregarlo (posición de cada dibujo
-±0,1 mm, rótulo intacto, sin imágenes nuevas).
+±0,1 mm, rótulo intacto, sin imágenes nuevas, rosa y textos en su sitio ±0,1 mm).
+
+**Rótulo y rosa (plano.json versión 2)**: la sección `rotulo` del plano trae los textos
+(título, revisiones, firmas, No. PLANO, HOJA/DE, coordenadas…); ESCALA (`1:1.000` o
+`INDICADAS`) y REV. (la última letra de las revisiones) se calculan solos. Los textos se
+escriben en Arial embebida, centrados en su celda; si uno no cabe, error claro con el campo,
+el texto y las medidas (nunca se recorta). Cada detalle lleva su etiqueta «ESC: 1:N». La
+rosa de los vientos se puede mover u ocultar con `rosa_vientos`. La versión 1 sigue valiendo.
 
 ### Editor visual de planos (`editor`)
 
@@ -185,16 +192,19 @@ python -m componedor.cli componer data/editor/plano.json --salida data/editor/pl
 `editor.html` es un solo archivo (sin servidor, sin internet, sin librerías externas). Muestra
 en vivo las mismas advertencias que `componer`. Con los paquetes nuevos del exportador (sin
 fondo blanco) las miniaturas son transparentes y se ve lo mismo que saldrá en el PDF; la
-**Vista limpia** (botón o tecla V) oculta las ayudas de edición. Guía completa en [docs/editor.md](docs/editor.md).
+**Vista limpia** (botón o tecla V) oculta las ayudas de edición. La rosa de los vientos se
+arrastra como un detalle, se oculta con una casilla y se devuelve a su sitio con «Restaurar
+posición». El editor todavía no muestra los textos del rótulo (los escribe `componer`).
+Guía completa en [docs/editor.md](docs/editor.md).
 Si Node está instalado, `pytest` prueba también la lógica del editor (JavaScript).
 
 ### Elementos fijos de la plantilla y datos del editor
 
-El rótulo trae elementos dentro del área de dibujo (rosa de los vientos, recuadro «LAYERS
-AUTORIZADOS»). Se declaran en `elementos_plantilla` del formato (rectángulos en mm de
-papel, medidos con `detectar-elementos`, nunca inventados) y `componer` advierte si un
-detalle los tapa con su página (ADVERTENCIA FUERTE) o si su dibujo se monta encima
-(ADVERTENCIA MUY FUERTE). No es error.
+El rótulo v2 trae un elemento dentro del área de dibujo: la rosa de los vientos. Se declara
+en `elementos_plantilla` del formato (rectángulo en mm de papel, medido con
+`detectar-elementos`, nunca inventado) y `componer` advierte si un detalle la tapa con su
+página (ADVERTENCIA FUERTE) o si su dibujo se monta encima (ADVERTENCIA MUY FUERTE), con la
+rosa en su posición final. No es error.
 
 `preparar-editor` deja en una carpeta los datos y las imágenes que usará el editor HTML
 de planos: zonas (solo el área de dibujo es editable), elementos fijos, detalles aceptados
@@ -206,9 +216,17 @@ con miniatura y rechazados con sus motivos. Estructura en
 `formatos/A1_ERCO.json` define la hoja, el marco y las zonas (área de dibujo, rótulo,
 localización, notas, convenciones, cajetín) como `[xmin, ymin, xmax, ymax]` en mm, con
 origen en la esquina inferior izquierda de la hoja horizontal, además de los grosores de
-línea (marco 0,5 mm, guías 0,13 mm) y, opcionalmente, `"plantilla"`: ruta del PDF del
-rótulo, relativa a la carpeta del JSON (`"../plantillas/rotulo_A1_ERCO.pdf"`).
-Al cargarlo se valida la geometría y que la plantilla exista.
+línea (marco 0,5 mm, guías 0,13 mm) y, opcionalmente:
+
+- `"plantilla"`: ruta del PDF del rótulo, relativa a la carpeta del JSON
+  (`"../plantillas/rotulo_A1_ERCO_v2.pdf"`);
+- `"elementos_plantilla"`: elementos fijos medidos dentro del área de dibujo (la rosa);
+- `"rotulo"`: los campos de texto del rótulo (celda en mm, alineación, altura de texto,
+  líneas, valor por defecto o calculado) y la fuente (`C:/Windows/Fonts/arial.ttf`). Esquema
+  versionado y validado: campos desconocidos, celdas fuera del rótulo o traslapadas son error.
+
+Al cargarlo se valida la geometría y que la plantilla exista; la fuente se comprueba al
+componer.
 
 ## Pruebas
 

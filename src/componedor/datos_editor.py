@@ -3,7 +3,9 @@
 `preparar_editor` escribe en una carpeta:
   - editor_datos.json: hoja, zonas (solo `area_dibujo` editable), elementos fijos de la
     plantilla, detalles aceptados (con su miniatura) y rechazados (con sus motivos);
-  - plantilla.png: la hoja base con el rótulo, SIN detalles;
+  - plantilla.png: la hoja base con el rótulo, SIN detalles y SIN la rosa de los vientos
+    (subfase 4.1: la rosa se mueve, así que el editor la dibuja aparte);
+  - rosa.png: la rosa sola, transparente (si el formato tiene plantilla y declara la rosa);
   - miniaturas/<id>.png: una por detalle aceptado (transparente si el PDF no trae fondo de
     página; opaca si es un paquete antiguo con fondo blanco).
 Estructura: docs/formato_editor_datos.md.
@@ -21,18 +23,23 @@ from pathlib import Path
 import pymupdf
 
 from componedor.cad_a_papel import limites_dibujo_en_papel
-from componedor.composicion import hoja_base
+from componedor.composicion import hoja_base_con_rosa
 from componedor.comprobacion_dibujo import tiene_fondo_de_pagina
 from componedor.formato import Formato, cargar_formato
 from componedor.inventario import ACEPTADO, EntradaInventario, construir_inventario
+from componedor.rosa import NOMBRE as ROSA
+from componedor.rosa import documento_rosa_sola
+from componedor.transformaciones import rect_papel_a_pdf
 
 VERSION = 1
 ZONA_EDITABLE = "area_dibujo"
 ARCHIVO_DATOS = "editor_datos.json"
 ARCHIVO_PLANTILLA = "plantilla.png"
+ARCHIVO_ROSA = "rosa.png"
 CARPETA_MINIATURAS = "miniaturas"
 MAX_PX_HOJA = 1600
 MAX_PX_MINIATURA = 1400  # nítida al acercar en el editor
+MAX_PX_ROSA = 600
 
 
 def construir_datos_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
@@ -82,10 +89,21 @@ def construir_datos_editor(carpeta_paquetes: Path | str, ruta_formato: Path | st
                   for nombre, rect in formato.zonas.items()],
         "elementos_plantilla": [{"nombre": el.nombre, "rect_mm": list(el.rect)}
                                 for el in formato.elementos_plantilla],
+        # Subfase 4.1 (aditivo): la rosa se puede mover u ocultar. rect_mm es su sitio original
+        # en la plantilla; "imagen" solo si hay plantilla de donde sacarla.
+        "rosa_vientos": _datos_rosa(formato),
         "detalles": detalles,
         "rechazados": rechazados,
     }
     return datos, entradas
+
+
+def _datos_rosa(formato: Formato) -> dict | None:
+    elemento = formato.elemento(ROSA)
+    if elemento is None:
+        return None
+    imagen = {"archivo": ARCHIVO_ROSA} if formato.plantilla is not None else None
+    return {"nombre": ROSA, "rect_mm": list(elemento.rect), "imagen": imagen}
 
 
 def preparar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
@@ -115,6 +133,11 @@ def preparar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
 
     datos["imagen_plantilla"].update(
         _png_plantilla(formato, carpeta_salida / ARCHIVO_PLANTILLA, max_px_hoja))
+    vieja_rosa = carpeta_salida / ARCHIVO_ROSA
+    if vieja_rosa.exists():
+        vieja_rosa.unlink()
+    if datos["rosa_vientos"] is not None and datos["rosa_vientos"]["imagen"] is not None:
+        datos["rosa_vientos"]["imagen"].update(_png_rosa(formato, vieja_rosa, MAX_PX_ROSA))
     aceptadas = [e for e in entradas if e.estado == ACEPTADO]
     for detalle, entrada in zip(datos["detalles"], aceptadas):
         detalle["miniatura"].update(_png_detalle(
@@ -127,10 +150,25 @@ def preparar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
 
 
 def _png_plantilla(formato: Formato, ruta: Path, max_px: int) -> dict:
-    """La hoja base (rótulo, sin detalles) como PNG, con su lado mayor en `max_px`."""
-    doc, _ = hoja_base(formato)
+    """La hoja base (rótulo, sin detalles y sin la rosa: el editor la dibuja donde esté) como
+    PNG, con su lado mayor en `max_px`. Se quita igual que en `componer` (rosa.py)."""
+    doc, _, _ = hoja_base_con_rosa(formato, rosa=None)
     try:
         return _png(doc[0], ruta, max_px)
+    finally:
+        doc.close()
+
+
+def _png_rosa(formato: Formato, ruta: Path, max_px: int) -> dict:
+    """La rosa sola, transparente, recortada justo a su rectángulo (rect_mm)."""
+    doc = documento_rosa_sola(formato)
+    try:
+        page = doc[0]
+        recorte = rect_papel_a_pdf(formato.elemento(ROSA).rect, formato.alto_mm)
+        zoom = max_px / max(recorte.width, recorte.height)
+        pixmap = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), clip=recorte, alpha=True)
+        pixmap.save(ruta)
+        return {"ancho_px": pixmap.width, "alto_px": pixmap.height}
     finally:
         doc.close()
 

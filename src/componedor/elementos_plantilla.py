@@ -1,7 +1,7 @@
 """Detectar los elementos fijos de la plantilla que caen dentro del área de dibujo.
 
-La plantilla del rótulo trae cosas dentro de `area_dibujo` (p. ej. la rosa de los vientos y
-el recuadro «LAYERS AUTORIZADOS») que un detalle puede tapar con su fondo blanco. Aquí se
+La plantilla del rótulo trae cosas dentro de `area_dibujo` (en la v2, la rosa de los vientos;
+la v1 traía además el recuadro «LAYERS AUTORIZADOS») que un detalle puede tapar. Aquí se
 MIDEN (no se inventan): se coloca la plantilla en la hoja igual que en `componer`
 (`composicion.hoja_base`), se toman trazos, textos e imágenes cuyo rectángulo cae dentro
 del área de dibujo, sin el propio borde del área, y se agrupan por cercanía.

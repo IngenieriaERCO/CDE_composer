@@ -149,15 +149,17 @@ def _exigir_que_quepa(ocupado: RectMM, nombre_zona: str, zona: RectMM) -> None:
         raise DetalleInvalido(motivo)
 
 
-def motivo_fuera_de_zona(ocupado: RectMM, nombre_zona: str, zona: RectMM) -> str | None:
+def motivo_fuera_de_zona(ocupado: RectMM, nombre_zona: str, zona: RectMM,
+                         que: str = "El detalle") -> str | None:
     """Por qué el rectángulo `ocupado` (mm de papel) no cabe en la zona, o None si cabe.
 
-    Regla estricta (solo tolera ruido numérico, EPS_MM). La usan `colocar` y `componer`.
+    Regla estricta (solo tolera ruido numérico, EPS_MM). La usan `colocar` y `componer`
+    (también para la rosa de los vientos: `que="La rosa de los vientos"`).
     """
     ancho, alto = ocupado[2] - ocupado[0], ocupado[3] - ocupado[1]
     ancho_zona, alto_zona = zona[2] - zona[0], zona[3] - zona[1]
     descripcion = (
-        f"El detalle ({ancho:.1f} x {alto:.1f} mm) no cabe en la zona '{nombre_zona}' "
+        f"{que} ({ancho:.1f} x {alto:.1f} mm) no cabe en la zona '{nombre_zona}' "
         f"({ancho_zona:.1f} x {alto_zona:.1f} mm)"
     )
 

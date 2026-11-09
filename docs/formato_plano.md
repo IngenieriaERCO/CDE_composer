@@ -1,29 +1,55 @@
-# Formato de plano.json (versión 1)
+# Formato de plano.json (versiones 1 y 2)
 
-Un `plano.json` dice **qué detalles van en una hoja y dónde**. Lo lee el comando
+Un `plano.json` dice **qué detalles van en una hoja y dónde** y, desde la versión 2, **qué
+se escribe en el rótulo** y **dónde va la rosa de los vientos**. Lo lee el comando
 `componer`:
 
 ```powershell
 python -m componedor.cli componer data/planos/mi_plano.json --salida data/output/mi_plano.pdf [--sobrescribir] [--guias]
 ```
 
-En la subfase 3.3 lo escribirá un editor HTML (arrastrar y soltar), pero el componedor
+El editor HTML (`editor.html`) lo escribe arrastrando y soltando, pero el componedor
 **siempre** lo revalida todo: el editor nunca es la fuente de la verdad.
 
-## Ejemplo completo
+- **Versión 1**: solo detalles. Sigue siendo válida.
+- **Versión 2** (subfase 4.1): lo mismo más `rotulo`, `rosa_vientos` y, en cada detalle,
+  `etiqueta_escala`. Todo eso es opcional.
 
-Archivo `data/planos/dos_detalles.json`:
+## Ejemplo (versión 2)
+
+Archivo `data/planos/mi_plano.json`:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "formato": "../../formatos/A1_ERCO.json",
   "plantilla": null,
   "detalles": [
-    {"id": "perfil_arriba", "manifiesto": "../input/perfil_k0010.manifest.json", "posicion_mm": [30, 440]},
-    {"id": "perfil_abajo",  "manifiesto": "../input/perfil_k0010.manifest.json", "posicion_mm": [237, 40]},
-    {"id": "otro",          "manifiesto": "../input/otro.manifest.json", "centrar": true}
-  ]
+    {"id": "via_ma", "manifiesto": "../input/via_ma_5000.manifest.json", "posicion_mm": [30, 175]},
+    {"id": "perfil", "manifiesto": "../input/perfil_k0010.manifest.json", "posicion_mm": [30, 30]},
+    {"id": "otro",   "manifiesto": "../input/otro.manifest.json", "centrar": true, "etiqueta_escala": false}
+  ],
+  "rosa_vientos": {"visible": true, "posicion_mm": [610, 520]},
+  "rotulo": {
+    "localizacion_escala": "1:25.000",
+    "este": "4.876.543,21",
+    "norte": "2.012.345,67",
+    "revisiones": [
+      {"ver": "0", "fecha": "2026-11-06", "descripcion": "EMISIÓN PARA CONSTRUCCIÓN",
+       "dibujo": "LANP", "diseno": "LANP", "reviso": "A. GÓMEZ", "aprobo": "JP"},
+      {"ver": "A", "fecha": "2026-10-20", "descripcion": "EMISIÓN PARA REVISIÓN INTERNA"}
+    ],
+    "disenador": "INGENIERÍA DE DISEÑO S.A.S.",
+    "revisor": "INTERVENTORÍA LTDA.",
+    "titulo": "VÍA DE ACCESO PRINCIPAL MA: PLANTA GENERAL, PERFIL LONGITUDINAL Y SECCIONES TÍPICAS",
+    "firmas": {
+      "dibujo": {"nombre": "LUIS Á. NÚÑEZ P.", "matricula": "PRACTICANTE", "fecha": "2026-11-06"},
+      "reviso": {"nombre": ["ANDRÉS GÓMEZ", "(DIRECTOR TÉCNICO)"], "matricula": "25202-654321"}
+    },
+    "hoja": 1,
+    "de": 3,
+    "no_plano": "ERCO-PSF-CIV-PL-0001"
+  }
 }
 ```
 
@@ -31,7 +57,7 @@ Archivo `data/planos/dos_detalles.json`:
 
 | Campo | Tipo | Obligatorio | Significado |
 |---|---|---|---|
-| `version` | entero | sí | Versión del formato. Hoy solo `1`. |
+| `version` | entero | sí | `1` o `2`. |
 | `formato` | texto (ruta) | sí | Formato de hoja (p. ej. `A1_ERCO.json`). |
 | `plantilla` | texto (ruta) o `null` | no | PDF del rótulo. Si falta o es `null`, se usa la plantilla del formato. |
 | `detalles` | lista (al menos 1) | sí | Los detalles, **en orden de apilado**: el último queda encima. |
@@ -39,6 +65,9 @@ Archivo `data/planos/dos_detalles.json`:
 | `detalles[].manifiesto` | texto (ruta) | sí | `<prefijo>.manifest.json` del paquete del exportador. |
 | `detalles[].posicion_mm` | `[x, y]` (números) | uno de los dos | Esquina inferior izquierda de la **página** del detalle, en mm de papel. |
 | `detalles[].centrar` | `true` | uno de los dos | Centra la página del detalle en el área de dibujo. |
+| `detalles[].etiqueta_escala` | `true` / `false` | no (v2) | `false`: ese detalle no lleva la etiqueta «ESC: 1:N». Por defecto `true`. |
+| `rosa_vientos` | objeto | no (v2) | `{"visible": true/false, "posicion_mm": [x, y]}`, ambos opcionales (ver abajo). |
+| `rotulo` | objeto | no (v2) | Valores de los campos del rótulo (ver abajo). |
 
 Reglas:
 
@@ -50,7 +79,8 @@ Reglas:
   (`centrar: false` junto con `posicion_mm` es válido).
 - El mismo paquete puede ir varias veces (con `id` distintos); se verifica una sola vez.
 - **Campos desconocidos se rechazan** (un error de tipeo como `"centar"` no pasa en
-  silencio). Si hace falta un campo nuevo, se agrega al formato con una versión nueva.
+  silencio). `rotulo`, `rosa_vientos` y `etiqueta_escala` en un plano versión 1 son error
+  («solo existe en la versión 2 del plano»).
 - Todavía **no** se admiten anclas CAD en el plano.json (solo posición o centrado).
 
 Si el archivo no cumple, `componer` muestra **todos** los problemas juntos, uno por línea,
@@ -62,10 +92,102 @@ El plano 'plano.json' no es válido (2 problemas):
 - detalles[2]: falta posicion_mm [x, y] o centrar: true (uno de los dos)
 ```
 
+## Rosa de los vientos (`rosa_vientos`, versión 2)
+
+La rosa viene dibujada en la plantilla del rótulo (elemento `rosa_vientos` del formato, en
+X 615,94 a 654,92 e Y 25,21 a 64,21 mm). Se puede **ocultar** o **mover**:
+
+| Campo | Por defecto | Significado |
+|---|---|---|
+| `visible` | `true` | `false`: la rosa no sale en el plano. |
+| `posicion_mm` | su lugar original | Esquina inferior izquierda del **rectángulo de la rosa** (mm de papel, Y hacia arriba), como `posicion_mm` de un detalle. |
+
+- Sin `rosa_vientos` (o en un plano versión 1): visible y en su lugar.
+- La rosa movida debe quedar **completa dentro de `area_dibujo`**; si no, error con los mm
+  que se pasa. Mismo tamaño, sin rotación.
+- Las advertencias de «detalle sobre elemento» usan la **posición nueva**. Oculta: no avisa
+  y su zona queda libre.
+- Cómo lo hace `componer`: siempre la **quita** de la plantilla (redacción de PyMuPDF solo en
+  su rectángulo + 2 mm: se borran los trazos completamente contenidos y su texto; el marco y
+  lo demás no se tocan, y se comprueba que el resto de la plantilla quedó idéntico) y, si
+  es visible, la **vuelve a dibujar como vectores** copiándola de la plantilla original
+  (`show_pdf_page` con `clip`). En su lugar original el resultado es igual a la plantilla
+  sin tocar (misma geometría, ±0,1 mm).
+- Si el formato no declara `rosa_vientos`, poner `rosa_vientos` en el plano es error.
+
+## Rótulo (`rotulo`, versión 2)
+
+Qué se puede escribir y **dónde** (celdas en mm) lo define la sección `"rotulo"` del formato
+(`formatos/A1_ERCO.json`); el plano solo trae los **textos**. Todo es opcional: un campo que
+falta queda vacío, salvo su valor por defecto. `null` o `""` dejan la celda vacía.
+
+| Campo del plano | Tipo | Celda (A1 ERCO v2) |
+|---|---|---|
+| `localizacion_escala` | texto | ESC del recuadro de localización. Por defecto **`DEFINIR`**. |
+| `este`, `norte` | texto | Coordenadas de la localización. |
+| `titulo` | texto o lista de hasta 3 líneas | Título del plano (2,5 mm; se puede reducir hasta 2,0 mm). |
+| `disenador`, `revisor` | texto o lista de hasta 3 líneas | Celdas a la izquierda y a la derecha del logo. |
+| `revisiones` | lista de objetos | Tabla de revisiones (ver abajo). |
+| `firmas` | objeto por fila | Tabla DIBUJÓ / DISEÑÓ / REVISÓ / APROBÓ (ver abajo). |
+| `hoja`, `de` | texto o entero | HOJA __ DE __. |
+| `no_plano` | texto | No. PLANO. |
+| `escala` | **calculada** | No se escribe: es la escala de los detalles si todos tienen la misma (`1:1.000`), si no `INDICADAS`. |
+| `rev` | **calculada** | No se escribe: la letra de mayor orden con revisión llena (0 < A < B < C); sin revisiones, vacía. |
+
+**Revisiones**: cada revisión lleva su propia letra `"ver"` (`"0"`, `"A"`, `"B"` o `"C"`) y
+se escribe en **la fila de esa letra** (no por orden de llegada); la letra se imprime en la
+columna VER solo en las filas llenas. Columnas: `fecha`, `descripcion`, `dibujo`, `diseno`,
+`reviso`, `aprobo` (todas opcionales). Letras repetidas: error. Las columnas DIBUJÓ a APROBÓ
+son angostas (unos 10 mm útiles): use iniciales.
+
+**Firmas**: `{"dibujo"|"diseno"|"reviso"|"aprobo": {"nombre", "matricula", "firma", "fecha"}}`.
+`firma` es texto opcional (por defecto vacía). La fila REVISÓ admite 2 líneas en cada celda
+(`"nombre": ["ANDRÉS GÓMEZ", "(DIRECTOR TÉCNICO)"]`).
+
+**Escalas**: siempre con punto de miles: `1:50`, `1:1.000`, `1:10.000` (celda ESCALA y
+etiquetas «ESC: 1:N»).
+
+### Cómo se acomoda el texto
+
+- Fuente: **Arial** (ruta configurable en el formato, `rotulo.fuente.archivo`), **embebida**
+  en el PDF, con tildes y ñ. El texto queda como texto real: se puede buscar y copiar.
+- La altura es la de las **mayúsculas** (como la altura de texto de AutoCAD). El texto queda
+  centrado en alto en su celda y alineado a la izquierda, al centro o a la derecha según el
+  formato, con 0,6 mm de relleno contra los bordes.
+- Un texto largo en una celda de varias líneas se **parte por palabras**; una lista son
+  líneas explícitas (no se parten).
+- Si no cabe: solo donde el formato lo permite (`altura_min_mm`, hoy solo el título), se
+  reduce de 0,1 en 0,1 mm hasta la mínima, **con advertencia**. Si ni así cabe, **error**
+  con el campo, el texto y las medidas; nunca se recorta ni se reduce en silencio:
+
+```
+No se compone el plano. El rótulo tiene 1 problema:
+- campo 'no_plano': «ERCO-PSF-CIV-PL-0001-PLANTA-GENERAL-...» mide 138.5 mm y la celda permite 114.9 mm (altura 2.5 mm)
+```
+
+- `notas` y `convenciones` todavía no existen (subfase 4.2): ponerlos es «campo no
+  reconocido».
+
+## Etiqueta «ESC: 1:N» de cada detalle
+
+`componer` escribe junto a cada detalle su escala real (la del manifiesto), p. ej.
+`ESC: 1:1.000`, con mayúsculas de 2,5 mm:
+
+1. centrada **debajo del dibujo** del detalle (`page_bounds_mm`), a 3 mm de él;
+2. si ahí no cabe, centrada **encima**, a 3 mm.
+
+Un sitio sirve si la caja completa de la etiqueta (con el ascenso y el descenso de la fuente)
+queda dentro de `area_dibujo` y no se monta sobre el dibujo de otro detalle, la rosa
+(visible) ni otra etiqueta. Si no sirve ninguno, **no se dibuja** y se
+avisa con una advertencia (mueva el detalle o ponga `"etiqueta_escala": false`).
+
+Las etiquetas y los campos calculados se escriben siempre que el formato tenga la sección
+`"rotulo"`, también en un plano versión 1.
+
 ## Qué hace `componer` con el plano
 
 1. Lee y valida el plano.json.
-2. Carga el formato y crea la hoja con la plantilla (como `colocar`).
+2. Carga el formato y decide dónde va la rosa (o si va oculta).
 3. Cada detalle pasa por `importar_paquete` (la única puerta: completo, íntegro y
    coherente, con escala física garantizada). Si hay paquetes rechazados **no se genera
    el PDF**: se listan todos, con el `id` del detalle y los motivos.
@@ -73,18 +195,32 @@ El plano 'plano.json' no es válido (2 problemas):
    `area_dibujo`, con la misma regla estricta que `colocar`. Si no, error con el `id`, los
    mm que se pasa y la zona que invade. **El rótulo es inamovible**: no se permite poner
    detalles sobre él ni sobre otras zonas.
-5. **Traslapes entre detalles**: no son error, son advertencias:
-   - «Advertencia: las PÁGINAS de 'a' y 'b' se traslapan» (los dibujos no);
-   - «ADVERTENCIA FUERTE: los DIBUJOS de 'a' y 'b' se traslapan».
-
-   Mientras el exportador siga dejando un fondo blanco en cada detalle, el que está encima
-   tapa al de abajo en la zona del traslape.
-6. Inserta los detalles en orden, sin reescalar (ya vienen a escala 1:N) y como vector.
-7. Guarda en un archivo temporal y **verifica** el PDF: el dibujo de cada detalle está donde
+5. **Traslapes**: no son error, son advertencias (entre detalles, y de un detalle sobre un
+   elemento fijo como la rosa, en su posición final). Ver `docs/editor.md`, sección 5.
+6. **Rótulo y etiquetas**: valida los valores del rótulo, calcula ESCALA y REV., acomoda cada
+   texto en su celda y coloca las etiquetas «ESC: 1:N». Un texto que no cabe es error (no se
+   genera el PDF); una etiqueta que no cabe, advertencia.
+7. Crea la hoja con la plantilla, quita la rosa y la vuelve a dibujar donde corresponda,
+   inserta los detalles en orden (sin reescalar, como vector) y escribe los textos.
+8. Guarda en un archivo temporal y **verifica** el PDF: el dibujo de cada detalle está donde
    dice el plano (±0,1 mm, medido con `get_drawings()` sin el fondo blanco), el marco del
-   rótulo no se movió y no hay imágenes nuevas. Si todo pasa, lo renombra a la salida; si
-   algo falla, borra el temporal y no queda PDF.
-8. Imprime un resumen: cada detalle con su posición final, las advertencias y la ruta del PDF.
+   rótulo no se movió, no hay imágenes nuevas, la rosa quedó donde se pidió (sus trazos son
+   los originales trasladados, ±0,1 mm) y, para cada línea de texto (campos, tablas y
+   etiquetas «ESC: 1:N»), leyendo los caracteres del PDF con `get_text("rawdict")`:
+   - **posición**: su primer carácter está en la base esperada y el texto leído es el
+     escrito (±0,1 mm);
+   - **celda**: la caja que forman los bboxes de sus caracteres (ancho de avance y caja de
+     línea de la fuente: ascenso y descenso) queda dentro del rectángulo de su celda,
+     ±0,1 mm. En una etiqueta ESC la «celda» es la caja que se le reservó al colocarla. Si
+     se sale, error con el campo, el texto y cuántos mm se sale por cada lado, por ejemplo:
+
+     ```
+     - texto 'no_plano': «ERCO-PSF-CIV-PL-0001» se sale de su celda X 690.90 a 730.54, Y 13.50 a 20.10 0.30 mm por la derecha (medido en el PDF: X 691.50 a 730.84, Y 14.81 a 18.71; tolerancia ±0.1 mm)
+     ```
+
+   Si todo pasa, lo renombra a la salida; si algo falla, borra el temporal y no queda PDF.
+9. Imprime un resumen: cada detalle con su posición final, la rosa, ESCALA y REV., las
+   etiquetas, las advertencias y la ruta del PDF.
 
 Si el PDF de salida ya existe, `componer` no lo pisa salvo con `--sobrescribir`. `--guias`
 dibuja las zonas del formato como en `colocar`.
