@@ -143,8 +143,44 @@ columna VER solo en las filas llenas. Columnas: `fecha`, `descripcion`, `dibujo`
 son angostas (unos 10 mm útiles): use iniciales.
 
 **Firmas**: `{"dibujo"|"diseno"|"reviso"|"aprobo": {"nombre", "matricula", "firma", "fecha"}}`.
-`firma` es texto opcional (por defecto vacía). La fila REVISÓ admite 2 líneas en cada celda
+`firma` es texto opcional (por defecto vacía) **o una imagen**: `{"imagen": "<id>"}` (ver
+«Firma con imagen»). La fila REVISÓ admite 2 líneas en cada celda
 (`"nombre": ["ANDRÉS GÓMEZ", "(DIRECTOR TÉCNICO)"]`).
+
+### Firma con imagen (subfase 4.2d)
+
+```json
+"firmas": {
+  "dibujo": {"nombre": "LUIS Á. NÚÑEZ P.", "firma": {"imagen": "lanp"}},
+  "diseno": {"nombre": "MARÍA JOSÉ OCAÑA", "firma": "MJO"}
+}
+```
+
+- `"imagen": "lanp"` busca **`lanp.png`** en las carpetas de `rotulo.carpeta_firmas` del
+  formato (A1 ERCO: `firmas/` y `data/firmas/`, las dos **fuera de git**). El id lleva solo
+  letras, números, `_` o `-`. Si el mismo id está en dos carpetas, error.
+- Solo la columna **FIRMA** la acepta (`"acepta_imagen": true` en el formato); en cualquier
+  otra celda es error. El plano.json sigue en versión 2.
+- **El archivo**: PNG de hasta **600 × 200 px** y **100 KB**. Sin canal alfa (transparencia) se
+  usa, pero con **advertencia**: su fondo blanco tapa las líneas de la celda.
+- **Colocación**: proporcional y centrada en la celda (menos 0,6 mm de relleno: unos 17,0 ×
+  3,3 mm en DIBUJÓ, DISEÑÓ y APROBÓ y 17,0 × 7,9 mm en REVISÓ), y **nunca más grande que su
+  tamaño a 300 ppp** (una imagen chica queda chica, nunca pixelada). Se inserta con su
+  **máscara de transparencia** (SMask), no con fondo blanco; comprimida sin pérdida.
+- **Errores juntos**: firma inexistente (dice en qué carpetas se buscó), repetida en dos
+  carpetas, no es PNG, más de 600 × 200 px o de 100 KB, id inválido, campo desconocido, celda
+  que no acepta imagen.
+- **Verificación en el PDF**: la hoja tiene **exactamente** las imágenes de la plantilla (el
+  logo) **más una por firma**; los detalles siguen sin poder traer imágenes. Cada firma: su
+  caja igual a la esperada y dentro de la celda (±0,1 mm), con máscara de transparencia, y
+  es la del archivo leído (la máscara es byte a byte el canal alfa del PNG; sin alfa, se
+  comparan los píxeles; el resumen informa el SHA-256 si falla).
+
+**Privacidad**: una firma en imagen es un dato personal y se puede copiar desde cualquier
+archivo donde esté. Por eso: las imágenes van **fuera de git** (`firmas/*.png` y `data/` en
+`.gitignore`), **no se incrustan en editor.html**, el plano.json solo guarda el id (no la
+imagen) y conviene ponerlas **solo en los PDF emitidos** (no en borradores), con la
+autorización de cada persona.
 
 **Escalas**: siempre con punto de miles: `1:50`, `1:1.000`, `1:10.000` (celda ESCALA y
 etiquetas «ESC: 1:N»).
@@ -313,7 +349,8 @@ Las etiquetas y los campos calculados se escriben siempre que el formato tenga l
    inserta los detalles en orden (sin reescalar, como vector) y escribe los textos.
 8. Guarda en un archivo temporal y **verifica** el PDF: el dibujo de cada detalle está donde
    dice el plano (±0,1 mm, medido con `get_drawings()` sin el fondo blanco), el marco del
-   rótulo no se movió, no hay imágenes nuevas, la rosa quedó donde se pidió (sus trazos son
+   rótulo no se movió, no hay más imágenes que las de la plantilla y una por cada firma en
+   imagen (cada firma en su celda, con su máscara y la del archivo), la rosa quedó donde se pidió (sus trazos son
    los originales trasladados, ±0,1 mm) y, para cada línea de texto (campos, tablas y
    etiquetas «ESC: 1:N»), leyendo los caracteres del PDF con `get_text("rawdict")`:
    - **posición**: su primer carácter está en la base esperada y el texto leído es el

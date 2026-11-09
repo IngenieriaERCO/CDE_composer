@@ -356,8 +356,10 @@ def texto_composicion(plano_ruta: Path, r: ResultadoComposicion) -> str:
         lineas += [f"  - {a}" for a in r.advertencias]
     else:
         lineas += ["", "Advertencias: ninguna (sin traslapes entre detalles)."]
+    imagenes = (f"no hay más imágenes que las de la plantilla y las {len(r.firmas)} firma(s)"
+                if r.firmas else "no hay imágenes nuevas")
     verificado = ("el dibujo de cada detalle está donde dice el plano (±0,1 mm), el marco del "
-                  "rótulo no se movió y no hay imágenes nuevas")
+                  f"rótulo no se movió y {imagenes}")
     if r.rosa is not None:
         verificado += "; la rosa quedó donde se pidió (±0,1 mm)"
     if r.rotulo or r.etiquetas:
@@ -365,6 +367,9 @@ def texto_composicion(plano_ruta: Path, r: ResultadoComposicion) -> str:
     if r.simbolos:
         verificado += ("; cada símbolo de convenciones tiene sus trazos y está donde debía en su "
                        "casilla (±0,1 mm)")
+    if r.firmas:
+        verificado += ("; cada firma en imagen está en su celda (±0,1 mm), con su máscara de "
+                       "transparencia y es la del archivo leído")
     lineas += ["", f"Verificación: {verificado}.", f"PDF: {r.ruta_pdf}"]
     return "\n".join(lineas)
 
@@ -397,6 +402,10 @@ def texto_rosa_y_rotulo(r: ResultadoComposicion) -> list[str]:
         lineas.append(f"Convenciones: {len(r.simbolos)} símbolo(s): "
                       f"{len(r.simbolos) - len(reducidos)} a escala 1:1, {len(reducidos)} "
                       f"reducido(s){detalle}.")
+    if r.firmas:
+        lineas.append(f"Firmas en imagen: {len(r.firmas)} ("
+                      + ", ".join(f"{f.ruta_celda}: {f.id} al {f.escala * 100:.0f} % de su tamaño "
+                                  f"a 300 ppp" for f in r.firmas) + ").")
     if r.rotulo or r.etiquetas:
         ids = ", ".join(r.etiquetas) if r.etiquetas else "ninguno"
         lineas.append(f"Etiquetas \"ESC: 1:N\": {len(r.etiquetas)} ({ids}).")

@@ -54,6 +54,7 @@ from componedor.comprobacion_dibujo import (
 )
 from componedor.etiquetas_escala import DetalleParaEtiqueta, colocar_etiquetas
 from componedor.formato import EPS_MM, ElementoPlantilla, Formato, RectMM, cargar_formato
+from componedor.firmas import FirmaPedida, insertar_firmas, verificar_firmas
 from componedor.fuente import Fuente, FuenteInvalida, cargar_fuente
 from componedor.importador import PaqueteAceptado, PaqueteRechazado, importar_paquete
 from componedor.maquetacion import TextoMaquetado
@@ -108,6 +109,7 @@ class ResultadoComposicion:
     etiquetas: list[str] = field(default_factory=list)  # ids de detalles con etiqueta ESC
     notas: NotasMaquetadas | None = None  # cuántas notas, líneas y a qué altura (4.2a)
     simbolos: list[ColocacionSimbolo] = field(default_factory=list)  # convenciones (4.2b)
+    firmas: list[FirmaPedida] = field(default_factory=list)  # firmas en imagen (4.2d)
 
 
 @dataclass
@@ -119,6 +121,7 @@ class _Textos:
     notas: NotasMaquetadas | None = None
     simbolos: list[ColocacionSimbolo] = field(default_factory=list)
     biblioteca: Biblioteca | None = None
+    firmas: list[FirmaPedida] = field(default_factory=list)
 
 
 def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
@@ -150,6 +153,7 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
     resultado.etiquetas = [t.ruta.split(".", 1)[1] for t in textos.etiquetas]
     resultado.notas = textos.notas
     resultado.simbolos = textos.simbolos
+    resultado.firmas = textos.firmas
     return resultado
 
 
@@ -310,7 +314,7 @@ def _textos(plano: Plano, formato: Formato, colocados: list[tuple],
          for detalle, _, _, c in colocados],
         formato.zonas[ZONA], [(e.nombre, e.rect) for e in elementos], fuente)
     return (_Textos(fuente, rotulo.textos, etiquetas, rotulo.notas, rotulo.simbolos,
-                    rotulo.biblioteca), rotulo.valores,
+                    rotulo.biblioteca, rotulo.firmas), rotulo.valores,
             rotulo.advertencias + avisos)
 
 
@@ -351,13 +355,16 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
                 insertar_pagina(base, formato, doc_detalle, 0, colocado.ocupado[:2])
             todos = textos.rotulo + textos.etiquetas
             escribir_textos(base, todos, textos.fuente, formato.alto_mm)
-            doc.save(temporal)
+            insertar_firmas(base, textos.firmas, formato.alto_mm)  # PNG con máscara (SMask)
+            # deflate_images: las firmas (insert_image) quedarían sin comprimir (~300 KB cada
+            # una); se comprimen sin pérdida. Trazos y fuentes no se tocan.
+            doc.save(temporal, deflate_images=True)
         finally:
             doc.close()
 
         problemas = _verificar(temporal, formato, informe, [c for *_, c in colocados],
                                trazos_base, trazos_por_detalle, imagenes_base, todos,
-                               textos.notas, textos.simbolos)
+                               textos.notas, textos.simbolos, textos.firmas)
         if problemas:
             raise PlanoNoComponible(
                 "La verificación del PDF compuesto falló; no se generó el plano:\n"
@@ -374,7 +381,8 @@ def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
                trazos_por_detalle: list[int], imagenes_base: int,
                textos: list[TextoMaquetado] = (),
                notas: NotasMaquetadas | None = None,
-               simbolos: list[ColocacionSimbolo] = ()) -> list[str]:
+               simbolos: list[ColocacionSimbolo] = (),
+               firmas: list[FirmaPedida] = ()) -> list[str]:
     """Mide el PDF guardado. Devuelve la lista de problemas (vacía si todo está bien)."""
     with pymupdf.open(ruta) as final:
         page = final[0]
@@ -382,6 +390,7 @@ def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
         if notas is not None:
             textos_mal += verificar_notas(page, notas, formato.alto_mm)
         textos_mal += verificar_simbolos(page, list(simbolos), formato.alto_mm)
+        textos_mal += verificar_firmas(page, list(firmas), formato.alto_mm)
         trazos = page.get_drawings()
         esperados = trazos_base + sum(trazos_por_detalle)
         if len(trazos) != esperados:
@@ -417,10 +426,15 @@ def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
         if marco is None or max(abs(d) for d in marco[1]) > tolerancia:
             problemas.append(f"el marco del rótulo no está en {_rect(formato.marco)} "
                              f"(±{tolerancia} mm): el rótulo no debe moverse")
+        # Exactamente las imágenes de la hoja base (el logo) más una por firma pedida: los
+        # detalles nunca pueden traer imágenes nuevas (no se rasteriza nada).
         imagenes = len(page.get_image_info())
-        if imagenes != imagenes_base:
-            problemas.append(f"la hoja tiene {imagenes} imágenes y la hoja base tenía "
-                             f"{imagenes_base}: no se debe rasterizar ningún detalle")
+        esperadas = imagenes_base + len(firmas)
+        if imagenes != esperadas:
+            firmas_txt = f" + {len(firmas)} firma(s)" if firmas else ""
+            problemas.append(f"la hoja tiene {imagenes} imágenes y debía tener {esperadas} (hoja "
+                             f"base {imagenes_base}{firmas_txt}): no se debe rasterizar ningún "
+                             f"detalle")
         problemas += textos_mal
     return problemas
 

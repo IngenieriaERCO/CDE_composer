@@ -177,7 +177,8 @@ detalles son advertencias. El PDF se verifica antes de entregarlo (posición de 
 con una nota por línea y viñetas con «- », más notas adicionales; numeradas solas, con
 sangría francesa) y las
 **convenciones** (símbolos copiados como vector de la biblioteca `simbolos/`, que se arma una
-vez con `extraer-simbolos`, más su descripción); ESCALA (`1:1.000` o
+vez con `extraer-simbolos`, más su descripción) y, en la celda FIRMA, texto o una **imagen**
+(`{"imagen": "<id>"}` → `firmas/<id>.png`, fuera de git, con transparencia); ESCALA (`1:1.000` o
 `INDICADAS`) y REV. (la última letra de las revisiones) se calculan solos. Los textos se
 escriben en Arial embebida, centrados en su celda; si uno no cabe, error claro con el campo,
 el texto y las medidas (nunca se recorta). Cada detalle lleva su etiqueta «ESC: 1:N». La

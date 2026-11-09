@@ -20,6 +20,7 @@ problemas juntos.
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from componedor.firmas import FirmaPedida, pedir_firma
 from componedor.fuente import Fuente
 from componedor.maquetacion import TextoMaquetado, TextoNoCabe, maquetar
 from componedor.notas import SIGNO_VINETA, NotasMaquetadas, leer_notas, maquetar_notas
@@ -60,6 +61,7 @@ class RotuloPreparado:
     notas: NotasMaquetadas | None = None  # para verificar_notas y el resumen
     simbolos: list[ColocacionSimbolo] = field(default_factory=list)  # convenciones (4.2b)
     biblioteca: Biblioteca | None = None
+    firmas: list[FirmaPedida] = field(default_factory=list)  # firmas en imagen (4.2d)
 
 
 def preparar_rotulo(definicion: DefinicionRotulo, valores: dict | None,
@@ -85,9 +87,16 @@ def preparar_rotulo(definicion: DefinicionRotulo, valores: dict | None,
                                                  problemas, advertencias, contenidos)
 
     letras: list[str] = []
+    imagenes: list[tuple] = []  # (celda, {"imagen": id}, sitio)
     for campo in definicion.campos.values():
         if isinstance(campo, CampoTabla):
-            contenidos += _tabla(campo, valores.get(campo.nombre), problemas, letras)
+            contenidos += _tabla(campo, valores.get(campo.nombre), problemas, letras, imagenes)
+    firmas = []
+    for celda, valor, sitio in imagenes:
+        firma = pedir_firma(valor, celda, sitio, definicion.carpetas_firmas,
+                            definicion.relleno_mm, problemas, advertencias)
+        if firma is not None:
+            firmas.append(firma)
 
     finales: dict[str, str] = {}
     for campo in definicion.campos.values():
@@ -136,7 +145,7 @@ def preparar_rotulo(definicion: DefinicionRotulo, valores: dict | None,
         finales["notas"] = f"{len(notas.textos)} nota(s)"
     if simbolos:
         finales["convenciones"] = f"{len(simbolos)} convención(es)"
-    return RotuloPreparado(textos, advertencias, finales, notas, simbolos, biblioteca)
+    return RotuloPreparado(textos, advertencias, finales, notas, simbolos, biblioteca, firmas)
 
 
 def _convenciones(campo: CampoConvenciones, valor, definicion: DefinicionRotulo,
@@ -284,7 +293,8 @@ def _contenido(valor, donde: str, lineas_max: int, problemas: list[str]) -> str 
     return None
 
 
-def _tabla(campo: CampoTabla, valor, problemas: list[str], letras: list[str]) -> list[tuple]:
+def _tabla(campo: CampoTabla, valor, problemas: list[str], letras: list[str],
+           imagenes: list | None = None) -> list[tuple]:
     """(celda, contenido) de cada celda llena de la tabla. Anota las letras usadas."""
     donde = f"rotulo.{campo.nombre}"
     if valor is None:
@@ -345,8 +355,11 @@ def _tabla(campo: CampoTabla, valor, problemas: list[str], letras: list[str]) ->
             if columna not in item:
                 continue
             celda = campo.celdas[(fila, columna)]
-            contenido = _contenido(item[columna], f"{item['__sitio']}.{columna}",
-                                   celda.lineas_max, problemas)
+            sitio = f"{item['__sitio']}.{columna}"
+            if isinstance(item[columna], dict) and imagenes is not None:
+                imagenes.append((celda, item[columna], sitio))  # firma en imagen (4.2d)
+                continue
+            contenido = _contenido(item[columna], sitio, celda.lineas_max, problemas)
             if contenido is not None:
                 contenidos.append((celda, contenido))
     return contenidos

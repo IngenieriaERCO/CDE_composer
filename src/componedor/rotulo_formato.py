@@ -36,6 +36,9 @@ formato (todo en mm de papel, Y hacia arriba). Esquema (versión 1):
        "altura_mm": 1.8, "altura_min_mm": 1.5, "lineas_max": 2,
        "biblioteca": "../simbolos/indice.json"}
   Se llena por columna: la pareja izquierda de arriba abajo y luego la derecha.
+- Firmas en imagen (subfase 4.2d, aditivo): en una columna de tabla, "acepta_imagen": true
+  deja poner {"imagen": "<id>"} en vez de texto; la imagen es <carpeta>/<id>.png, con
+  "carpeta_firmas": "../firmas" (o una lista de carpetas) en la sección "rotulo".
 
 Campos desconocidos se rechazan. Todos los problemas se juntan en un solo error.
 """
@@ -53,7 +56,7 @@ ALINEACIONES = ("izq", "centro", "der")
 CALCULADOS = ("escala_comun", "ultima_revision")
 TABLA_REVISIONES = "revisiones"  # la que usa "ultima_revision"
 
-CLAVES_ROTULO = {"version", "fuente", "relleno_mm", "interlineado", "campos"}
+CLAVES_ROTULO = {"version", "fuente", "relleno_mm", "interlineado", "campos", "carpeta_firmas"}
 CLAVES_TEXTO = {"tipo", "rect_mm", "alinear", "altura_mm", "altura_min_mm", "lineas_max",
                 "por_defecto", "calculado"}
 CLAVES_TABLA = {"tipo", "altura_mm", "altura_min_mm", "filas", "columnas", "columna_clave",
@@ -63,7 +66,7 @@ CLAVES_CONVENCIONES = {"tipo", "filas_y_mm", "columnas_x_mm", "altura_mm", "altu
                        "lineas_max", "biblioteca"}
 CLAVES_FILA = {"y_mm", "lineas_max"}
 SEPARACION_NOTAS_POR_DEFECTO = 0.5
-CLAVES_COLUMNA = {"x_mm", "alinear"}
+CLAVES_COLUMNA = {"x_mm", "alinear", "acepta_imagen"}
 RELLENO_POR_DEFECTO = 0.6
 INTERLINEADO_POR_DEFECTO = 1.6
 
@@ -80,6 +83,7 @@ class Celda:
     altura_mm: float
     altura_min_mm: float
     lineas_max: int
+    acepta_imagen: bool = False  # la celda admite {"imagen": id} (firma, subfase 4.2d)
 
 
 @dataclass(frozen=True)
@@ -126,6 +130,7 @@ class DefinicionRotulo:
     relleno_mm: float
     interlineado: float
     campos: dict[str, CampoTexto | CampoTabla | CampoNotas | CampoConvenciones]
+    carpetas_firmas: tuple[Path, ...] = ()  # dónde se buscan las firmas en imagen (rutas resueltas)
 
     def celdas(self) -> list[Celda]:
         """Todas las celdas, en el orden del formato."""
@@ -175,13 +180,37 @@ def leer_definicion_rotulo(datos, zona_rotulo: RectMM, base: Path | None = None)
     if relleno is not None:
         _revisar_celdas(campos, zona_rotulo, relleno, errores)
     _revisar_calculados(campos, errores)
+    carpetas = _carpetas_firmas(datos.get("carpeta_firmas"), base, errores)
+    if not carpetas and "carpeta_firmas" not in datos and any(
+            c.acepta_imagen for campo in campos.values() for c in _celdas(campo)):
+        errores.append("rotulo.carpeta_firmas: hay celdas que aceptan imagen (\"acepta_imagen\": "
+                       "true) y falta la carpeta donde buscar las firmas")
 
     if errores:
         n = len(errores)
         raise RotuloFormatoInvalido(
             f"La sección 'rotulo' del formato no es válida ({n} "
             f"{'problema' if n == 1 else 'problemas'}):\n" + "\n".join(f"- {e}" for e in errores))
-    return DefinicionRotulo(version, fuente, relleno, interlineado, campos)
+    return DefinicionRotulo(version, fuente, relleno, interlineado, campos, carpetas)
+
+
+def _carpetas_firmas(valor, base: Path | None, errores: list[str]) -> tuple[Path, ...]:
+    """"carpeta_firmas": una ruta o una lista de rutas (relativas a la carpeta del formato)."""
+    if valor is None:
+        return ()
+    lista = [valor] if isinstance(valor, str) else valor
+    if (not isinstance(lista, list) or not lista
+            or not all(isinstance(v, str) and v.strip() for v in lista)):
+        errores.append(f"rotulo.carpeta_firmas: se esperaba una ruta o una lista de rutas; tiene "
+                       f"{valor!r}")
+        return ()
+    rutas = []
+    for v in lista:
+        ruta = Path(v)
+        if not ruta.is_absolute() and base is not None:
+            ruta = Path(os.path.normpath(base / ruta))
+        rutas.append(ruta)
+    return tuple(rutas)
 
 
 # --- partes ------------------------------------------------------------------------------
@@ -310,7 +339,7 @@ def _campo_tabla(nombre: str, valor: dict, donde: str, errores: list[str]) -> Ca
         if y is not None and lineas is not None:
             filas[fila] = (y, lineas)
 
-    columnas: dict[str, tuple[tuple[float, float], str]] = {}
+    columnas: dict[str, tuple[tuple[float, float], str, bool]] = {}
     for columna, item in _objeto(valor.get("columnas"), f"{donde}.columnas", errores).items():
         sitio = f"{donde}.columnas.{columna}"
         if not isinstance(item, dict):
@@ -320,8 +349,11 @@ def _campo_tabla(nombre: str, valor: dict, donde: str, errores: list[str]) -> Ca
         _desconocidas(item, CLAVES_COLUMNA, sitio, errores)
         x = _intervalo(item.get("x_mm"), f"{sitio}.x_mm", errores)
         alinear = _alinear(item.get("alinear"), f"{sitio}.alinear", errores)
+        imagen = item.get("acepta_imagen", False)
+        if not isinstance(imagen, bool):
+            errores.append(f"{sitio}.acepta_imagen: se esperaba true o false; tiene {imagen!r}")
         if x is not None and alinear is not None:
-            columnas[columna] = (x, alinear)
+            columnas[columna] = (x, alinear, imagen is True)
 
     clave = valor.get("columna_clave")
     orden = valor.get("orden")
@@ -340,9 +372,9 @@ def _campo_tabla(nombre: str, valor: dict, donde: str, errores: list[str]) -> Ca
 
     celdas = {}
     for fila, ((y0, y1), lineas) in filas.items():
-        for columna, ((x0, x1), alinear) in columnas.items():
+        for columna, ((x0, x1), alinear, imagen) in columnas.items():
             celdas[(fila, columna)] = Celda(f"{nombre}.{fila}.{columna}", (x0, y0, x1, y1),
-                                            alinear, altura, minima, lineas)
+                                            alinear, altura, minima, lineas, imagen)
     return CampoTabla(nombre, tuple(filas), tuple(columnas), celdas, clave,
                       tuple(orden) if clave is not None else ())
 

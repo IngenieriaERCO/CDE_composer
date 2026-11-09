@@ -847,6 +847,49 @@ es un dato del resultado, no se recalcula).
 con el mismo naranja (1,0; 0,498; 0) y opacidad 0,5, vector; la hoja sigue con una sola
 imagen (el logo).
 
+### Subfase 4.2d — Firma con imagen en `componer` ✅ (2026-11-09, sin commit)
+
+Sin editor todavía: pegar, recortar y limpiar la firma irá en la 4.3b.
+
+**Qué se hizo**
+- **Formato** (aditivo): `rotulo.carpeta_firmas` (una ruta o una lista; A1 ERCO:
+  `["../firmas", "../data/firmas"]`: `firmas/` para las reales y `data/firmas/` para
+  ejemplos, las dos fuera de git) y `"acepta_imagen": true` en la columna `firma` de la tabla
+  `firmas` (sin carpeta con celdas que la aceptan: error del formato).
+- **plano.json v2** (sin cambiar de versión): la celda FIRMA acepta texto (como antes) o
+  `{"imagen": "<id>"}` → `<carpeta>/<id>.png`.
+- **`firmas.py`**: validación con todos los problemas juntos (id inválido o inexistente,
+  repetido en dos carpetas, no es PNG, más de 600 × 200 px o de 100 KB, campo desconocido,
+  celda que no acepta imagen; sin alfa = advertencia); colocación proporcional y centrada,
+  nunca mayor que a 300 ppp; inserción con `insert_image` (máscara SMask); verificación:
+  caja ±0,1 mm dentro de la celda, máscara presente e igual byte a byte al canal alfa del
+  PNG (sin alfa: el `digest` de los píxeles), SHA-256 del archivo para el mensaje.
+- **Regla de imágenes** en `componer`: de «no hay imágenes nuevas» a «exactamente las de la
+  hoja base más una por firma pedida» (los detalles siguen sin poder traer imágenes).
+- **Peso**: `insert_image` dejaba cada firma sin comprimir (~300 KB con su máscara); el PDF
+  se guarda con `deflate_images=True` (sin pérdida; trazos y fuentes no cambian): cada firma
+  pesa ~7 KB.
+- `cli componer`: «Firmas en imagen: N (celda: id al X % de su tamaño a 300 ppp)».
+- **Privacidad**: firmas fuera de git (`firmas/*.png` en `.gitignore`; `data/` ya lo estaba),
+  fuera de editor.html, el plano.json solo guarda el id; ponerlas solo en los PDF emitidos.
+- docs: formato_plano.md (sección «Firma con imagen» con la nota de privacidad).
+
+**Pruebas**: 578, todas pasan (10 nuevas), con PNG SINTÉTICOS generados en tmp: formato (A1
+ERCO solo acepta imagen en FIRMA; falta de carpeta, `acepta_imagen` mal, lista vacía),
+colocación (chica queda a 300 ppp; grande proporcional al espacio útil), dos firmas en el
+PDF con máscara y dentro de su celda junto a una firma de texto, firma sin alfa (advertencia,
+sin máscara, verificada por píxeles), todos los problemas juntos y los casos aparte (más de
+600 × 200 px, repetida, id con «..»), y **fallas forzadas** sin PDF: firma corrida 0,3 mm,
+otra imagen en su lugar, sin máscara y una imagen de más.
+
+**Ejemplo** (`data/`, no se versiona): dos firmas FICTICIAS (garabatos dibujados por script,
+480 × 160 px con alfa) en `data/firmas/`, usadas en DIBUJÓ y DISEÑÓ de
+`data/planos/ejemplo_rotulo_v2.json`: quedan al 24 % de su tamaño a 300 ppp (9,9 × 3,3 mm),
+con máscara; la hoja tiene 3 imágenes (logo + 2 firmas).
+
+**Pendiente**: el editor (pegar, recortar y limpiar el fondo: 4.3b); `proyecto.json` con el
+registro de personas; con Alan: en qué emisiones va la firma y la autorización de cada persona.
+
 ## Pendientes (después de las Fases 1 y 2)
 
 - **Mayúsculas/minúsculas del nombre del PDF en Windows**: `localizar_paquetes` busca
