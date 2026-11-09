@@ -368,8 +368,9 @@ def texto_composicion(plano_ruta: Path, r: ResultadoComposicion) -> str:
         verificado += ("; cada símbolo de convenciones tiene sus trazos y está donde debía en su "
                        "casilla (±0,1 mm)")
     if r.firmas:
-        verificado += ("; cada firma en imagen está en su celda (±0,1 mm), con su máscara de "
-                       "transparencia y es la del archivo leído")
+        verificado += ("; cada firma en imagen está dentro de su caja en la columna FIRMA sin "
+                       "pisar el encabezado (±0,1 mm), con su máscara de transparencia y es la "
+                       "del archivo leído")
     lineas += ["", f"Verificación: {verificado}.", f"PDF: {r.ruta_pdf}"]
     return "\n".join(lineas)
 

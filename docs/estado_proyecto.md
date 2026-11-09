@@ -890,6 +890,43 @@ con máscara; la hoja tiene 3 imágenes (logo + 2 firmas).
 **Pendiente**: el editor (pegar, recortar y limpiar el fondo: 4.3b); `proyecto.json` con el
 registro de personas; con Alan: en qué emisiones va la firma y la autorización de cada persona.
 
+### Subfase 4.2e — Firma con imagen más grande (caja ampliada) ✅ (2026-11-09, sin commit)
+
+**Qué se hizo** (sin tocar la plantilla)
+- **Formato** (aditivo): `"alto_max_mm"` en la columna `firma` (A1 ERCO: 5,0 tras el ajuste;
+  por defecto también 5,0 si la columna acepta imagen y no lo declara; error si va sin
+  `acepta_imagen` o no es positivo). Cada celda de tabla conoce el cuerpo de su tabla (Y 20,9
+  a 43,5 en firmas).
+- **Caja de la firma** (`firmas.caja_firma`): ancho de la columna FIRMA menos el relleno (17,0
+  mm), alto max(`alto_max_mm`, alto útil de su fila) (5,0 mm en DIBUJÓ, DISEÑÓ y APROBÓ; 7,9 mm
+  en REVISÓ), centrada en su fila y corrida hacia adentro si se saldría del
+  cuerpo de la tabla (menos el relleno): nunca sobre el encabezado ni fuera de la tabla. La
+  imagen va proporcional y centrada en su caja, nunca mayor que a 300 ppp.
+- **Montaje**: si las firmas de dos filas se cruzan, advertencia con las filas y el tamaño
+  del cruce (`firmas.montajes`).
+- **Verificación**: la firma dentro de su caja ampliada (±0,1 mm) y sin pisar el encabezado
+  ni salirse del cuerpo de la tabla, con máscara y huella (como en la 4.2d).
+
+**Ajuste** (mismo día): `alto_max_mm` de 8,0 a **5,0** en A1 ERCO y alto de la caja =
+max(`alto_max_mm`, alto útil de su fila), para que REVISÓ use sus 7,9 mm y las filas de 4,5
+mm se monten menos.
+
+**Pruebas**: 585, todas pasan (7 nuevas en la 4.2e): caja centrada en su fila (DISEÑÓ, 5,0
+mm), fila más alta que `alto_max_mm` con su propia altura (REVISÓ, 7,9 mm), corrida por el
+límite en la primera (DIBUJÓ, hacia abajo hasta 42,9) y la última fila (APROBÓ, hacia arriba
+desde 21,5), `alto_max_mm` en el formato (sin `acepta_imagen`, cero, por defecto 5),
+firma de 600 × 200 px centrada en REVISÓ (17,0 × 5,67 mm), montaje DIBUJÓ / DISEÑÓ con
+advertencia (15,0 × 5,0 mm cada una), DIBUJÓ + REVISÓ sin advertencia, y falla forzada «pisa
+el encabezado» sin PDF. Pruebas ajustadas de la 4.2d: la colocación (ahora dentro de la
+caja), la firma dentro del ancho de la columna y del cuerpo de la tabla, y la frase del
+resumen.
+
+**Ejemplo**: tres firmas ficticias de 600 × 200 px (DIBUJÓ, DISEÑÓ y REVISÓ). DIBUJÓ: 15,00 ×
+5,00 mm, X 759,20–774,20, Y 37,90–42,90; DISEÑÓ: 15,00 × 5,00 mm, Y 34,25–39,25 (se montan
+1,35 mm → advertencia); REVISÓ: 17,00 × 5,67 mm, X 758,20–775,20, Y 27,12–32,78 (sin montaje).
+
+**Pendiente**: decidir con Alan si el cruce de 1,35 mm entre DIBUJÓ y DISEÑÓ es aceptable.
+
 ## Pendientes (después de las Fases 1 y 2)
 
 - **Mayúsculas/minúsculas del nombre del PDF en Windows**: `localizar_paquetes` busca

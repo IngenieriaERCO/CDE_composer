@@ -8,8 +8,15 @@ fuera de git).
 Reglas:
 - PNG de hasta 600 x 200 px y 100 KB; sin canal alfa es advertencia (su fondo blanco tapará
   las líneas de la celda).
-- Colocación proporcional y centrada en la celda (menos el relleno), nunca más grande que su
-  tamaño a 300 ppp: una imagen chica queda chica, nunca pixelada.
+- Caja de la firma (subfase 4.2e): el ANCHO de su celda (menos el relleno) y de alto
+  max(`alto_max_mm`, alto útil de su fila) (A1 ERCO: 5 mm; REVISÓ, ~7,9 mm), centrada en SU
+  fila y corrida hacia adentro si se
+  saldría del cuerpo de la tabla (menos el relleno): puede montarse sobre las filas vecinas,
+  pero nunca sobre el encabezado (la etiqueta «FIRMA») ni fuera de la tabla. Los textos de
+  las otras columnas no se tocan. Sin `alto_max_mm`, la caja es la celda menos el relleno.
+- Colocación proporcional y centrada en esa caja, nunca más grande que su tamaño a 300 ppp:
+  una imagen chica queda chica, nunca pixelada. Si dos firmas quedan una sobre otra:
+  advertencia (`montajes`).
 - Se inserta con `Page.insert_image`; el canal alfa queda como máscara de transparencia
   (SMask), no con fondo blanco.
 - Verificación en el PDF guardado: la hoja tiene exactamente las imágenes de la hoja base más
@@ -55,6 +62,8 @@ class FirmaPedida:
     celda: RectMM
     destino: RectMM  # dónde queda la imagen, mm de papel
     escala: float  # destino / tamaño a 300 ppp (<= 1)
+    caja: RectMM  # dónde puede ir la imagen (ancho de la columna, hasta alto_max_mm)
+    cuerpo_y: tuple[float, float] | None = None  # Y del cuerpo de la tabla (sin encabezado)
 
 
 def pedir_firma(valor: dict, celda: Celda, donde: str, carpetas: tuple[Path, ...],
@@ -109,21 +118,62 @@ def pedir_firma(valor: dict, celda: Celda, donde: str, carpetas: tuple[Path, ...
                             f"'{celda.ruta}'. Límpiela antes de emitir el plano.")
     huella = (hashlib.md5(bytes(pix.samples[pix.n - 1::pix.n])).digest() if alfa
               else pix.digest)
-    destino, escala = colocar_firma(pix.width, pix.height, celda.rect, relleno_mm)
+    caja = caja_firma(celda, relleno_mm)
+    destino, escala = colocar_firma(pix.width, pix.height, caja)
     return FirmaPedida(celda.ruta, ident, archivo, datos, hashlib.sha256(datos).hexdigest(),
-                       pix.width, pix.height, alfa, huella, celda.rect, destino, escala)
+                       pix.width, pix.height, alfa, huella, celda.rect, destino, escala, caja,
+                       celda.cuerpo_y)
 
 
-def colocar_firma(ancho_px: int, alto_px: int, celda: RectMM,
-                  relleno_mm: float) -> tuple[RectMM, float]:
-    """Caja (mm de papel) proporcional y centrada en la celda, nunca mayor que a 300 ppp."""
+def caja_firma(celda: Celda, relleno_mm: float) -> RectMM:
+    """Dónde puede ir la firma (mm de papel): el ancho de la celda menos el relleno y, con
+    `alto_max_mm`, un alto de max(alto_max_mm, alto útil de su fila) centrado en la fila,
+    corrido hacia adentro del cuerpo de la tabla si se saldría (y nunca más alto que el
+    cuerpo). Sin `alto_max_mm`: la celda menos el relleno."""
+    x0, y0, x1, y1 = celda.rect
+    r = relleno_mm
+    if celda.alto_max_mm <= 0 or celda.cuerpo_y is None:
+        return x0 + r, y0 + r, x1 - r, y1 - r
+    abajo, arriba = celda.cuerpo_y[0] + r, celda.cuerpo_y[1] - r
+    # Una fila más alta que alto_max_mm (REVISÓ, ~7,9 mm útiles) puede usar toda su altura.
+    alto = min(max(celda.alto_max_mm, (y1 - y0) - 2 * r), arriba - abajo)
+    cy = (y0 + y1) / 2
+    inferior, superior = cy - alto / 2, cy + alto / 2
+    if superior > arriba:  # se saldría por arriba (encabezado): se corre hacia abajo
+        inferior, superior = arriba - alto, arriba
+    if inferior < abajo:  # se saldría por abajo (fuera de la tabla): se corre hacia arriba
+        inferior, superior = abajo, abajo + alto
+    return x0 + r, inferior, x1 - r, superior
+
+
+def colocar_firma(ancho_px: int, alto_px: int, caja: RectMM) -> tuple[RectMM, float]:
+    """La imagen proporcional y centrada en su caja, nunca mayor que su tamaño a 300 ppp.
+    Devuelve (rectángulo en mm de papel, escala respecto de 300 ppp)."""
     ancho = ancho_px / PPP_MAX * 25.4
     alto = alto_px / PPP_MAX * 25.4
-    util_x = celda[2] - celda[0] - 2 * relleno_mm
-    util_y = celda[3] - celda[1] - 2 * relleno_mm
-    f = min(1.0, util_x / ancho, util_y / alto)
-    cx, cy = (celda[0] + celda[2]) / 2, (celda[1] + celda[3]) / 2
+    f = min(1.0, (caja[2] - caja[0]) / ancho, (caja[3] - caja[1]) / alto)
+    cx, cy = (caja[0] + caja[2]) / 2, (caja[1] + caja[3]) / 2
     return (cx - ancho * f / 2, cy - alto * f / 2, cx + ancho * f / 2, cy + alto * f / 2), f
+
+
+def montajes(firmas: list[FirmaPedida]) -> list[str]:
+    """Advertencias de firmas que quedan una sobre otra (sus imágenes se cruzan)."""
+    avisos = []
+    for i, a in enumerate(firmas):
+        for b in firmas[i + 1:]:
+            ancho = min(a.destino[2], b.destino[2]) - max(a.destino[0], b.destino[0])
+            alto = min(a.destino[3], b.destino[3]) - max(a.destino[1], b.destino[1])
+            if ancho > 1e-6 and alto > 1e-6:
+                avisos.append(
+                    f"Advertencia: las firmas de las filas '{_fila(a)}' y '{_fila(b)}' se montan "
+                    f"una sobre otra ({ancho:.1f} x {alto:.1f} mm). Si estorba, use firmas más "
+                    f"bajas o baje \"alto_max_mm\" en el formato.")
+    return avisos
+
+
+def _fila(f: FirmaPedida) -> str:
+    partes = f.ruta_celda.split(".")
+    return partes[1] if len(partes) == 3 else f.ruta_celda
 
 
 def insertar_firmas(page: pymupdf.Page, firmas: list[FirmaPedida], alto_hoja_mm: float) -> None:
@@ -152,9 +202,14 @@ def verificar_firmas(page: pymupdf.Page, firmas: list[FirmaPedida],
                              f"y hay {len(cerca)}")
             continue
         rect, info = cerca[0]
-        if not (rect[0] >= f.celda[0] - TOL_MM and rect[1] >= f.celda[1] - TOL_MM
-                and rect[2] <= f.celda[2] + TOL_MM and rect[3] <= f.celda[3] + TOL_MM):
-            problemas.append(f"{donde}: la imagen {_mm(rect)} se sale de la celda {_mm(f.celda)}")
+        if not (rect[0] >= f.caja[0] - TOL_MM and rect[1] >= f.caja[1] - TOL_MM
+                and rect[2] <= f.caja[2] + TOL_MM and rect[3] <= f.caja[3] + TOL_MM):
+            problemas.append(f"{donde}: la imagen {_mm(rect)} se sale de su caja {_mm(f.caja)}")
+        if f.cuerpo_y is not None and (rect[3] > f.cuerpo_y[1] + TOL_MM
+                                       or rect[1] < f.cuerpo_y[0] - TOL_MM):
+            problemas.append(f"{donde}: la imagen {_mm(rect)} pisa el encabezado de la tabla o "
+                             f"se sale de ella (cuerpo: Y {f.cuerpo_y[0]:.2f} a "
+                             f"{f.cuerpo_y[1]:.2f} mm)")
         if (info["width"], info["height"]) != (f.ancho_px, f.alto_px):
             problemas.append(f"{donde}: la imagen del PDF mide {info['width']} x {info['height']} "
                              f"px y el archivo {f.ancho_px} x {f.alto_px} px")

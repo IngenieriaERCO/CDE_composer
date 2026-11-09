@@ -20,7 +20,7 @@ problemas juntos.
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from componedor.firmas import FirmaPedida, pedir_firma
+from componedor.firmas import FirmaPedida, montajes, pedir_firma
 from componedor.fuente import Fuente
 from componedor.maquetacion import TextoMaquetado, TextoNoCabe, maquetar
 from componedor.notas import SIGNO_VINETA, NotasMaquetadas, leer_notas, maquetar_notas
@@ -97,6 +97,7 @@ def preparar_rotulo(definicion: DefinicionRotulo, valores: dict | None,
                             definicion.relleno_mm, problemas, advertencias)
         if firma is not None:
             firmas.append(firma)
+    advertencias += montajes(firmas)
 
     finales: dict[str, str] = {}
     for campo in definicion.campos.values():

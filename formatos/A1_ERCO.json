@@ -80,7 +80,8 @@
         "columnas": {
           "nombre": {"x_mm": [685.9, 721.2], "alinear": "izq"},
           "matricula": {"x_mm": [721.2, 757.6], "alinear": "centro"},
-          "firma": {"x_mm": [757.6, 775.8], "alinear": "centro", "acepta_imagen": true},
+          "firma": {"x_mm": [757.6, 775.8], "alinear": "centro", "acepta_imagen": true,
+                    "alto_max_mm": 5.0},
           "fecha": {"x_mm": [775.8, 802.6], "alinear": "centro"}
         }
       },

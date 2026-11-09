@@ -39,6 +39,9 @@ formato (todo en mm de papel, Y hacia arriba). Esquema (versión 1):
 - Firmas en imagen (subfase 4.2d, aditivo): en una columna de tabla, "acepta_imagen": true
   deja poner {"imagen": "<id>"} en vez de texto; la imagen es <carpeta>/<id>.png, con
   "carpeta_firmas": "../firmas" (o una lista de carpetas) en la sección "rotulo".
+  "alto_max_mm" (por defecto 5,0; subfase 4.2e) deja que la imagen sea más alta que su fila y
+  pase a las vecinas, siempre dentro del cuerpo de la tabla (sin el encabezado); una fila más
+  alta usa su propia altura útil.
 
 Campos desconocidos se rechazan. Todos los problemas se juntan en un solo error.
 """
@@ -66,7 +69,8 @@ CLAVES_CONVENCIONES = {"tipo", "filas_y_mm", "columnas_x_mm", "altura_mm", "altu
                        "lineas_max", "biblioteca"}
 CLAVES_FILA = {"y_mm", "lineas_max"}
 SEPARACION_NOTAS_POR_DEFECTO = 0.5
-CLAVES_COLUMNA = {"x_mm", "alinear", "acepta_imagen"}
+CLAVES_COLUMNA = {"x_mm", "alinear", "acepta_imagen", "alto_max_mm"}
+ALTO_MAX_FIRMA_POR_DEFECTO = 5.0
 RELLENO_POR_DEFECTO = 0.6
 INTERLINEADO_POR_DEFECTO = 1.6
 
@@ -84,6 +88,8 @@ class Celda:
     altura_min_mm: float
     lineas_max: int
     acepta_imagen: bool = False  # la celda admite {"imagen": id} (firma, subfase 4.2d)
+    alto_max_mm: float = 0.0  # alto máximo de la imagen (puede pasar a filas vecinas; 4.2e)
+    cuerpo_y: tuple[float, float] | None = None  # Y del cuerpo de la tabla (sin encabezado)
 
 
 @dataclass(frozen=True)
@@ -339,7 +345,7 @@ def _campo_tabla(nombre: str, valor: dict, donde: str, errores: list[str]) -> Ca
         if y is not None and lineas is not None:
             filas[fila] = (y, lineas)
 
-    columnas: dict[str, tuple[tuple[float, float], str, bool]] = {}
+    columnas: dict[str, tuple[tuple[float, float], str, bool, float]] = {}
     for columna, item in _objeto(valor.get("columnas"), f"{donde}.columnas", errores).items():
         sitio = f"{donde}.columnas.{columna}"
         if not isinstance(item, dict):
@@ -352,8 +358,15 @@ def _campo_tabla(nombre: str, valor: dict, donde: str, errores: list[str]) -> Ca
         imagen = item.get("acepta_imagen", False)
         if not isinstance(imagen, bool):
             errores.append(f"{sitio}.acepta_imagen: se esperaba true o false; tiene {imagen!r}")
+        alto_max = item.get("alto_max_mm", ALTO_MAX_FIRMA_POR_DEFECTO if imagen is True else 0.0)
+        if "alto_max_mm" in item and imagen is not True:
+            errores.append(f"{sitio}.alto_max_mm: solo se usa con \"acepta_imagen\": true")
+        elif not _es_numero(alto_max) or (imagen is True and alto_max <= 0):
+            errores.append(f"{sitio}.alto_max_mm: se esperaba un número positivo (mm); tiene "
+                           f"{alto_max!r}")
         if x is not None and alinear is not None:
-            columnas[columna] = (x, alinear, imagen is True)
+            columnas[columna] = (x, alinear, imagen is True,
+                                 float(alto_max) if _es_numero(alto_max) else 0.0)
 
     clave = valor.get("columna_clave")
     orden = valor.get("orden")
@@ -371,10 +384,12 @@ def _campo_tabla(nombre: str, valor: dict, donde: str, errores: list[str]) -> Ca
         return None
 
     celdas = {}
+    cuerpo = (min(y[0] for y, _ in filas.values()), max(y[1] for y, _ in filas.values()))
     for fila, ((y0, y1), lineas) in filas.items():
-        for columna, ((x0, x1), alinear, imagen) in columnas.items():
+        for columna, ((x0, x1), alinear, imagen, alto_max) in columnas.items():
             celdas[(fila, columna)] = Celda(f"{nombre}.{fila}.{columna}", (x0, y0, x1, y1),
-                                            alinear, altura, minima, lineas, imagen)
+                                            alinear, altura, minima, lineas, imagen, alto_max,
+                                            cuerpo)
     return CampoTabla(nombre, tuple(filas), tuple(columnas), celdas, clave,
                       tuple(orden) if clave is not None else ())
 

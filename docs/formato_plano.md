@@ -163,18 +163,33 @@ son angostas (unos 10 mm útiles): use iniciales.
   otra celda es error. El plano.json sigue en versión 2.
 - **El archivo**: PNG de hasta **600 × 200 px** y **100 KB**. Sin canal alfa (transparencia) se
   usa, pero con **advertencia**: su fondo blanco tapa las líneas de la celda.
-- **Colocación**: proporcional y centrada en la celda (menos 0,6 mm de relleno: unos 17,0 ×
-  3,3 mm en DIBUJÓ, DISEÑÓ y APROBÓ y 17,0 × 7,9 mm en REVISÓ), y **nunca más grande que su
-  tamaño a 300 ppp** (una imagen chica queda chica, nunca pixelada). Se inserta con su
-  **máscara de transparencia** (SMask), no con fondo blanco; comprimida sin pérdida.
+- **Caja de la firma** (subfase 4.2e): la celda FIRMA da solo unos 17,0 × 3,3 mm útiles, así
+  que la firma puede ser **más alta que su fila** y montarse sobre las filas vecinas:
+  - ancho: el de la columna FIRMA menos 0,6 mm por lado (17,0 mm), como antes;
+  - alto: **max(`alto_max_mm`, alto útil de su fila)** (`alto_max_mm` en la columna `firma`
+    del formato; A1 ERCO: **5,0 mm**). DIBUJÓ, DISEÑÓ y APROBÓ (3,3 mm útiles) usan 5,0 mm;
+    REVISÓ, cuya fila tiene 7,9 mm útiles, usa su propia altura;
+  - centrada en **su** fila y, si se saldría del **cuerpo** de la tabla de firmas (Y 20,9 a
+    43,5 menos 0,6 mm), **corrida hacia adentro**: nunca sobre el encabezado (la etiqueta
+    «FIRMA») ni fuera de la tabla. Por eso la de DIBUJÓ (primera fila) se corre hacia abajo y
+    la de APROBÓ (última) hacia arriba;
+  - los textos de las otras columnas (NOMBRE, MATRÍCULA, FECHA) no se tocan.
+- **Colocación**: proporcional y centrada en su caja y **nunca más grande que su tamaño a
+  300 ppp** (una imagen chica queda chica, nunca pixelada). Una firma de 600 × 200 px queda
+  de 15,0 × 5,0 mm en DIBUJÓ, DISEÑÓ o APROBÓ y de 17,0 × 5,67 mm en REVISÓ. Se inserta con
+  su **máscara de transparencia** (SMask), no con fondo blanco; comprimida sin pérdida.
+- **Firmas que se montan**: si las firmas de dos filas quedan de verdad una sobre otra (sus
+  rectángulos se cruzan), **advertencia** con las dos filas y el tamaño del cruce; no es
+  error. Con 5,0 mm, dos firmas de 600 × 200 px en DIBUJÓ y DISEÑÓ se cruzan 1,35 mm.
 - **Errores juntos**: firma inexistente (dice en qué carpetas se buscó), repetida en dos
   carpetas, no es PNG, más de 600 × 200 px o de 100 KB, id inválido, campo desconocido, celda
   que no acepta imagen.
 - **Verificación en el PDF**: la hoja tiene **exactamente** las imágenes de la plantilla (el
   logo) **más una por firma**; los detalles siguen sin poder traer imágenes. Cada firma: su
-  caja igual a la esperada y dentro de la celda (±0,1 mm), con máscara de transparencia, y
-  es la del archivo leído (la máscara es byte a byte el canal alfa del PNG; sin alfa, se
-  comparan los píxeles; el resumen informa el SHA-256 si falla).
+  rectángulo igual al esperado y dentro de su caja ampliada (±0,1 mm), **sin pisar el
+  encabezado** ni salirse del cuerpo de la tabla, con máscara de transparencia, y es la del
+  archivo leído (la máscara es byte a byte el canal alfa del PNG; sin alfa, se comparan los
+  píxeles; el resumen informa el SHA-256 si falla).
 
 **Privacidad**: una firma en imagen es un dato personal y se puede copiar desde cualquier
 archivo donde esté. Por eso: las imágenes van **fuera de git** (`firmas/*.png` y `data/` en

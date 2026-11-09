@@ -10,7 +10,7 @@ import pytest
 from componedor import componer as modulo_componer
 from componedor.cli import main
 from componedor.componer import PlanoNoComponible, componer_plano
-from componedor.firmas import colocar_firma
+from componedor.firmas import caja_firma, colocar_firma
 from componedor.formato import cargar_formato
 from componedor.plano import leer_plano
 from componedor.rotulo_formato import RotuloFormatoInvalido, leer_definicion_rotulo
@@ -25,8 +25,6 @@ from conftest import (
     rotulo_a1,
 )
 
-CELDA_DIBUJO = (757.6, 39.0, 775.8, 43.5)  # FIRMA, fila DIBUJÓ
-CELDA_REVISO = (757.6, 25.4, 775.8, 34.5)  # FIRMA, fila REVISÓ (más alta)
 
 
 def garabato(ruta, ancho_px=480, alto_px=160, alfa=True, semilla=1):
@@ -102,16 +100,73 @@ def test_esquema_de_imagen_en_el_formato():
 # --- colocación --------------------------------------------------------------------------------
 
 def test_colocacion_proporcional_centrada_y_nunca_mayor_que_300_ppp():
-    # Chica (60 x 20 px = 5,08 x 1,69 mm a 300 ppp): queda de ese tamaño, centrada.
-    caja, f = colocar_firma(60, 20, CELDA_DIBUJO, 0.6)
+    caja = (758.2, 37.25, 775.2, 45.25)  # 17,0 x 8,0 mm
+    # Chica (60 x 20 px = 5,08 x 1,69 mm a 300 ppp): queda de ese tamaño, centrada en la caja.
+    rect, f = colocar_firma(60, 20, caja)
     assert f == 1.0
-    assert caja == pytest.approx((766.7 - 2.54, 41.25 - 0.8467, 766.7 + 2.54, 41.25 + 0.8467),
+    assert rect == pytest.approx((766.7 - 2.54, 41.25 - 0.8467, 766.7 + 2.54, 41.25 + 0.8467),
                                  abs=1e-3)
-    # Grande (600 x 200 px = 50,8 x 16,9 mm): se reduce al espacio útil (17,0 x 3,3), proporcional.
-    caja, f = colocar_firma(600, 200, CELDA_DIBUJO, 0.6)
-    assert caja[3] - caja[1] == pytest.approx(3.3)
-    assert (caja[2] - caja[0]) / (caja[3] - caja[1]) == pytest.approx(3.0)
-    assert f == pytest.approx(3.3 / (200 / 300 * 25.4))
+    # Grande (600 x 200 px = 50,8 x 16,9 mm): se reduce a lo ancho (17,0 mm), proporcional.
+    rect, f = colocar_firma(600, 200, caja)
+    assert rect[2] - rect[0] == pytest.approx(17.0)
+    assert (rect[2] - rect[0]) / (rect[3] - rect[1]) == pytest.approx(3.0)
+    assert f == pytest.approx(17.0 / 50.8)
+
+
+# --- caja ampliada (subfase 4.2e) -------------------------------------------------------------
+# Tabla de firmas de A1 ERCO: cuerpo Y 20,9 a 43,5 (encabezado «FIRMA» encima de 43,5);
+# filas DIBUJÓ 39,0–43,5, DISEÑÓ 34,5–39,0, REVISÓ 25,4–34,5, APROBÓ 20,9–25,4.
+
+def _celdas_firma():
+    return cargar_formato(RUTA_A1, usar_plantilla=False).rotulo.campos["firmas"]
+
+
+def test_caja_centrada_en_su_fila_y_mas_alta_que_ella():
+    celdas = _celdas_firma()
+    # DISEÑÓ: fila de 4,5 mm (3,3 útiles) -> caja de alto_max_mm = 5,0, centrada en 36,75.
+    caja = caja_firma(celdas.celdas[("diseno", "firma")], 0.6)
+    assert celdas.celdas[("diseno", "firma")].alto_max_mm == 5.0
+    assert caja == pytest.approx((758.2, 36.75 - 2.5, 775.2, 36.75 + 2.5))
+
+
+def test_fila_mas_alta_que_alto_max_usa_su_propia_altura():
+    # REVISÓ: fila de 9,1 mm -> 7,9 útiles > 5,0: la caja es max(5,0; 7,9) = 7,9, centrada.
+    celdas = _celdas_firma()
+    reviso = caja_firma(celdas.celdas[("reviso", "firma")], 0.6)
+    assert reviso == pytest.approx((758.2, 29.95 - 3.95, 775.2, 29.95 + 3.95))
+    assert reviso[3] - reviso[1] == pytest.approx(7.9)
+
+
+def test_caja_se_corre_hacia_adentro_en_la_primera_y_la_ultima_fila():
+    celdas = _celdas_firma()
+    # DIBUJÓ (centro 41,25): la caja ideal llegaría a 43,75, sobre el encabezado; se corre
+    # hacia abajo hasta 43,5 - 0,6 = 42,9.
+    arriba = caja_firma(celdas.celdas[("dibujo", "firma")], 0.6)
+    assert arriba == pytest.approx((758.2, 42.9 - 5.0, 775.2, 42.9))
+    # APROBÓ (centro 23,15): bajaría a 20,65, fuera de la tabla; se corre hacia arriba desde
+    # 20,9 + 0,6 = 21,5.
+    abajo = caja_firma(celdas.celdas[("aprobo", "firma")], 0.6)
+    assert abajo == pytest.approx((758.2, 21.5, 775.2, 21.5 + 5.0))
+    # Las demás columnas no aceptan imagen ni tienen caja ampliada.
+    assert celdas.celdas[("dibujo", "nombre")].alto_max_mm == 0.0
+
+
+def test_alto_max_en_el_formato():
+    zona = (672.4, 12.7, 828.3, 581.3)
+    malo = rotulo_a1()
+    malo["campos"]["firmas"]["columnas"]["nombre"]["alto_max_mm"] = 5
+    with pytest.raises(RotuloFormatoInvalido, match=r"nombre.alto_max_mm: solo se usa con "
+                                                     r"\"acepta_imagen\": true"):
+        leer_definicion_rotulo(malo, zona)
+    malo = rotulo_a1()
+    malo["campos"]["firmas"]["columnas"]["firma"]["alto_max_mm"] = 0
+    with pytest.raises(RotuloFormatoInvalido, match=r"firma.alto_max_mm: se esperaba un número "
+                                                     r"positivo"):
+        leer_definicion_rotulo(malo, zona)
+    sin_valor = rotulo_a1()
+    sin_valor["campos"]["firmas"]["columnas"]["firma"].pop("alto_max_mm")
+    d = leer_definicion_rotulo(sin_valor, zona)
+    assert d.campos["firmas"].celdas[("dibujo", "firma")].alto_max_mm == 5.0  # por defecto
 
 
 # --- componer ----------------------------------------------------------------------------------
@@ -124,13 +179,15 @@ def test_firmas_en_imagen_con_mascara_en_su_celda(entorno, capsys):
     assert main(["componer", str(entorno / "plano.json"), "--salida", str(entorno / "p.pdf")]) == 0
     out = capsys.readouterr().out
     assert "Firmas en imagen: 2 (firmas.dibujo.firma: persona_a" in out
-    assert "cada firma en imagen está en su celda (±0,1 mm), con su máscara" in out
+    assert "cada firma en imagen está dentro de su caja en la columna FIRMA sin pisar el " \
+           "encabezado (±0,1 mm), con su máscara" in out
     imagenes = _imagenes(entorno / "p.pdf")
     assert len(imagenes) == 3  # el logo de la plantilla + 2 firmas
     firmas = [(r, m) for r, m in imagenes if r[3] < 50]  # filas de firmas (el logo está más arriba)
     assert len(firmas) == 2 and all(m for _, m in firmas)  # con máscara de transparencia
-    for (rect, _), celda in zip(sorted(firmas, key=lambda t: -t[0][1]), (CELDA_DIBUJO, CELDA_REVISO)):
-        assert celda[0] <= rect[0] and rect[2] <= celda[2] and celda[1] <= rect[1] and rect[3] <= celda[3]
+    for rect, _ in firmas:  # dentro del ANCHO de la columna FIRMA y del cuerpo de la tabla
+        assert 758.2 - 0.1 <= rect[0] and rect[2] <= 775.2 + 0.1
+        assert 21.5 - 0.1 <= rect[1] and rect[3] <= 42.9 + 0.1
     with pymupdf.open(entorno / "p.pdf") as doc:
         assert "P.C." in doc[0].get_text()
 
@@ -200,6 +257,65 @@ def _forzar(monkeypatch, cambio):
         cambio(page, firmas, alto, original)
 
     monkeypatch.setattr(modulo_componer, "insertar_firmas", insertar)
+
+
+@requiere_arial
+def test_firma_realista_centrada_en_su_fila_y_montaje_con_advertencia(entorno):
+    garabato(entorno / "firmas" / "ancha_a.png", ancho_px=600, alto_px=200, semilla=4)
+    garabato(entorno / "firmas" / "ancha_b.png", ancho_px=600, alto_px=200, semilla=5)
+    # Sola en REVISÓ (caja de 17,0 x 7,9 mm): 600 x 200 px a 300 ppp = 50,8 x 16,9 mm; cabe a
+    # 17,0 x 5,67 mm, centrada en su fila (29,95).
+    r = componer_plano(_plano(entorno, {"reviso": {"firma": {"imagen": "ancha_a"}}}),
+                       entorno / "p.pdf")
+    (firma,) = r.firmas
+    assert firma.destino == pytest.approx((758.2, 29.95 - 17.0 / 6, 775.2, 29.95 + 17.0 / 6),
+                                          abs=1e-3)
+    assert r.advertencias == []
+    # DIBUJÓ y DISEÑÓ, filas vecinas de 4,5 mm (cajas de 5,0 mm): cada firma queda de 15,0 x
+    # 5,0 mm (limita el alto) y se montan -> advertencia, no error.
+    r = componer_plano(_plano(entorno, {"dibujo": {"firma": {"imagen": "ancha_a"}},
+                                        "diseno": {"firma": {"imagen": "ancha_b"}}}),
+                       entorno / "p.pdf", sobrescribir=True)
+    dibujo, diseno = r.firmas
+    assert dibujo.destino == pytest.approx((759.2, 37.9, 774.2, 42.9), abs=1e-3)  # corrida abajo
+    assert diseno.destino == pytest.approx((759.2, 34.25, 774.2, 39.25), abs=1e-3)
+    assert r.advertencias == [
+        f"Advertencia: las firmas de las filas 'dibujo' y 'diseno' se montan una sobre otra "
+        f"(15.0 x {diseno.destino[3] - dibujo.destino[1]:.1f} mm). Si estorba, use firmas más "
+        f"bajas o baje \"alto_max_mm\" en el formato."]
+    assert (entorno / "p.pdf").is_file()
+
+
+@requiere_arial
+def test_sin_montaje_no_hay_advertencia(entorno):
+    garabato(entorno / "firmas" / "ancha_a.png", ancho_px=600, alto_px=200, semilla=4)
+    garabato(entorno / "firmas" / "ancha_b.png", ancho_px=600, alto_px=200, semilla=5)
+    # DIBUJÓ (Y 37,9–42,9) y REVISÓ (Y 27,1–32,8): no se cruzan.
+    r = componer_plano(_plano(entorno, {"dibujo": {"firma": {"imagen": "ancha_a"}},
+                                        "reviso": {"firma": {"imagen": "ancha_b"}}}),
+                       entorno / "p.pdf")
+    assert len(r.firmas) == 2 and r.advertencias == []
+
+
+@requiere_arial
+def test_falla_forzada_si_la_firma_pisa_el_encabezado(entorno, monkeypatch):
+    from dataclasses import replace
+
+    from componedor import rotulo as modulo_rotulo
+    original = modulo_rotulo.pedir_firma
+
+    def subida(*args, **kwargs):  # el cálculo «se equivoca» y la pone 3 mm más arriba
+        f = original(*args, **kwargs)
+        sube = lambda r: (r[0], r[1] + 3.0, r[2], r[3] + 3.0)  # noqa: E731
+        return replace(f, destino=sube(f.destino), caja=sube(f.caja))
+
+    monkeypatch.setattr(modulo_rotulo, "pedir_firma", subida)
+    with pytest.raises(PlanoNoComponible, match=r"firma 'persona_a' en 'firmas.dibujo.firma': la "
+                                                r"imagen .* pisa el encabezado de la tabla o se "
+                                                r"sale de ella \(cuerpo: Y 20.90 a 43.50 mm\)"):
+        componer_plano(_plano(entorno, {"dibujo": {"firma": {"imagen": "persona_a"}}}),
+                       entorno / "p.pdf")
+    assert not (entorno / "p.pdf").exists()
 
 
 @requiere_arial
