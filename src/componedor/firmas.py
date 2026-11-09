@@ -1,9 +1,17 @@
-"""Firmas en imagen en la celda FIRMA del rótulo (subfase 4.2d).
+"""Firmas en imagen en la celda FIRMA del rótulo (subfases 4.2d a 4.2f).
 
 En el plano.json (versión 2), una celda cuya columna tiene "acepta_imagen": true en el formato
-admite, en vez de texto, {"imagen": "<id>"}: el archivo <carpeta>/<id>.png de alguna de las
-carpetas de `rotulo.carpeta_firmas` del formato (A1 ERCO: firmas/ y data/firmas/, las dos
-fuera de git).
+admite, en vez de texto, una imagen guardada en una CARPETA POR PERSONA dentro de alguna de
+las carpetas de `rotulo.carpeta_firmas` del formato (A1 ERCO: firmas/ y data/firmas/, las dos
+fuera de git):
+  - {"imagen": "<persona>"} usa <carpeta>/<persona>/firma.png; si no hay firma.png y la carpeta
+    tiene un solo PNG, usa ese; si tiene varios, error (nombre uno firma.png o elija una
+    variante);
+  - {"imagen": "<persona>/<archivo>"} (sin .png) elige una variante concreta.
+El nombre de la persona y el del archivo admiten letras (con tildes y ñ), números, espacio,
+«_» y «-» (p. ej. «Luis Ángel Núñez»); se rechazan «..», rutas absolutas y cualquier separador
+que no sea el único «/» entre persona y archivo. En Windows la búsqueda no distingue
+mayúsculas; las tildes se comparan normalizadas (Unicode NFC).
 
 Reglas:
 - PNG de hasta 600 x 200 px y 100 KB; sin canal alfa es advertencia (su fondo blanco tapará
@@ -25,13 +33,15 @@ Reglas:
   canal alfa del PNG; sin alfa, el `digest` de los píxeles). Se registra el SHA-256 del
   archivo.
 
-Privacidad: una firma es un dato personal. Las imágenes van fuera de git (firmas/*.png y
-data/ están en .gitignore), no se incrustan en editor.html y deberían ponerse solo en los PDF
-emitidos.
+Privacidad: una firma es un dato personal. Las imágenes van fuera de git (toda la carpeta
+firmas/ y data/ están en .gitignore), no se incrustan en editor.html y deberían ponerse solo
+en los PDF emitidos.
 """
 
 import hashlib
+import os
 import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -45,7 +55,12 @@ MAX_ANCHO_PX, MAX_ALTO_PX = 600, 200
 MAX_BYTES = 100 * 1024
 PPP_MAX = 300  # nunca más grande que su tamaño a 300 ppp
 TOL_MM = 0.1
-ID_VALIDO = re.compile(r"^[A-Za-z0-9_-]+$")
+# Un nombre (persona o archivo): letras de cualquier idioma (con tildes y ñ), números, espacio,
+# «_» y «-»; sin espacios al principio ni al final. Sin punto: «..», «./» y extensiones quedan
+# fuera.
+NOMBRE_VALIDO = re.compile(r"^[\w\-](?:[\w \-]*[\w\-])?$")
+ARCHIVO_POR_DEFECTO = "firma"
+SIN_MAYUSCULAS = os.name == "nt"  # Windows: la búsqueda no distingue mayúsculas
 
 
 @dataclass(frozen=True)
@@ -78,22 +93,19 @@ def pedir_firma(valor: dict, celda: Celda, donde: str, carpetas: tuple[Path, ...
     for clave in sorted(set(valor) - {"imagen"}):
         problemas.append(f"{donde}.{clave}: campo no reconocido (campos válidos: imagen)")
     ident = valor.get("imagen")
-    if not isinstance(ident, str) or not ID_VALIDO.match(ident):
-        problemas.append(f"{donde}.imagen: se esperaba el id de la firma (letras, números, _ o -; "
-                         f"el archivo es <id>.png); tiene {ident!r}")
+    partes = _partes_del_id(ident)
+    if partes is None:
+        problemas.append(
+            f"{donde}.imagen: se esperaba \"<persona>\" o \"<persona>/<archivo>\" (letras con "
+            f"tildes y ñ, números, espacio, _ o -; sin «..», sin ruta absoluta y sin otros "
+            f"separadores; el archivo va sin .png); tiene {ident!r}")
         return None
     if len(problemas) > n:
         return None
-    archivos = [c / f"{ident}.png" for c in carpetas if (c / f"{ident}.png").is_file()]
-    if not archivos:
-        problemas.append(f"{donde}.imagen: no se encontró la firma '{ident}' (se buscó "
-                         f"{ident}.png en: {', '.join(str(c) for c in carpetas) or '(ninguna carpeta)'})")
+    persona, variante = partes
+    archivo = _buscar_firma(persona, variante, carpetas, f"{donde}.imagen", problemas)
+    if archivo is None:
         return None
-    if len(archivos) > 1:
-        problemas.append(f"{donde}.imagen: la firma '{ident}' está en más de una carpeta "
-                         f"({', '.join(str(a) for a in archivos)}); deje una sola")
-        return None
-    archivo = archivos[0]
     datos = archivo.read_bytes()
     if not datos.startswith(FIRMA_PNG):
         problemas.append(f"{donde}.imagen: '{archivo}' no es un PNG")
@@ -113,8 +125,8 @@ def pedir_firma(valor: dict, celda: Celda, donde: str, carpetas: tuple[Path, ...
         return None
     alfa = bool(pix.alpha)
     if not alfa:
-        advertencias.append(f"Advertencia: la firma '{ident}' ({archivo.name}) no tiene canal "
-                            f"alfa (transparencia): su fondo tapará las líneas de la celda "
+        advertencias.append(f"Advertencia: la firma de '{persona}' ({archivo.name}) no tiene "
+                            f"canal alfa (transparencia): su fondo tapará las líneas de la celda "
                             f"'{celda.ruta}'. Límpiela antes de emitir el plano.")
     huella = (hashlib.md5(bytes(pix.samples[pix.n - 1::pix.n])).digest() if alfa
               else pix.digest)
@@ -123,6 +135,66 @@ def pedir_firma(valor: dict, celda: Celda, donde: str, carpetas: tuple[Path, ...
     return FirmaPedida(celda.ruta, ident, archivo, datos, hashlib.sha256(datos).hexdigest(),
                        pix.width, pix.height, alfa, huella, celda.rect, destino, escala, caja,
                        celda.cuerpo_y)
+
+
+def _partes_del_id(ident) -> tuple[str, str | None] | None:
+    """"<persona>" o "<persona>/<archivo>" -> (persona, archivo o None); None si no es válido
+    (tipo, «..», ruta absoluta, «\\», «:», más de un «/», caracteres fuera de lo permitido)."""
+    if not isinstance(ident, str) or not ident or ident != ident.strip():
+        return None
+    if "\\" in ident or ":" in ident or ident.startswith("/") or Path(ident).is_absolute():
+        return None
+    partes = ident.split("/")
+    if len(partes) > 2 or not all(NOMBRE_VALIDO.match(p) for p in partes):
+        return None
+    return partes[0], (partes[1] if len(partes) == 2 else None)
+
+
+def _clave(nombre: str) -> str:
+    """Cómo se comparan nombres de carpeta y archivo: tildes normalizadas (NFC) y, en
+    Windows, sin distinguir mayúsculas."""
+    nombre = unicodedata.normalize("NFC", nombre)
+    return nombre.casefold() if SIN_MAYUSCULAS else nombre
+
+
+def _buscar_firma(persona: str, variante: str | None, carpetas: tuple[Path, ...], donde: str,
+                  problemas: list[str]) -> Path | None:
+    """El PNG de la persona (firma.png, el único PNG de su carpeta, o la variante pedida)."""
+    buscadas = ", ".join(str(c) for c in carpetas) or "(ninguna carpeta)"
+    encontradas = [d for c in carpetas if c.is_dir() for d in c.iterdir()
+                   if d.is_dir() and _clave(d.name) == _clave(persona)]
+    if not encontradas:
+        problemas.append(f"{donde}: no se encontró la carpeta de la persona '{persona}' (se buscó "
+                         f"en: {buscadas})")
+        return None
+    if len(encontradas) > 1:
+        problemas.append(f"{donde}: la persona '{persona}' tiene carpeta en más de un lugar "
+                         f"({', '.join(str(d) for d in encontradas)}); deje una sola")
+        return None
+    carpeta = encontradas[0]
+    pngs = sorted((a for a in carpeta.iterdir() if a.is_file() and a.suffix.lower() == ".png"),
+                  key=lambda a: a.name)
+    nombres = ", ".join(a.name for a in pngs) or "ninguno"
+    if variante is not None:
+        elegidas = [a for a in pngs if _clave(a.stem) == _clave(variante)]
+        if not elegidas:
+            problemas.append(f"{donde}: la persona '{persona}' no tiene la variante "
+                             f"'{variante}.png' en '{carpeta}' (PNG que tiene: {nombres})")
+            return None
+        return elegidas[0]
+    principal = [a for a in pngs if _clave(a.stem) == _clave(ARCHIVO_POR_DEFECTO)]
+    if principal:
+        return principal[0]
+    if len(pngs) == 1:
+        return pngs[0]
+    if not pngs:
+        problemas.append(f"{donde}: la carpeta de la persona '{persona}' ('{carpeta}') no tiene "
+                         f"ningún PNG")
+    else:
+        problemas.append(f"{donde}: la carpeta de la persona '{persona}' ('{carpeta}') tiene "
+                         f"varios PNG ({nombres}) y ninguno se llama firma.png: nombre uno "
+                         f"firma.png o use {{\"imagen\": \"{persona}/<archivo>\"}}")
+    return None
 
 
 def caja_firma(celda: Celda, relleno_mm: float) -> RectMM:

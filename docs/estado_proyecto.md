@@ -927,6 +927,33 @@ resumen.
 
 **Pendiente**: decidir con Alan si el cruce de 1,35 mm entre DIBUJÓ y DISEÑÓ es aceptable.
 
+### Subfase 4.2f — Firmas por persona ✅ (2026-11-09, sin commit)
+
+**Qué se hizo**
+- **Una carpeta por persona** (`firmas.py`): `{"imagen": "<persona>"}` → `<carpeta>/<persona>/
+  firma.png`; sin `firma.png` y con un solo PNG, ese; con varios, error que pide nombrar uno
+  `firma.png` o usar `{"imagen": "<persona>/<archivo>"}` (variante, sin `.png`). Reemplaza la
+  estructura plana de la 4.2d (`<carpeta>/<id>.png`), que deja de usarse.
+- **Nombres**: letras con tildes y ñ, números, espacio, `_` y `-` («Luis Ángel Núñez»), sin
+  espacios en los extremos; se rechazan `..`, rutas absolutas, `\`, `:`, puntos y cualquier
+  separador distinto del único `/`. En Windows la búsqueda no distingue mayúsculas; las
+  tildes se comparan normalizadas (Unicode NFC).
+- Misma validación de imagen (PNG, 600 × 200 px, 100 KB, alfa) y misma lista
+  `carpeta_firmas`; persona con carpeta en dos lugares: error. Los mensajes nombran la
+  persona y las rutas donde se buscó.
+- `.gitignore`: toda la carpeta `firmas/` (antes solo `firmas/*.png`), además de `data/`.
+- docs: formato_plano.md (estructura, nombres, errores y privacidad), README.
+
+**Pruebas**: 604, todas pasan (19 nuevas, con PNG sintéticos en tmp): persona con tildes,
+espacios y mayúsculas distintas, variante, un solo PNG con otro nombre, varios PNG sin
+`firma.png`, variante inexistente, carpeta sin PNG, y 16 rutas o nombres peligrosos
+(`..`, absolutas, `\`, `:`, doble `/`, espacios en los extremos, punto, vacío, no texto).
+Pruebas de la 4.2d/4.2e ajustadas a la estructura por persona (rutas y mensajes).
+
+**Ejemplo**: las 3 firmas ficticias pasaron a `data/firmas/Ficticia Núñez/firma.png`,
+`data/firmas/Ficticia Ocaña/firma.png` y `data/firmas/Ficticia Gómez/firma.png`; el plano de
+ejemplo usa `{"imagen": "Ficticia Núñez"}`, etc. Mismos tamaños que en la 4.2e.
+
 ## Pendientes (después de las Fases 1 y 2)
 
 - **Mayúsculas/minúsculas del nombre del PDF en Windows**: `localizar_paquetes` busca

@@ -50,8 +50,8 @@ def entorno(tmp_path):
                        carpeta_firmas=[str(tmp_path / "firmas"), str(tmp_path / "otras")])
     escribir_formato(tmp_path / "formato.json", plantilla=plantilla, rotulo=rotulo)
     crear_paquete_real(tmp_path / "input", "a")
-    garabato(tmp_path / "firmas" / "persona_a.png", semilla=1)
-    garabato(tmp_path / "firmas" / "persona_b.png", semilla=2)
+    garabato(tmp_path / "firmas" / "persona_a" / "firma.png", semilla=1)
+    garabato(tmp_path / "firmas" / "persona_b" / "firma.png", semilla=2)
     return tmp_path
 
 
@@ -194,9 +194,9 @@ def test_firmas_en_imagen_con_mascara_en_su_celda(entorno, capsys):
 
 @requiere_arial
 def test_firma_sin_alfa_es_advertencia_y_se_verifica_igual(entorno):
-    garabato(entorno / "firmas" / "opaca.png", alfa=False)
+    garabato(entorno / "firmas" / "opaca" / "firma.png", alfa=False)
     r = componer_plano(_plano(entorno, {"aprobo": {"firma": {"imagen": "opaca"}}}), entorno / "p.pdf")
-    assert any("la firma 'opaca' (opaca.png) no tiene canal alfa" in a for a in r.advertencias)
+    assert any("la firma de 'opaca' (firma.png) no tiene canal alfa" in a for a in r.advertencias)
     assert r.firmas[0].alfa is False
     firma = [m for rect, m in _imagenes(entorno / "p.pdf") if rect[3] < 50]
     assert firma == [0]  # sin máscara
@@ -204,17 +204,20 @@ def test_firma_sin_alfa_es_advertencia_y_se_verifica_igual(entorno):
 
 @requiere_arial
 def test_todos_los_problemas_juntos(entorno):
-    garabato(entorno / "firmas" / "ancha.png", ancho_px=700, alto_px=100)
+    garabato(entorno / "firmas" / "ancha" / "firma.png", ancho_px=700, alto_px=100)
     ruido = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 600, 200), True)
     azar = random.Random(3)
     ruido.set_rect(ruido.irect, (0, 0, 0, 255))
     for x in range(0, 600, 1):
         for y in range(0, 200, 2):
             ruido.set_pixel(x, y, (azar.randrange(256), azar.randrange(256), azar.randrange(256), 255))
-    ruido.save(entorno / "firmas" / "pesada.png")
-    (entorno / "firmas" / "jpg.png").write_bytes(  # un JPEG con nombre .png
-        pymupdf.Pixmap(pymupdf.Pixmap(str(entorno / "firmas" / "persona_a.png")), 0).tobytes("jpeg"))
-    garabato(entorno / "otras" / "persona_a.png")  # repetida en dos carpetas
+    (entorno / "firmas" / "pesada").mkdir()
+    ruido.save(entorno / "firmas" / "pesada" / "firma.png")
+    (entorno / "firmas" / "jpg").mkdir()
+    (entorno / "firmas" / "jpg" / "firma.png").write_bytes(  # un JPEG con nombre .png
+        pymupdf.Pixmap(pymupdf.Pixmap(str(entorno / "firmas" / "persona_a" / "firma.png")), 0)
+        .tobytes("jpeg"))
+    garabato(entorno / "otras" / "persona_a" / "firma.png")  # repetida en dos carpetas
     firmas = {
         "dibujo": {"firma": {"imagen": "no_existe"}, "matricula": {"imagen": "persona_b"}},
         "diseno": {"firma": {"imagen": "ancha", "escala": 2}},
@@ -225,15 +228,13 @@ def test_todos_los_problemas_juntos(entorno):
         componer_plano(_plano(entorno, firmas), entorno / "p.pdf")
     m = str(e.value)
     for esperado in [
-        "rotulo.firmas.dibujo.firma.imagen: no se encontró la firma 'no_existe' (se buscó "
-        "no_existe.png en: ",
+        "rotulo.firmas.dibujo.firma.imagen: no se encontró la carpeta de la persona 'no_existe' "
+        f"(se buscó en: {entorno / 'firmas'}, {entorno / 'otras'})",
         "rotulo.firmas.dibujo.matricula: la celda 'firmas.dibujo.matricula' no acepta imagen",
         "rotulo.firmas.diseno.firma.escala: campo no reconocido (campos válidos: imagen)",
-        "rotulo.firmas.reviso.firma.imagen: '",
-        "pesada.png' pesa ",
+        f"rotulo.firmas.reviso.firma.imagen: '{entorno / 'firmas' / 'pesada' / 'firma.png'}' pesa ",
         "KB y el máximo es 100 KB",
-        "rotulo.firmas.aprobo.firma.imagen: '",
-        "jpg.png' no es un PNG",
+        f"rotulo.firmas.aprobo.firma.imagen: '{entorno / 'firmas' / 'jpg' / 'firma.png'}' no es un PNG",
         "rotulo.firmas.aprobo.fecha: la celda 'firmas.aprobo.fecha' no acepta imagen",
     ]:
         assert esperado in m, esperado
@@ -241,11 +242,71 @@ def test_todos_los_problemas_juntos(entorno):
     # La ancha (700 x 100 px) y la repetida, por separado:
     with pytest.raises(PlanoNoComponible, match=r"mide 700 x 100 px y el máximo es 600 x 200 px"):
         componer_plano(_plano(entorno, {"diseno": {"firma": {"imagen": "ancha"}}}), entorno / "p.pdf")
-    with pytest.raises(PlanoNoComponible, match=r"la firma 'persona_a' está en más de una carpeta"):
+    with pytest.raises(PlanoNoComponible, match=r"la persona 'persona_a' tiene carpeta en más de un "
+                                                r"lugar"):
         componer_plano(_plano(entorno, {"dibujo": {"firma": {"imagen": "persona_a"}}}),
                        entorno / "p.pdf")
-    with pytest.raises(PlanoNoComponible, match=r"imagen: se esperaba el id de la firma"):
-        componer_plano(_plano(entorno, {"dibujo": {"firma": {"imagen": "../x"}}}), entorno / "p.pdf")
+
+
+# --- carpeta por persona (subfase 4.2f) -------------------------------------------------------
+
+@requiere_arial
+def test_persona_con_tildes_espacios_y_mayusculas(entorno):
+    garabato(entorno / "firmas" / "Luis Ángel Núñez" / "firma.png", semilla=7)
+    garabato(entorno / "firmas" / "Luis Ángel Núñez" / "corta.png", ancho_px=300, alto_px=100)
+    r = componer_plano(_plano(entorno, {"dibujo": {"firma": {"imagen": "Luis Ángel Núñez"}},
+                                        "diseno": {"firma": {"imagen": "luis ángel NÚÑEZ/CORTA"}}}),
+                       entorno / "p.pdf")
+    dibujo, diseno = r.firmas
+    assert dibujo.archivo.name == "firma.png" and dibujo.archivo.parent.name == "Luis Ángel Núñez"
+    assert diseno.archivo.name == "corta.png"  # la variante, sin distinguir mayúsculas (Windows)
+    assert (diseno.ancho_px, diseno.alto_px) == (300, 100)
+
+
+@requiere_arial
+def test_persona_con_un_solo_png_lo_usa_aunque_no_se_llame_firma(entorno):
+    garabato(entorno / "firmas" / "Ana Ocaña" / "escaneo 2026.png")
+    r = componer_plano(_plano(entorno, {"dibujo": {"firma": {"imagen": "Ana Ocaña"}}}),
+                       entorno / "p.pdf")
+    assert r.firmas[0].archivo.name == "escaneo 2026.png"
+
+
+@requiere_arial
+def test_persona_con_varios_png_sin_firma_png_o_sin_ninguno(entorno):
+    garabato(entorno / "firmas" / "Pedro" / "azul.png")
+    garabato(entorno / "firmas" / "Pedro" / "negra.png")
+    (entorno / "firmas" / "Vacía").mkdir()
+    (entorno / "firmas" / "Vacía" / "nota.txt").write_text("no es una firma", encoding="utf-8")
+    with pytest.raises(PlanoNoComponible) as e:
+        componer_plano(_plano(entorno, {"dibujo": {"firma": {"imagen": "Pedro"}},
+                                        "diseno": {"firma": {"imagen": "Pedro/roja"}},
+                                        "reviso": {"firma": {"imagen": "Vacía"}}}),
+                       entorno / "p.pdf")
+    m = str(e.value)
+    carpeta = entorno / "firmas" / "Pedro"
+    assert (f"rotulo.firmas.dibujo.firma.imagen: la carpeta de la persona 'Pedro' ('{carpeta}') "
+            f"tiene varios PNG (azul.png, negra.png) y ninguno se llama firma.png: nombre uno "
+            f"firma.png o use {{\"imagen\": \"Pedro/<archivo>\"}}") in m
+    assert (f"rotulo.firmas.diseno.firma.imagen: la persona 'Pedro' no tiene la variante "
+            f"'roja.png' en '{carpeta}' (PNG que tiene: azul.png, negra.png)") in m
+    assert "la carpeta de la persona 'Vacía' (" in m and "') no tiene ningún PNG" in m
+    # Con la variante, sí:
+    r = componer_plano(_plano(entorno, {"dibujo": {"firma": {"imagen": "Pedro/negra"}}}),
+                       entorno / "p.pdf")
+    assert r.firmas[0].archivo.name == "negra.png"
+
+
+@requiere_arial
+@pytest.mark.parametrize("peligrosa", [
+    "../persona_a", "persona_a/../persona_b", "/persona_a", "C:/firmas/persona_a",
+    "C:\\firmas\\persona_a", "persona_a\\firma", "persona_a/firma/otra", "persona_a/firma.png",
+    "./persona_a", " persona_a", "persona_a ", "persona_a//firma", "", "persona.a", 3, None,
+])
+def test_rutas_peligrosas_se_rechazan(entorno, peligrosa):
+    with pytest.raises(PlanoNoComponible, match=r"imagen: se esperaba \"<persona>\" o "
+                                                r"\"<persona>/<archivo>\""):
+        componer_plano(_plano(entorno, {"dibujo": {"firma": {"imagen": peligrosa}}}),
+                       entorno / "p.pdf")
 
 
 # --- fallas forzadas de la verificación ----------------------------------------------------------
@@ -261,8 +322,8 @@ def _forzar(monkeypatch, cambio):
 
 @requiere_arial
 def test_firma_realista_centrada_en_su_fila_y_montaje_con_advertencia(entorno):
-    garabato(entorno / "firmas" / "ancha_a.png", ancho_px=600, alto_px=200, semilla=4)
-    garabato(entorno / "firmas" / "ancha_b.png", ancho_px=600, alto_px=200, semilla=5)
+    garabato(entorno / "firmas" / "ancha_a" / "firma.png", ancho_px=600, alto_px=200, semilla=4)
+    garabato(entorno / "firmas" / "ancha_b" / "firma.png", ancho_px=600, alto_px=200, semilla=5)
     # Sola en REVISÓ (caja de 17,0 x 7,9 mm): 600 x 200 px a 300 ppp = 50,8 x 16,9 mm; cabe a
     # 17,0 x 5,67 mm, centrada en su fila (29,95).
     r = componer_plano(_plano(entorno, {"reviso": {"firma": {"imagen": "ancha_a"}}}),
@@ -288,8 +349,8 @@ def test_firma_realista_centrada_en_su_fila_y_montaje_con_advertencia(entorno):
 
 @requiere_arial
 def test_sin_montaje_no_hay_advertencia(entorno):
-    garabato(entorno / "firmas" / "ancha_a.png", ancho_px=600, alto_px=200, semilla=4)
-    garabato(entorno / "firmas" / "ancha_b.png", ancho_px=600, alto_px=200, semilla=5)
+    garabato(entorno / "firmas" / "ancha_a" / "firma.png", ancho_px=600, alto_px=200, semilla=4)
+    garabato(entorno / "firmas" / "ancha_b" / "firma.png", ancho_px=600, alto_px=200, semilla=5)
     # DIBUJÓ (Y 37,9–42,9) y REVISÓ (Y 27,1–32,8): no se cruzan.
     r = componer_plano(_plano(entorno, {"dibujo": {"firma": {"imagen": "ancha_a"}},
                                         "reviso": {"firma": {"imagen": "ancha_b"}}}),
@@ -321,7 +382,7 @@ def test_falla_forzada_si_la_firma_pisa_el_encabezado(entorno, monkeypatch):
 @requiere_arial
 @pytest.mark.parametrize("caso, esperado", [
     ("corrida", "se esperaba una imagen en X "),
-    ("otra_imagen", "la imagen del PDF no es la del archivo leído (persona_a.png, SHA-256 "),
+    ("otra_imagen", "la imagen del PDF no es la del archivo leído (firma.png, SHA-256 "),
     ("sin_mascara", "la imagen no tiene máscara de transparencia (SMask)"),
     ("dos_veces", "imágenes y debía tener 2 (hoja base 1 + 1 firma(s)): no se debe rasterizar"),
 ])
@@ -334,7 +395,7 @@ def test_fallas_forzadas_sin_pdf(entorno, monkeypatch, caso, esperado):
             original(page, [replace(f, destino=(f.destino[0] + 0.3, f.destino[1],
                                                 f.destino[2] + 0.3, f.destino[3]))], alto)
         elif caso == "otra_imagen":
-            otra = (entorno / "firmas" / "persona_b.png").read_bytes()
+            otra = (entorno / "firmas" / "persona_b" / "firma.png").read_bytes()
             original(page, [replace(f, datos=otra)], alto)
         elif caso == "sin_mascara":
             opaca = pymupdf.Pixmap(pymupdf.Pixmap(f.datos), 0).tobytes("png")

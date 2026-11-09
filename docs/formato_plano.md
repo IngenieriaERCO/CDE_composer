@@ -143,22 +143,43 @@ columna VER solo en las filas llenas. Columnas: `fecha`, `descripcion`, `dibujo`
 son angostas (unos 10 mm útiles): use iniciales.
 
 **Firmas**: `{"dibujo"|"diseno"|"reviso"|"aprobo": {"nombre", "matricula", "firma", "fecha"}}`.
-`firma` es texto opcional (por defecto vacía) **o una imagen**: `{"imagen": "<id>"}` (ver
+`firma` es texto opcional (por defecto vacía) **o una imagen**: `{"imagen": "<persona>"}` (ver
 «Firma con imagen»). La fila REVISÓ admite 2 líneas en cada celda
 (`"nombre": ["ANDRÉS GÓMEZ", "(DIRECTOR TÉCNICO)"]`).
 
-### Firma con imagen (subfase 4.2d)
+### Firma con imagen (subfases 4.2d a 4.2f)
 
 ```json
 "firmas": {
-  "dibujo": {"nombre": "LUIS Á. NÚÑEZ P.", "firma": {"imagen": "lanp"}},
+  "dibujo": {"nombre": "LUIS Á. NÚÑEZ P.", "firma": {"imagen": "Luis Ángel Núñez"}},
+  "reviso": {"nombre": "ANDRÉS GÓMEZ", "firma": {"imagen": "Andrés Gómez/azul"}},
   "diseno": {"nombre": "MARÍA JOSÉ OCAÑA", "firma": "MJO"}
 }
 ```
 
-- `"imagen": "lanp"` busca **`lanp.png`** en las carpetas de `rotulo.carpeta_firmas` del
-  formato (A1 ERCO: `firmas/` y `data/firmas/`, las dos **fuera de git**). El id lleva solo
-  letras, números, `_` o `-`. Si el mismo id está en dos carpetas, error.
+- **Una carpeta por persona** (subfase 4.2f) dentro de alguna de las carpetas de
+  `rotulo.carpeta_firmas` del formato (A1 ERCO: `firmas/` y `data/firmas/`, las dos **fuera de
+  git**):
+
+  ```text
+  firmas/
+    Luis Ángel Núñez/
+      firma.png
+    Andrés Gómez/
+      firma.png
+      azul.png
+  ```
+
+  - `{"imagen": "<persona>"}` usa `<persona>/firma.png`. Si no hay `firma.png` y la carpeta
+    tiene **un solo** PNG, usa ese; si tiene **varios**, error: nombre uno `firma.png` o use
+    `{"imagen": "<persona>/<archivo>"}`.
+  - `{"imagen": "<persona>/<archivo>"}` (sin `.png`) elige una **variante** concreta.
+  - **Nombres**: letras (con tildes y ñ), números, espacio, `_` y `-` (p. ej. «Luis Ángel
+    Núñez»), sin espacios al principio ni al final. Se rechazan `..`, rutas absolutas, `\`,
+    `:`, puntos y cualquier separador que no sea el **único** `/` entre persona y archivo.
+  - En Windows la búsqueda **no distingue mayúsculas** («luis ángel NÚÑEZ» encuentra «Luis
+    Ángel Núñez»); las tildes se comparan normalizadas.
+  - Si la misma persona tiene carpeta en dos de las carpetas de firmas, error.
 - Solo la columna **FIRMA** la acepta (`"acepta_imagen": true` en el formato); en cualquier
   otra celda es error. El plano.json sigue en versión 2.
 - **El archivo**: PNG de hasta **600 × 200 px** y **100 KB**. Sin canal alfa (transparencia) se
@@ -181,9 +202,10 @@ son angostas (unos 10 mm útiles): use iniciales.
 - **Firmas que se montan**: si las firmas de dos filas quedan de verdad una sobre otra (sus
   rectángulos se cruzan), **advertencia** con las dos filas y el tamaño del cruce; no es
   error. Con 5,0 mm, dos firmas de 600 × 200 px en DIBUJÓ y DISEÑÓ se cruzan 1,35 mm.
-- **Errores juntos**: firma inexistente (dice en qué carpetas se buscó), repetida en dos
-  carpetas, no es PNG, más de 600 × 200 px o de 100 KB, id inválido, campo desconocido, celda
-  que no acepta imagen.
+- **Errores juntos**: persona inexistente (dice en qué carpetas se buscó), con carpeta en dos
+  lugares, sin PNG, con varios PNG y ninguno `firma.png`, variante inexistente (dice qué PNG
+  tiene), no es PNG, más de 600 × 200 px o de 100 KB, nombre o ruta inválidos, campo
+  desconocido, celda que no acepta imagen. Los mensajes nombran la persona y las rutas.
 - **Verificación en el PDF**: la hoja tiene **exactamente** las imágenes de la plantilla (el
   logo) **más una por firma**; los detalles siguen sin poder traer imágenes. Cada firma: su
   rectángulo igual al esperado y dentro de su caja ampliada (±0,1 mm), **sin pisar el
@@ -192,10 +214,11 @@ son angostas (unos 10 mm útiles): use iniciales.
   píxeles; el resumen informa el SHA-256 si falla).
 
 **Privacidad**: una firma en imagen es un dato personal y se puede copiar desde cualquier
-archivo donde esté. Por eso: las imágenes van **fuera de git** (`firmas/*.png` y `data/` en
-`.gitignore`), **no se incrustan en editor.html**, el plano.json solo guarda el id (no la
-imagen) y conviene ponerlas **solo en los PDF emitidos** (no en borradores), con la
-autorización de cada persona.
+archivo donde esté. Por eso: las imágenes van **fuera de git** (toda la carpeta `firmas/` y
+`data/` en `.gitignore`), **no se incrustan en editor.html**, el plano.json solo guarda el
+nombre de la persona (no la imagen) y conviene ponerlas **solo en los PDF emitidos** (no en
+borradores), con la autorización de cada persona. Cada persona tiene su propia carpeta: es
+fácil ver qué firmas hay de quién y retirarlas.
 
 **Escalas**: siempre con punto de miles: `1:50`, `1:1.000`, `1:10.000` (celda ESCALA y
 etiquetas «ESC: 1:N»).
