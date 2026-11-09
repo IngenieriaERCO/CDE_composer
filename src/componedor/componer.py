@@ -70,6 +70,12 @@ from componedor.rosa import (
 )
 from componedor.notas import NotasMaquetadas, verificar_notas
 from componedor.rotulo import RotuloInvalido, preparar_rotulo
+from componedor.simbolos import (
+    Biblioteca,
+    ColocacionSimbolo,
+    dibujar_simbolos,
+    verificar_simbolos,
+)
 from componedor.textos_pdf import escribir_textos, verificar_textos
 from componedor.transformaciones import rect_papel_a_pdf
 
@@ -101,15 +107,18 @@ class ResultadoComposicion:
     rotulo: dict[str, str] = field(default_factory=dict)  # valor final de cada campo de texto
     etiquetas: list[str] = field(default_factory=list)  # ids de detalles con etiqueta ESC
     notas: NotasMaquetadas | None = None  # cuántas notas, líneas y a qué altura (4.2a)
+    simbolos: list[ColocacionSimbolo] = field(default_factory=list)  # convenciones (4.2b)
 
 
 @dataclass
 class _Textos:
-    """Lo que se escribe como texto en la hoja (rótulo y etiquetas) y con qué fuente."""
+    """Lo que se escribe en el rótulo (textos y símbolos de convenciones) y con qué fuente."""
     fuente: Fuente | None = None
-    rotulo: list[TextoMaquetado] = field(default_factory=list)  # incluye las notas
+    rotulo: list[TextoMaquetado] = field(default_factory=list)  # incluye notas y descripciones
     etiquetas: list[TextoMaquetado] = field(default_factory=list)
     notas: NotasMaquetadas | None = None
+    simbolos: list[ColocacionSimbolo] = field(default_factory=list)
+    biblioteca: Biblioteca | None = None
 
 
 def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
@@ -140,6 +149,7 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
     resultado.rotulo = valores
     resultado.etiquetas = [t.ruta.split(".", 1)[1] for t in textos.etiquetas]
     resultado.notas = textos.notas
+    resultado.simbolos = textos.simbolos
     return resultado
 
 
@@ -299,7 +309,8 @@ def _textos(plano: Plano, formato: Formato, colocados: list[tuple],
         [DetalleParaEtiqueta(c.id, c.dibujo, c.escala, detalle.etiqueta_escala)
          for detalle, _, _, c in colocados],
         formato.zonas[ZONA], [(e.nombre, e.rect) for e in elementos], fuente)
-    return (_Textos(fuente, rotulo.textos, etiquetas, rotulo.notas), rotulo.valores,
+    return (_Textos(fuente, rotulo.textos, etiquetas, rotulo.notas, rotulo.simbolos,
+                    rotulo.biblioteca), rotulo.valores,
             rotulo.advertencias + avisos)
 
 
@@ -328,6 +339,12 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
                     raise PlanoNoComponible(
                         "La verificación de la rosa de los vientos falló; no se generó el "
                         "plano:\n" + "\n".join(f"- {p}" for p in problemas))
+            if textos.simbolos:
+                # Los símbolos de convenciones son parte de la hoja base (van antes que los
+                # detalles): así el conteo de trazos por detalle sigue separando bien.
+                dibujar_simbolos(base, textos.simbolos, textos.biblioteca, formato.alto_mm)
+                trazos_base = len(base.get_drawings())
+                imagenes_base = len(base.get_image_info())
             trazos_por_detalle = []
             for _, _, doc_detalle, colocado in colocados:
                 trazos_por_detalle.append(len(doc_detalle[0].get_drawings()))
@@ -340,7 +357,7 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
 
         problemas = _verificar(temporal, formato, informe, [c for *_, c in colocados],
                                trazos_base, trazos_por_detalle, imagenes_base, todos,
-                               textos.notas)
+                               textos.notas, textos.simbolos)
         if problemas:
             raise PlanoNoComponible(
                 "La verificación del PDF compuesto falló; no se generó el plano:\n"
@@ -356,13 +373,15 @@ def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
                colocados: list[DetalleColocado], trazos_base: int,
                trazos_por_detalle: list[int], imagenes_base: int,
                textos: list[TextoMaquetado] = (),
-               notas: NotasMaquetadas | None = None) -> list[str]:
+               notas: NotasMaquetadas | None = None,
+               simbolos: list[ColocacionSimbolo] = ()) -> list[str]:
     """Mide el PDF guardado. Devuelve la lista de problemas (vacía si todo está bien)."""
     with pymupdf.open(ruta) as final:
         page = final[0]
         textos_mal = verificar_textos(page, list(textos), formato.alto_mm)
         if notas is not None:
             textos_mal += verificar_notas(page, notas, formato.alto_mm)
+        textos_mal += verificar_simbolos(page, list(simbolos), formato.alto_mm)
         trazos = page.get_drawings()
         esperados = trazos_base + sum(trazos_por_detalle)
         if len(trazos) != esperados:

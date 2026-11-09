@@ -7,6 +7,7 @@ import pytest
 
 from componedor.formato import FormatoInvalido, cargar_formato, validar_formato
 from componedor.rotulo_formato import (
+    CampoConvenciones,
     CampoNotas,
     CampoTabla,
     CampoTexto,
@@ -31,7 +32,7 @@ def test_a1_erco_trae_los_campos_medidos_del_rotulo_v2():
     assert r.fuente == Path("C:/Windows/Fonts/arial.ttf")
     assert set(r.campos) == {"localizacion_escala", "este", "norte", "revisiones", "disenador",
                              "revisor", "titulo", "firmas", "hoja", "de", "escala", "no_plano",
-                             "rev", "notas"}
+                             "rev", "notas", "convenciones"}
     revisiones = r.campos["revisiones"]
     assert isinstance(revisiones, CampoTabla)
     assert revisiones.filas == ("0", "C", "B", "A") and revisiones.orden == ("0", "A", "B", "C")
@@ -45,7 +46,8 @@ def test_a1_erco_trae_los_campos_medidos_del_rotulo_v2():
     assert r.campos["localizacion_escala"].por_defecto == "DEFINIR"
     assert r.campos["escala"].calculado == "escala_comun"
     assert r.campos["rev"].calculado == "ultima_revision"
-    assert len(r.celdas()) == 12 + 4 * 7 + 4 * 4  # 12 celdas simples (con notas) y 2 tablas
+    # 12 celdas simples (con notas), 2 tablas y las convenciones (24 símbolos + 24 descripciones)
+    assert len(r.celdas()) == 12 + 4 * 7 + 4 * 4 + 48
 
 
 def test_notas_en_a1_erco():
@@ -61,6 +63,33 @@ def test_hoja_y_de_tienen_el_mismo_centro_en_x():
     hoja, de = campos["hoja"].celda, campos["de"].celda
     assert (hoja.rect[0], hoja.rect[2]) == (de.rect[0], de.rect[2]) == (812.9, 827.4)
     assert hoja.alinear == de.alinear == "centro"
+
+
+def test_convenciones_en_a1_erco_y_orden_de_llenado():
+    c = cargar_formato(RUTA_A1, usar_plantilla=False).rotulo.campos["convenciones"]
+    assert isinstance(c, CampoConvenciones) and c.capacidad == 24
+    # "../simbolos/indice.json" se resuelve desde la carpeta del formato (formatos/).
+    assert c.biblioteca == RUTA_A1.parent.parent / "simbolos" / "indice.json"
+    # Por columna: 1..12 la pareja izquierda de arriba abajo, 13..24 la derecha.
+    assert c.simbolos[0].rect == (672.4, 249.39, 693.84, 259.88)
+    assert c.simbolos[11].rect == (672.4, 137.71, 693.84, 147.28)
+    assert c.simbolos[12].rect == (750.32, 249.39, 771.82, 259.88)
+    assert c.descripciones[12].rect == (771.82, 249.39, 828.2, 259.88)
+    assert c.descripciones[0].lineas_max == 2 and c.descripciones[0].altura_mm == 1.8
+
+
+@pytest.mark.parametrize("cambio, esperado", [
+    ({"filas_y_mm": [137.71, 259.88]}, "rotulo.campos.convenciones.filas_y_mm: se esperaba la "
+                                       "lista de las Y"),
+    ({"columnas_x_mm": [[672.4, 693.84]]}, "rotulo.campos.convenciones.columnas_x_mm: se "
+                                           "esperaba una lista de parejas"),
+    ({"biblioteca": ""}, "rotulo.campos.convenciones.biblioteca: se esperaba la ruta"),
+    ({"colr": 1}, "rotulo.campos.convenciones.colr: campo no reconocido"),
+])
+def test_convenciones_invalidas(cambio, esperado):
+    datos = copy.deepcopy(rotulo_a1())
+    datos["campos"]["convenciones"].update(cambio)
+    assert esperado in _error(datos)
 
 
 @pytest.mark.parametrize("cambio, esperado", [
@@ -112,7 +141,7 @@ def test_error_del_rotulo_sale_como_formato_invalido():
     (lambda r: r.update(interlineado=0.5), "rotulo.interlineado: se esperaba un número mayor o igual a 1"),
     (lambda r: r.update(campos={}), "rotulo.campos: se esperaba un objeto con al menos un campo"),
     (lambda r: r["campos"]["titulo"].update(tipo="parrafo"),
-     "rotulo.campos.titulo.tipo: se esperaba \"texto\", \"tabla\" o \"notas\""),
+     "rotulo.campos.titulo.tipo: se esperaba \"texto\", \"tabla\", \"notas\" o \"convenciones\""),
     (lambda r: r["campos"]["titulo"].update(colr="x"), "rotulo.campos.titulo.colr: campo no reconocido"),
     (lambda r: r["campos"]["titulo"].update(alinear="justificado"),
      "rotulo.campos.titulo.alinear: se esperaba uno de izq, centro, der"),

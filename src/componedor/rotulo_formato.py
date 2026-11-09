@@ -30,6 +30,12 @@ formato (todo en mm de papel, Y hacia arriba). Esquema (versión 1):
   orden de la tabla "revisiones").
 - Notas (subfase 4.2a, aditivo): una celda con notas numeradas solas (notas.py);
   `separacion_notas` es el espacio extra entre notas, en renglones (0,5 = medio renglón).
+- Convenciones (subfase 4.2b, aditivo): rejilla de símbolos y descripciones (simbolos.py):
+      {"tipo": "convenciones", "filas_y_mm": [y_arriba, ..., y_abajo],
+       "columnas_x_mm": [[x0, x1] símbolo, [x0, x1] descripción, [x0, x1] símbolo, [...]],
+       "altura_mm": 1.8, "altura_min_mm": 1.5, "lineas_max": 2,
+       "biblioteca": "../simbolos/indice.json"}
+  Se llena por columna: la pareja izquierda de arriba abajo y luego la derecha.
 
 Campos desconocidos se rechazan. Todos los problemas se juntan en un solo error.
 """
@@ -53,6 +59,8 @@ CLAVES_TEXTO = {"tipo", "rect_mm", "alinear", "altura_mm", "altura_min_mm", "lin
 CLAVES_TABLA = {"tipo", "altura_mm", "altura_min_mm", "filas", "columnas", "columna_clave",
                 "orden"}
 CLAVES_NOTAS = {"tipo", "rect_mm", "altura_mm", "altura_min_mm", "separacion_notas"}
+CLAVES_CONVENCIONES = {"tipo", "filas_y_mm", "columnas_x_mm", "altura_mm", "altura_min_mm",
+                       "lineas_max", "biblioteca"}
 CLAVES_FILA = {"y_mm", "lineas_max"}
 SEPARACION_NOTAS_POR_DEFECTO = 0.5
 CLAVES_COLUMNA = {"x_mm", "alinear"}
@@ -100,12 +108,24 @@ class CampoNotas:
 
 
 @dataclass(frozen=True)
+class CampoConvenciones:
+    nombre: str
+    simbolos: tuple[Celda, ...]  # casillas de símbolo, EN ORDEN DE LLENADO (izq. y luego der.)
+    descripciones: tuple[Celda, ...]  # su descripción, mismo orden
+    biblioteca: Path  # indice.json de la biblioteca de símbolos (ruta resuelta)
+
+    @property
+    def capacidad(self) -> int:
+        return len(self.simbolos)
+
+
+@dataclass(frozen=True)
 class DefinicionRotulo:
     version: int
     fuente: Path  # ruta ya resuelta
     relleno_mm: float
     interlineado: float
-    campos: dict[str, CampoTexto | CampoTabla | CampoNotas]
+    campos: dict[str, CampoTexto | CampoTabla | CampoNotas | CampoConvenciones]
 
     def celdas(self) -> list[Celda]:
         """Todas las celdas, en el orden del formato."""
@@ -113,7 +133,11 @@ class DefinicionRotulo:
 
 
 def _celdas(campo) -> list[Celda]:
-    return list(campo.celdas.values()) if isinstance(campo, CampoTabla) else [campo.celda]
+    if isinstance(campo, CampoTabla):
+        return list(campo.celdas.values())
+    if isinstance(campo, CampoConvenciones):
+        return list(campo.simbolos) + list(campo.descripciones)
+    return [campo.celda]
 
 
 def leer_definicion_rotulo(datos, zona_rotulo: RectMM, base: Path | None = None) -> DefinicionRotulo:
@@ -144,7 +168,7 @@ def leer_definicion_rotulo(datos, zona_rotulo: RectMM, base: Path | None = None)
             errores.append("rotulo.campos: se esperaba un objeto con al menos un campo")
         else:
             for nombre, valor in valor_campos.items():
-                campo = _campo(nombre, valor, errores)
+                campo = _campo(nombre, valor, errores, base)
                 if campo is not None:
                     campos[nombre] = campo
 
@@ -176,7 +200,7 @@ def _fuente(valor, base: Path | None, errores: list[str]) -> Path | None:
     return ruta  # que exista se comprueba al componer (cargar_fuente)
 
 
-def _campo(nombre: str, valor, errores: list[str]) -> CampoTexto | CampoTabla | None:
+def _campo(nombre: str, valor, errores: list[str], base: Path | None = None):
     donde = f"rotulo.campos.{nombre}"
     if not isinstance(valor, dict):
         errores.append(f"{donde}: se esperaba un objeto {{...}}; tiene {valor!r}")
@@ -188,8 +212,51 @@ def _campo(nombre: str, valor, errores: list[str]) -> CampoTexto | CampoTabla | 
         return _campo_tabla(nombre, valor, donde, errores)
     if tipo == "notas":
         return _campo_notas(nombre, valor, donde, errores)
-    errores.append(f"{donde}.tipo: se esperaba \"texto\", \"tabla\" o \"notas\"; tiene {tipo!r}")
+    if tipo == "convenciones":
+        return _campo_convenciones(nombre, valor, donde, errores, base)
+    errores.append(f"{donde}.tipo: se esperaba \"texto\", \"tabla\", \"notas\" o "
+                   f"\"convenciones\"; tiene {tipo!r}")
     return None
+
+
+def _campo_convenciones(nombre: str, valor: dict, donde: str, errores: list[str],
+                        base: Path | None) -> CampoConvenciones | None:
+    """Rejilla de convenciones: filas (de arriba abajo) por parejas símbolo + descripción."""
+    n = len(errores)
+    _desconocidas(valor, CLAVES_CONVENCIONES, donde, errores)
+    filas = valor.get("filas_y_mm")
+    if (not isinstance(filas, list) or len(filas) < 2 or not all(map(_es_numero, filas))
+            or any(a <= b for a, b in zip(filas, filas[1:]))):
+        errores.append(f"{donde}.filas_y_mm: se esperaba la lista de las Y de las líneas de las "
+                       f"filas, de arriba abajo (decreciente, al menos 2); tiene {filas!r}")
+    columnas = valor.get("columnas_x_mm")
+    if not isinstance(columnas, list) or not columnas or len(columnas) % 2:
+        errores.append(f"{donde}.columnas_x_mm: se esperaba una lista de parejas [símbolo, "
+                       f"descripción] de intervalos [x0, x1]; tiene {columnas!r}")
+        columnas = []
+    intervalos = [_intervalo(c, f"{donde}.columnas_x_mm[{i}]", errores)
+                  for i, c in enumerate(columnas)]
+    altura, minima = _alturas(valor, donde, errores)
+    lineas = _lineas_max(valor, donde, errores)
+    biblioteca = valor.get("biblioteca")
+    if not isinstance(biblioteca, str) or not biblioteca.strip():
+        errores.append(f"{donde}.biblioteca: se esperaba la ruta del indice.json de la "
+                       f"biblioteca de símbolos; tiene {biblioteca!r}")
+    if len(errores) > n:
+        return None
+    ruta = Path(biblioteca)
+    if not ruta.is_absolute() and base is not None:
+        ruta = Path(os.path.normpath(base / ruta))
+    simbolos, descripciones = [], []
+    for par in range(len(intervalos) // 2):  # llenado por columna: pareja izq., luego der.
+        (sx0, sx1), (dx0, dx1) = intervalos[2 * par], intervalos[2 * par + 1]
+        for f, (y1, y0) in enumerate(zip(filas, filas[1:]), start=1):
+            k = par * (len(filas) - 1) + f
+            simbolos.append(Celda(f"{nombre}.{k}.simbolo", (sx0, y0, sx1, y1), "centro",
+                                  altura, minima, 1))
+            descripciones.append(Celda(f"{nombre}.{k}.descripcion", (dx0, y0, dx1, y1), "izq",
+                                       altura, minima, lineas))
+    return CampoConvenciones(nombre, tuple(simbolos), tuple(descripciones), ruta)
 
 
 def _campo_notas(nombre: str, valor: dict, donde: str, errores: list[str]) -> CampoNotas | None:

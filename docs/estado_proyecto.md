@@ -749,6 +749,68 @@ líneas a 1,8 mm, sin advertencias.
 
 **Pendiente**: 4.2b, convenciones (símbolos). El editor todavía no edita las notas.
 
+### Subfase 4.2b — Convenciones (biblioteca de símbolos vectoriales) ✅ (2026-11-09, sin commit)
+
+**Qué se hizo**
+- **Esquema** (`rotulo_formato.py`, aditivo): tipo `"convenciones"` con la rejilla
+  (`filas_y_mm`: 13 líneas, 12 filas; `columnas_x_mm`: símbolo / descripción / símbolo /
+  descripción), alturas de la descripción (1,8 mm, mín. 1,5, hasta 2 líneas) y la ruta de la
+  biblioteca. En `A1_ERCO.json`, medida en la plantilla v2: filas 259,88 … 137,71, columnas
+  672,4 / 693,84 / 750,32 / 771,82 / 828,2. Llenado por columna (1–12 izquierda, 13–24
+  derecha). Las 48 casillas entran en la revisión de «dentro del rótulo / sin traslapes».
+- **Biblioteca** (`simbolos.py`, comando `extraer-simbolos <plano.pdf>`): normaliza la página
+  (quita /Rotate), mide cada casilla de símbolo (trazos completamente dentro, ±0,3 mm), aísla
+  cada símbolo con redacciones (primero la columna, luego el símbolo) y lo copia como vector
+  a una página propia (caja + 0,5 mm); verifica trazos y caja (±0,1 mm) y escribe el índice
+  (conserva ids y descripciones). Hallazgo: MuPDF decide si un trazo «toca» la redacción con
+  su caja ensanchada, y con 0,5 mm borraba círculos pequeños de un símbolo de prueba; por eso
+  el margen de redacción es adaptativo (0,5 / 1 / 2 / 3 mm) y solo se acepta el que deja
+  exactamente los trazos medidos (si un margen grande metiera trazos vecinos, no cuadra).
+- **Biblioteca real**: `simbolos/convenciones_erco.pdf` (51,2 KB, 12 páginas, se generó en
+  ~80 s desde PRGE-25-0044-CIV-PL-101_A, página 1, /Rotate 270, ~262.000 trazos) y
+  `simbolos/indice.json` con los ids y descripciones acordados. `simbolos/*.pdf` está en
+  `.gitignore`; el índice sí se versiona.
+- **plano.json v2**: `"rotulo": {"convenciones": [{"simbolo": "corte"}, {"simbolo": ...,
+  "descripcion": "..."}]}`. Validación con todos los problemas juntos: símbolo inexistente
+  (lista los válidos), repetido, más de 24, campos desconocidos, caracteres que la fuente no
+  tiene, biblioteca o índice ausentes (dice qué falta y cómo generarla). Sin convenciones en
+  el plano, la biblioteca no hace falta.
+- **Colocación** (`colocar_simbolo`): centrado en la casilla, `f = min(1, ancho_útil/ancho,
+  alto_útil/alto)`, nunca se agranda; si f < 1, advertencia con el símbolo, la casilla y el
+  porcentaje. Los símbolos se dibujan en la hoja base (antes de los detalles), como vector.
+- **Verificación en el PDF guardado** (`verificar_simbolos`): en cada casilla, exactamente los
+  trazos del índice y la caja esperada tras el escalado (±0,1 mm); descripción por
+  `verificar_textos`. `cli componer` informa «Convenciones: N símbolo(s): X a escala 1:1, Y
+  reducido(s)».
+- docs: formato_plano.md (sección Convenciones y `extraer-simbolos`), README.
+
+**Pruebas**: 557, todas pasan (19 nuevas), con un plano y una biblioteca SINTÉTICOS
+(`conftest.crear_plano_con_leyenda`: plano girado 270°, rejilla, descripciones en trazos,
+símbolos de línea, relleno, puntos, malla, uno muy ancho y uno muy alto): extracción (trazos
+y caja de cada símbolo, página solo con el símbolo, índice escrito; ids provisionales sin
+índice y casillas omitidas; casilla vacía, ids repetidos, hoja de otro tamaño, página
+inexistente; CLI), biblioteca ausente / sin medir, colocación (centrado, sin agrandar,
+reducción), y en `componer`: llenado por columna con desborde de la 13.ª a la columna
+derecha, descripción propia, símbolo ancho reducido con advertencia, símbolo alto 1:1 arriba
+y reducido en la fila 10, todos los problemas juntos (más de 24, repetido, inexistente, campo
+desconocido, carácter sin glifo, tipo), biblioteca ausente al componer, descripción que no
+cabe, **falla forzada de la verificación** (símbolo corrido 0,3 mm → error sin PDF) y el
+resumen del CLI. Esquema: rejilla de A1 ERCO y orden de llenado, 4 casos inválidos. Pruebas
+existentes ajustadas: `test_rotulo_formato` (campo `convenciones`, +48 celdas, mensaje del
+tipo).
+
+**Ejemplo** (`data/`, no se versiona): las 12 convenciones en
+`data/planos/ejemplo_rotulo_v2.json` (con «VÍA SUÁREZ – LA GLORIA» como descripción propia de
+`via_existente`) → `data/output/ejemplo_rotulo_v2.pdf`: 12 símbolos a escala 1:1, ninguno
+reducido, sin advertencias; la hoja sigue con 1 sola imagen (el logo).
+
+**Pendiente**
+- **Pregunta para Alan: ¿«límite de predio proyectado» debe verse distinto de «límite de
+  predio»?** En el plano de origen los dos son idénticos (mismo naranja, 13,25 × 0,51 mm).
+- La biblioteca tiene 12 símbolos de un solo plano; sumar otros cuando aparezcan (otra
+  leyenda: otro `extraer-simbolos` con su índice).
+- El editor todavía no edita notas ni convenciones.
+
 ## Pendientes (después de las Fases 1 y 2)
 
 - **Mayúsculas/minúsculas del nombre del PDF en Windows**: `localizar_paquetes` busca

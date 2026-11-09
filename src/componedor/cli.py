@@ -40,6 +40,8 @@ from componedor.paquete import (
 from componedor.informe import resultado_final
 from componedor.validacion import Comprobacion, ResultadoVerificacion
 from componedor.plantilla import TOLERANCIA_MARCO_MM, TOLERANCIA_TAMANO_MM, InformePlantilla
+from componedor.rotulo_formato import CampoConvenciones
+from componedor.simbolos import InformeExtraccion, extraer_simbolos
 from componedor.transformaciones import PuntoMM
 from componedor.unidades import pt_a_mm
 
@@ -360,6 +362,9 @@ def texto_composicion(plano_ruta: Path, r: ResultadoComposicion) -> str:
         verificado += "; la rosa quedó donde se pidió (±0,1 mm)"
     if r.rotulo or r.etiquetas:
         verificado += "; cada texto está en su sitio (±0,1 mm) y dentro de su celda"
+    if r.simbolos:
+        verificado += ("; cada símbolo de convenciones tiene sus trazos y está donde debía en su "
+                       "casilla (±0,1 mm)")
     lineas += ["", f"Verificación: {verificado}.", f"PDF: {r.ruta_pdf}"]
     return "\n".join(lineas)
 
@@ -385,10 +390,43 @@ def texto_rosa_y_rotulo(r: ResultadoComposicion) -> list[str]:
                     if r.notas.reducido_desde is not None else "")
         lineas.append(f"Notas: {len(r.notas.textos)} nota(s) en {r.notas.lineas} línea(s), "
                       f"a {r.notas.altura_mm:.1f} mm{reducida}.")
+    if r.simbolos:
+        reducidos = [s for s in r.simbolos if s.escala < 1]
+        detalle = (" (" + ", ".join(f"{s.simbolo.id} al {s.escala * 100:.1f} %" for s in reducidos)
+                   + ")" if reducidos else "")
+        lineas.append(f"Convenciones: {len(r.simbolos)} símbolo(s): "
+                      f"{len(r.simbolos) - len(reducidos)} a escala 1:1, {len(reducidos)} "
+                      f"reducido(s){detalle}.")
     if r.rotulo or r.etiquetas:
         ids = ", ".join(r.etiquetas) if r.etiquetas else "ninguno"
         lineas.append(f"Etiquetas \"ESC: 1:N\": {len(r.etiquetas)} ({ids}).")
     return lineas
+
+
+def _indice_del_formato(formato: Formato) -> Path:
+    for campo in (formato.rotulo.campos.values() if formato.rotulo else []):
+        if isinstance(campo, CampoConvenciones):
+            return campo.biblioteca
+    raise ValueError("El formato no tiene un campo de tipo \"convenciones\"; indique --indice.")
+
+
+def texto_extraccion(informe: InformeExtraccion) -> str:
+    """Resumen de `extraer-simbolos`."""
+    lineas = [f"Biblioteca de símbolos: {informe.ruta_pdf} "
+              f"({informe.ruta_pdf.stat().st_size / 1024:.1f} KB, {len(informe.simbolos)} "
+              f"símbolo(s), uno por página)", f"Índice: {informe.ruta_indice}", ""]
+    for s in informe.simbolos:
+        ancho, alto = s.tamano_mm
+        lineas.append(f"  {s.pagina:2d}. {s.id:<26} casilla {s.casilla_origen:2d}  "
+                      f"{ancho:6.2f} x {alto:5.2f} mm  {s.trazos:4d} trazo(s)  "
+                      f"«{s.descripcion}»")
+    if informe.omitidas:
+        lineas += ["", "Casillas con dibujo que no están en el índice (no se copiaron): "
+                       + ", ".join(map(str, informe.omitidas))]
+    lineas += ["", "Verificación: cada símbolo de la biblioteca tiene los mismos trazos que en el "
+                   "plano y la misma caja (±0,1 mm); todo es vector.",
+               "La biblioteca (simbolos/*.pdf) sale de un plano de ERCO: no se versiona."]
+    return "\n".join(lineas)
 
 
 def texto_preparar_editor(datos: dict, salida: Path) -> str:
@@ -561,6 +599,18 @@ def main(argv: list[str] | None = None) -> int:
     p_det.add_argument("--sobrescribir", action="store_true",
                        help="Reemplaza el archivo de salida si ya existe.")
 
+    p_sim = sub.add_parser("extraer-simbolos",
+                           help="Arma la biblioteca de símbolos de convenciones (vector) a "
+                                "partir de la leyenda de un plano real.")
+    p_sim.add_argument("plano", type=Path, help="PDF del plano con la leyenda CONVENCIONES.")
+    p_sim.add_argument("--formato", type=Path, default=Path("formatos/A1_ERCO.json"),
+                       help="Formato con la rejilla de convenciones (por defecto "
+                            "formatos/A1_ERCO.json).")
+    p_sim.add_argument("--pagina", type=int, default=1,
+                       help="Página del plano con la leyenda (desde 1; por defecto 1).")
+    p_sim.add_argument("--indice", type=Path,
+                       help="indice.json a escribir (por defecto, la biblioteca del formato).")
+
     p_comp = sub.add_parser("componer",
                             help="Compone un plano con varios detalles a partir de un plano.json.")
     p_comp.add_argument("plano", type=Path, help="Archivo plano.json (ver docs/formato_plano.md).")
@@ -656,6 +706,11 @@ def main(argv: list[str] | None = None) -> int:
             candidatos = detectar_elementos(formato)
             pdf_verificacion(formato, candidatos, args.salida)
             print(texto_candidatos(candidatos, args.salida))
+        elif args.subcomando == "extraer-simbolos":
+            formato = cargar_formato(args.formato, usar_plantilla=False)
+            indice = args.indice or _indice_del_formato(formato)
+            informe = extraer_simbolos(args.plano, formato, indice, args.pagina)
+            print(texto_extraccion(informe))
         elif args.subcomando == "componer":
             plano = leer_plano(args.plano)
             resultado = componer_plano(plano, args.salida, args.sobrescribir, args.guias)

@@ -87,6 +87,82 @@ def crear_plantilla_sintetica(ruta: Path, ancho_pt: float = 2384, alto_pt: float
     return ruta
 
 
+# --- Plano sintético con leyenda CONVENCIONES (subfase 4.2b; no es un plano de ERCO) -------
+FILAS_CONV = [259.88, 249.39, 238.89, 228.43, 217.93, 207.48, 196.98, 186.52, 176.02, 166.45,
+              156.84, 147.28, 137.71]
+COLUMNAS_CONV = [(672.4, 693.84), (693.84, 750.32), (750.32, 771.82), (771.82, 828.2)]
+# Trazos que deja cada tipo de símbolo (para comprobar la extracción).
+TRAZOS_POR_TIPO = {"linea": 1, "relleno": 1, "puntos": 12, "malla": 9, "ancho": 1, "alto": 1}
+
+
+def casilla_conv(k: int) -> tuple[float, float, float, float]:
+    """Casilla de símbolo k (1..24, por columna) de la rejilla de convenciones, mm de papel."""
+    par, fila = divmod(k - 1, 12)
+    x0, x1 = COLUMNAS_CONV[2 * par]
+    return x0, FILAS_CONV[fila + 1], x1, FILAS_CONV[fila]
+
+
+def dibujo_de_tipo(tipo: str, casilla) -> tuple[float, float, float, float]:
+    """Caja (mm de papel) del dibujo de prueba de ese tipo, centrado en la casilla."""
+    cx, cy = (casilla[0] + casilla[2]) / 2, (casilla[1] + casilla[3]) / 2
+    medio = {"linea": (6.0, 0.0), "relleno": (7.0, 3.0), "puntos": (6.0, 3.0),
+             "malla": (5.0, 3.0), "ancho": (10.5, 0.0), "alto": (3.0, 4.6)}[tipo]
+    return cx - medio[0], cy - medio[1], cx + medio[0], cy + medio[1]
+
+
+def crear_plano_con_leyenda(ruta: Path, simbolos: dict[int, str], rotacion: int = 270) -> Path:
+    """PDF A1 (2384 x 1684 pt) girado como un plot de AutoCAD (/Rotate 270 por defecto) con la
+    rejilla de convenciones del rótulo v2, «descripciones» dibujadas como trazos (como el texto
+    SHX), un dibujo grande en el área de dibujo y un símbolo de prueba por casilla:
+    {casilla (1..24): "linea" | "relleno" | "puntos" | "malla" | "ancho" | "alto"}.
+    "ancho" (21 mm) no cabe en el ancho útil (20,24 mm); "alto" (9,2 mm) cabe en las filas
+    1 a 8 (9,25 mm útiles o más) pero no en las 9 a 12 (unos 8,4 mm)."""
+    ancho_pt, alto_pt = 2384, 1684
+    doc = pymupdf.open()
+    page = doc.new_page(width=alto_pt, height=ancho_pt) if rotacion in (90, 270) else \
+        doc.new_page(width=ancho_pt, height=alto_pt)
+    page.set_rotation(rotacion)
+    alto_mm = pt_a_mm(alto_pt)
+
+    def p(x, y):  # punto de papel -> página sin girar
+        return pymupdf.Point(mm_a_pt(x), mm_a_pt(alto_mm - y)) * page.derotation_matrix
+
+    def linea(x0, y0, x1, y1, color=(0, 0, 0), ancho=0.5):
+        page.draw_line(p(x0, y0), p(x1, y1), color=color, width=ancho)
+
+    def rect(x0, y0, x1, y1):
+        return pymupdf.Rect(p(x0, y1), p(x1, y0)).normalize()
+
+    for y in FILAS_CONV:
+        linea(672.4, y, 828.2, y)
+    for x in (693.84, 750.32, 771.82):
+        linea(x, FILAS_CONV[-1], x, FILAS_CONV[0])
+    page.draw_rect(rect(100, 100, 500, 400), color=(0, 0, 1), width=1)  # algo en el área
+    for k in range(1, 25):  # una «descripción» en trazos en cada fila de la columna izquierda
+        if k <= 12:
+            d = casilla_conv(k)
+            linea(696.0, (d[1] + d[3]) / 2, 720.0, (d[1] + d[3]) / 2, ancho=0.3)
+    for k, tipo in simbolos.items():
+        x0, y0, x1, y1 = dibujo_de_tipo(tipo, casilla_conv(k))
+        if tipo in ("linea", "ancho"):
+            linea(x0, y0, x1, y1, color=(1, 0.5, 0), ancho=1.0)
+        elif tipo in ("relleno", "alto"):
+            page.draw_rect(rect(x0, y0, x1, y1), color=(0.2, 0.2, 0.2), fill=(1, 0.55, 0.1),
+                           width=0.5)
+        elif tipo == "puntos":
+            for i in range(12):
+                cx, cy = x0 + 0.5 + (i % 6) * 2.2, y0 + 0.5 + (i // 6) * 5.0
+                page.draw_circle(p(cx, cy), mm_a_pt(0.3), color=(0.9, 0.7, 0), width=0.3)
+        elif tipo == "malla":
+            for i in range(5):
+                linea(x0 + i * 2.5, y0, x0 + i * 2.5, y1, color=(0, 0, 1), ancho=0.2)
+            for j in range(4):
+                linea(x0, y0 + j * 2.0, x1, y0 + j * 2.0, color=(0, 0, 1), ancho=0.2)
+    doc.save(ruta)
+    doc.close()
+    return ruta
+
+
 def crear_detalle_sintetico(ruta: Path, ancho_mm: float = 120, alto_mm: float = 80,
                             rotacion: int = 0, cropbox_mm=None) -> Path:
     """PDF de prueba de una página: rectángulo de 100 x 50 mm, diagonal, texto y marca.

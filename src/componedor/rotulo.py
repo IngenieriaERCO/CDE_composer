@@ -17,13 +17,26 @@ Campos desconocidos, calculados escritos a mano y textos que no caben: error, co
 problemas juntos.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from componedor.fuente import Fuente
 from componedor.maquetacion import TextoMaquetado, TextoNoCabe, maquetar
 from componedor.notas import NotasMaquetadas, leer_notas, maquetar_notas
-from componedor.rotulo_formato import CampoNotas, CampoTabla, CampoTexto, DefinicionRotulo
+from componedor.rotulo_formato import (
+    CampoConvenciones,
+    CampoNotas,
+    CampoTabla,
+    CampoTexto,
+    DefinicionRotulo,
+)
+from componedor.simbolos import (
+    Biblioteca,
+    BibliotecaInvalida,
+    ColocacionSimbolo,
+    cargar_biblioteca,
+    colocar_simbolo,
+)
 from componedor.texto_escala import texto_escala
 
 ESCALAS_DISTINTAS = "INDICADAS"
@@ -45,6 +58,8 @@ class RotuloPreparado:
     advertencias: list[str]
     valores: dict[str, str]  # valor final de cada campo de texto (incluye calculados)
     notas: NotasMaquetadas | None = None  # para verificar_notas y el resumen
+    simbolos: list[ColocacionSimbolo] = field(default_factory=list)  # convenciones (4.2b)
+    biblioteca: Biblioteca | None = None
 
 
 def preparar_rotulo(definicion: DefinicionRotulo, valores: dict | None,
@@ -60,10 +75,14 @@ def preparar_rotulo(definicion: DefinicionRotulo, valores: dict | None,
                          f"{', '.join(definicion.campos)})")
     textos, advertencias = [], []
     notas = None
+    simbolos, biblioteca = [], None
     for campo in definicion.campos.values():
         if isinstance(campo, CampoNotas) and campo.nombre in valores:
             notas = _notas(campo, valores[campo.nombre], definicion, fuente, carpeta,
                            problemas, advertencias)
+        if isinstance(campo, CampoConvenciones) and campo.nombre in valores:
+            simbolos, biblioteca = _convenciones(campo, valores[campo.nombre], definicion,
+                                                 problemas, advertencias, contenidos)
 
     letras: list[str] = []
     for campo in definicion.campos.values():
@@ -115,7 +134,72 @@ def preparar_rotulo(definicion: DefinicionRotulo, valores: dict | None,
     if notas is not None:
         textos += notas.textos
         finales["notas"] = f"{len(notas.textos)} nota(s)"
-    return RotuloPreparado(textos, advertencias, finales, notas)
+    if simbolos:
+        finales["convenciones"] = f"{len(simbolos)} convención(es)"
+    return RotuloPreparado(textos, advertencias, finales, notas, simbolos, biblioteca)
+
+
+def _convenciones(campo: CampoConvenciones, valor, definicion: DefinicionRotulo,
+                  problemas: list[str], advertencias: list[str],
+                  contenidos: list) -> tuple[list[ColocacionSimbolo], Biblioteca | None]:
+    """Valida "convenciones" (lista de {"simbolo", "descripcion"}), las acomoda por columna
+    (pareja izquierda de arriba abajo, luego la derecha) y agrega la descripción de cada una a
+    `contenidos` (se maqueta como cualquier texto). Anota problemas y advertencias."""
+    donde = f"rotulo.{campo.nombre}"
+    if not isinstance(valor, list):
+        problemas.append(f"{donde}: se esperaba una lista de {{\"simbolo\": ..., "
+                         f"\"descripcion\": ...}}; tiene {_tipo(valor)}")
+        return [], None
+    if not valor:
+        return [], None  # sin convenciones: no hace falta la biblioteca
+    if len(valor) > campo.capacidad:
+        problemas.append(f"{donde}: hay {len(valor)} convenciones y la tabla admite "
+                         f"{campo.capacidad} (dos columnas de {campo.capacidad // 2})")
+    try:
+        biblioteca = cargar_biblioteca(campo.biblioteca)
+    except BibliotecaInvalida as e:
+        problemas.append(f"{donde}: {e}")
+        return [], None
+    validos = list(biblioteca.simbolos)
+    vistos: dict[str, int] = {}
+    colocaciones = []
+    for i, item in enumerate(valor):
+        sitio = f"{donde}[{i}]"
+        if not isinstance(item, dict):
+            problemas.append(f"{sitio}: se esperaba un objeto {{\"simbolo\": ...}}; tiene "
+                             f"{_tipo(item)}")
+            continue
+        _desconocidas(item, ("descripcion", "simbolo"), sitio, problemas)
+        ident = item.get("simbolo")
+        if ident not in biblioteca.simbolos:
+            problemas.append(f"{sitio}.simbolo: {_tipo(ident)} no está en la biblioteca "
+                             f"(símbolos válidos: {', '.join(validos)})")
+            continue
+        if ident in vistos:
+            problemas.append(f"{sitio}.simbolo: '{ident}' está repetido (ya está en "
+                             f"{donde}[{vistos[ident]}])")
+            continue
+        vistos[ident] = i
+        if i >= campo.capacidad:
+            continue
+        simbolo = biblioteca.simbolos[ident]
+        celda = campo.descripciones[i]
+        texto = (_contenido(item["descripcion"], f"{sitio}.descripcion", celda.lineas_max,
+                            problemas) if "descripcion" in item else simbolo.descripcion)
+        if texto is not None:
+            contenidos.append((celda, texto))
+        c = colocar_simbolo(simbolo, i + 1, campo.simbolos[i].rect, definicion.relleno_mm,
+                            biblioteca.margen_mm)
+        colocaciones.append(c)
+        if c.escala < 1:
+            ancho, alto = simbolo.tamano_mm
+            casilla = c.casilla
+            advertencias.append(
+                f"Advertencia: en las convenciones, el símbolo '{ident}' (casilla {i + 1}) se "
+                f"redujo al {c.escala * 100:.1f} % para caber en su casilla (dibujo {ancho:.2f} x "
+                f"{alto:.2f} mm; espacio útil {casilla[2] - casilla[0] - 2 * definicion.relleno_mm:.2f}"
+                f" x {casilla[3] - casilla[1] - 2 * definicion.relleno_mm:.2f} mm).")
+    return colocaciones, biblioteca
 
 
 def _notas(campo: CampoNotas, valor, definicion: DefinicionRotulo, fuente: Fuente,

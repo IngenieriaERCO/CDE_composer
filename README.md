@@ -31,6 +31,7 @@ papel (origen en la esquina inferior izquierda de la hoja, Y hacia arriba).
 | `editor` | Genera `editor.html`, un editor visual de planos de un solo archivo (arrastrar detalles y la rosa, y guardar el plano.json). Ver [docs/editor.md](docs/editor.md). |
 | `preparar-editor` | Prepara `editor_datos.json`, `plantilla.png`, `rosa.png` y miniaturas para el editor de planos (ver [docs/formato_editor_datos.md](docs/formato_editor_datos.md)). |
 | `detectar-elementos` | Mide los elementos fijos de la plantilla dentro del área de dibujo (la rosa de los vientos) y genera un PDF de verificación. |
+| `extraer-simbolos` | Arma la biblioteca de símbolos de CONVENCIONES (vector) desde la leyenda de un plano real: `simbolos/convenciones_erco.pdf` (no se versiona) e `indice.json`. |
 
 Ejemplos rápidos (uno por comando):
 
@@ -47,6 +48,7 @@ python -m componedor.cli componer data/planos/mi_plano.json --salida data/output
 python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --salida data/editor
 python -m componedor.cli preparar-editor data/input --formato formatos/A1_ERCO.json --salida data/editor
 python -m componedor.cli detectar-elementos --formato formatos/A1_ERCO.json --salida data/output/elementos_plantilla.pdf
+python -m componedor.cli extraer-simbolos "C:\...\plano_con_leyenda.pdf" --formato formatos/A1_ERCO.json
 ```
 
 El contrato del paquete del exportador (PDF + TXT + manifiesto) está en
@@ -171,8 +173,10 @@ detalles son advertencias. El PDF se verifica antes de entregarlo (posición de 
 ±0,1 mm, rótulo intacto, sin imágenes nuevas, rosa y textos en su sitio ±0,1 mm).
 
 **Rótulo y rosa (plano.json versión 2)**: la sección `rotulo` del plano trae los textos
-(título, revisiones, firmas, No. PLANO, HOJA/DE, coordenadas…) y las **notas** (archivos .txt
-con una nota por línea más notas adicionales, numeradas solas, con sangría francesa); ESCALA (`1:1.000` o
+(título, revisiones, firmas, No. PLANO, HOJA/DE, coordenadas…), las **notas** (archivos .txt
+con una nota por línea más notas adicionales, numeradas solas, con sangría francesa) y las
+**convenciones** (símbolos copiados como vector de la biblioteca `simbolos/`, que se arma una
+vez con `extraer-simbolos`, más su descripción); ESCALA (`1:1.000` o
 `INDICADAS`) y REV. (la última letra de las revisiones) se calculan solos. Los textos se
 escriben en Arial embebida, centrados en su celda; si uno no cabe, error claro con el campo,
 el texto y las medidas (nunca se recorta). Cada detalle lleva su etiqueta «ESC: 1:N». La
@@ -223,8 +227,14 @@ línea (marco 0,5 mm, guías 0,13 mm) y, opcionalmente:
   (`"../plantillas/rotulo_A1_ERCO_v2.pdf"`);
 - `"elementos_plantilla"`: elementos fijos medidos dentro del área de dibujo (la rosa);
 - `"rotulo"`: los campos de texto del rótulo (celda en mm, alineación, altura de texto,
-  líneas, valor por defecto o calculado) y la fuente (`C:/Windows/Fonts/arial.ttf`). Esquema
-  versionado y validado: campos desconocidos, celdas fuera del rótulo o traslapadas son error.
+  líneas, valor por defecto o calculado), las notas, la rejilla de convenciones con la ruta de
+  la biblioteca de símbolos (`../simbolos/indice.json`) y la fuente
+  (`C:/Windows/Fonts/arial.ttf`). Esquema versionado y validado: campos desconocidos, celdas
+  fuera del rótulo o traslapadas son error.
+
+`simbolos/indice.json` (se versiona) lista los símbolos de convenciones (id, descripción por
+defecto, caja y trazos medidos); `simbolos/convenciones_erco.pdf` (no se versiona: sale de un
+plano de ERCO) los trae como vectores, uno por página. Se generan con `extraer-simbolos`.
 
 Al cargarlo se valida la geometría y que la plantilla exista; la fuente se comprueba al
 componer.

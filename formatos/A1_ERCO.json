@@ -36,6 +36,14 @@
                 "alinear": "izq", "altura_mm": 2.0},
       "notas": {"tipo": "notas", "rect_mm": [673.2, 271.3, 827.4, 419.3],
                 "altura_mm": 1.8, "altura_min_mm": 1.5, "separacion_notas": 0.5},
+      "convenciones": {
+        "tipo": "convenciones",
+        "filas_y_mm": [259.88, 249.39, 238.89, 228.43, 217.93, 207.48, 196.98, 186.52,
+                       176.02, 166.45, 156.84, 147.28, 137.71],
+        "columnas_x_mm": [[672.4, 693.84], [693.84, 750.32], [750.32, 771.82], [771.82, 828.2]],
+        "altura_mm": 1.8, "altura_min_mm": 1.5, "lineas_max": 2,
+        "biblioteca": "../simbolos/indice.json"
+      },
       "revisiones": {
         "tipo": "tabla", "altura_mm": 2.0, "columna_clave": "ver", "orden": ["0", "A", "B", "C"],
         "filas": {

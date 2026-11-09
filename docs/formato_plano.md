@@ -132,6 +132,7 @@ falta queda vacío, salvo su valor por defecto. `null` o `""` dejan la celda vac
 | `hoja`, `de` | texto o entero | HOJA __ DE __ (las dos celdas tienen el mismo rango en X, 812,9–827,4 mm, y van centradas: los dos valores quedan uno debajo del otro). |
 | `no_plano` | texto | No. PLANO. |
 | `notas` | objeto | `{"archivos": [...], "adicionales": [...]}`: notas numeradas (ver «Notas»). |
+| `convenciones` | lista (máx. 24) | `[{"simbolo": "corte"}, {"simbolo": "via_existente", "descripcion": "…"}]` (ver «Convenciones»). |
 | `escala` | **calculada** | No se escribe: es la escala de los detalles si todos tienen la misma (`1:1.000`), si no `INDICADAS`. |
 | `rev` | **calculada** | No se escribe: la letra de mayor orden con revisión llena (0 < A < B < C); sin revisiones, vacía. |
 
@@ -166,7 +167,50 @@ No se compone el plano. El rótulo tiene 1 problema:
 - campo 'no_plano': «ERCO-PSF-CIV-PL-0001-PLANTA-GENERAL-...» mide 138.5 mm y la celda permite 114.9 mm (altura 2.5 mm)
 ```
 
-- `convenciones` todavía no existe (subfase 4.2b): ponerlo es «campo no reconocido».
+### Convenciones (`rotulo.convenciones`, subfase 4.2b)
+
+```json
+"convenciones": [
+  {"simbolo": "corte"},
+  {"simbolo": "via_existente", "descripcion": "VÍA SUÁREZ – LA GLORIA"}
+]
+```
+
+- Cada convención es un **símbolo** de la biblioteca (`simbolos/indice.json`) y, opcional,
+  una **descripción** propia; sin ella va la descripción por defecto del índice.
+- **Símbolos disponibles** (biblioteca extraída del plano PRGE-25-0044-CIV-PL-101_A):
+  `limite_predio`, `curvas_nivel`, `cuerpos_agua`, `linea_electrica`, `via_existente`,
+  `via_carreteable`, `limite_predio_proyectado`, `gps`, `panel_3vx8`, `panel_3vx24`, `corte`,
+  `relleno`.
+- **Llenado por columna**: las primeras 12 van en la columna izquierda (símbolo +
+  descripción) de arriba abajo; de la 13.ª a la 24.ª, en la columna derecha. Máximo 24.
+- **El símbolo** se copia como **vector** desde la biblioteca (`show_pdf_page`), **centrado**
+  en su casilla. Nunca se agranda: si no cabe en el espacio útil (casilla menos 0,6 mm por
+  lado: unos 20,2 × 9,3 mm en las filas 1 a 8 y 20,2 × 8,4 mm en las 9 a 12) se reduce,
+  `f = min(1, ancho útil / ancho, alto útil / alto)`, con advertencia («se redujo al 90.6 %»).
+  Con la biblioteca actual, solo `curvas_nivel` (9,23 mm de alto) se reduce, y solo si cae
+  en las filas 9 a 12.
+- **La descripción** se acomoda como cualquier texto: 1,8 mm (mín. 1,5), hasta 2 líneas,
+  alineada a la izquierda; si no cabe, error con el campo, el texto y el tamaño.
+- **Errores juntos**: símbolo inexistente (con la lista de los válidos), símbolo repetido,
+  más de 24, campos desconocidos y caracteres que la fuente no tiene. Si falta la
+  biblioteca o su índice, el error dice qué falta y cómo generarla.
+- **Verificación en el PDF**: en la casilla de cada símbolo hay **exactamente sus trazos** (los
+  del índice) y su caja es la esperada tras el escalado (±0,1 mm); la descripción pasa por
+  la verificación de textos (posición y dentro de su celda).
+
+**La biblioteca** (`extraer-simbolos`, una sola vez):
+
+```powershell
+python -m componedor.cli extraer-simbolos "C:\...\PRGE-25-0044-CIV-PL-101_A_Plano_Movimiento_de_Tierras.pdf"
+```
+
+Lee la leyenda de la página 1 del plano (misma rejilla que el rótulo v2), la normaliza
+(quita el /Rotate 270), aísla cada símbolo con redacciones (`show_pdf_page` con `clip` no
+quita contenido, solo lo oculta) y lo copia como vector a `simbolos/convenciones_erco.pdf`, una
+página por símbolo; verifica que cada uno tenga los mismos trazos y la misma caja (±0,1 mm)
+que en el plano y escribe `simbolos/indice.json` (conserva los ids y descripciones que ya
+tenga). El PDF de la biblioteca sale de un plano de ERCO y **no se versiona**; el índice sí.
 
 ### Notas (`rotulo.notas`, subfase 4.2a)
 
@@ -255,7 +299,8 @@ Las etiquetas y los campos calculados se escriben siempre que el formato tenga l
    los originales trasladados, ±0,1 mm) y, para cada línea de texto (campos, tablas y
    etiquetas «ESC: 1:N»), leyendo los caracteres del PDF con `get_text("rawdict")`:
    - **posición**: su primer carácter está en la base esperada y el texto leído es el
-     escrito (±0,1 mm) (en las notas, además: líneas leídas = escritas y numeración 1…N);
+     escrito (±0,1 mm) (en las notas, además: líneas leídas = escritas y numeración 1…N;
+     en las convenciones: trazos de cada símbolo y su caja en la casilla);
    - **celda**: la caja que forman los bboxes de sus caracteres (ancho de avance y caja de
      línea de la fuente: ascenso y descenso) queda dentro del rectángulo de su celda,
      ±0,1 mm. En una etiqueta ESC la «celda» es la caja que se le reservó al colocarla. Si
