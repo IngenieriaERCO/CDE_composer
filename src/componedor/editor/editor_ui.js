@@ -23,8 +23,11 @@
   // Rótulo (subfase 4.3a): definición, catálogo de notas, símbolos y anchos de la fuente.
   // null con datos anteriores o con un formato sin sección "rotulo".
   const R = window.EditorRotulo;
+  const F = window.EditorFormularios; // formularios del rótulo (4.3b)
   const DATOS_ROTULO = DATOS.rotulo || null;
   const DEFINICION_ROTULO = DATOS_ROTULO ? DATOS_ROTULO.definicion : null;
+  // proyecto.json (editor --proyecto): valores que prellenan un plano NUEVO.
+  const PRELLENADO = DATOS_ROTULO ? F.valoresProyecto(DATOS_ROTULO.proyecto, DEFINICION_ROTULO) : {};
 
   const estado = {
     colocaciones: [], // [{id, detalle, pos: [x, y]}], en orden de apilado
@@ -39,6 +42,7 @@
     cambios: false,
     vista: { x: 0, y: 0, ancho: ANCHO_PX, alto: ALTO_PX },
   };
+  R.prellenar(estado.rotulo, PRELLENADO); // plano nuevo: los datos del proyecto quedan copiados
   let arrastre = null; // {c, dx, dy} en mm (c: detalle) o {rosa: true, dx, dy}
   let paneo = null; // {x, y, vista} en px de pantalla
   let ultimasAdvertencias = [];
@@ -263,6 +267,7 @@
     pintarPropiedades();
     pintarListaPlano();
     pintarAdvertencias(lista);
+    panelRotulo.refrescar(); // ESCALA depende de los detalles colocados
   }
 
   // ---------------------------------------------------------------------------------------
@@ -399,38 +404,19 @@
   }
 
   /**
-   * Panel «Rótulo» (4.3a, informativo): qué trae el editor (catálogo de notas, símbolos) y qué
-   * rótulo tiene el plano abierto. Los formularios llegan en la 4.3b; mientras, el rótulo de un
-   * plano abierto se conserva tal cual al guardar.
+   * Panel «Rótulo» (4.3b): formularios de los campos simples, revisiones y firmas
+   * (editor_panel_rotulo.js). Lo que no se toca se guarda tal como vino.
    */
+  const panelRotulo = window.EditorPanelRotulo.crear({
+    panel: document.getElementById("panel-rotulo"),
+    datos: DATOS_ROTULO,
+    modelo: () => estado.rotulo,
+    escalas: () => estado.colocaciones.map((c) => c.detalle.escala),
+    alCambiar: marcarCambios,
+  });
+
   function pintarRotulo() {
-    const panel = document.getElementById("panel-rotulo");
-    if (!panel) return;
-    if (!DATOS_ROTULO) {
-      panel.replaceChildren(nodo("div", { class: "vacio" }, "El formato no tiene sección de rótulo."));
-      return;
-    }
-    const c = R.resumenCatalogo(DATOS_ROTULO.notas);
-    const filas = [
-      nodo("div", { class: "medida" }, DATOS_ROTULO.notas
-        ? "Notas típicas: " + c.notas + " nota(s) (" + c.vinetas + " viñeta(s)) en " + c.archivos +
-          " archivo(s), " + c.grupos + " grupo(s)."
-        : "Notas típicas: no se cargó ninguna carpeta (use --notas al generar el editor)."),
-      nodo("div", { class: "medida" }, "Símbolos de convenciones: " + DATOS_ROTULO.simbolos.length + "."),
-    ];
-    if (c.problemas) {
-      filas.push(nodo("div", { class: "nota-detalle" }, c.problemas + " problema(s) al leer las notas típicas."));
-    }
-    for (const aviso of DATOS_ROTULO.avisos) filas.push(nodo("div", { class: "nota-detalle" }, aviso));
-    const actual = R.serializar(estado.rotulo);
-    filas.push(nodo("div", { class: "medida" }, actual
-      ? "El plano abierto trae rótulo (" + Object.keys(actual).length + " campo(s)): se conserva tal cual al guardar."
-      : "El plano no tiene rótulo todavía."));
-    for (const texto of R.noRepresentable(estado.rotulo)) {
-      filas.push(nodo("div", { class: "medida" }, "Se conserva sin editar: " + texto));
-    }
-    filas.push(nodo("div", { class: "vacio" }, "Los formularios del rótulo llegan en la próxima versión del editor."));
-    panel.replaceChildren(...filas);
+    panelRotulo.pintar();
   }
 
   /** Panel «Rosa de los vientos»: mostrar/ocultar, X / Y y restaurar posición. */
@@ -872,7 +858,8 @@
   window.EditorPrueba = { estado, agregar: (id) => agregar(CATALOGO.find((d) => d.id === id)),
     mover: (id, pos) => mover(estado.colocaciones.find((c) => c.id === id), pos),
     texto: textoPlano, advertencias: () => ultimasAdvertencias,
-    moverRosa, mostrarRosa, restaurarRosa, abrir };
+    moverRosa, mostrarRosa, restaurarRosa, abrir,
+    rotulo: () => R.serializar(estado.rotulo), validacionRotulo: () => panelRotulo.validacion() };
 
   pintarCatalogo();
   pintarRotulo();

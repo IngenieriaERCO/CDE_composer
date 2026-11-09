@@ -485,6 +485,16 @@ def texto_rotulo_editor(datos: dict) -> list[str]:
             lineas.append(f"  - {aviso}")
     lineas.append(f"Símbolos de convenciones: {len(rotulo['simbolos'])} (PNG a 20 px/mm, solo para "
                   f"mostrar). Firmas en imagen: no se incrustan.")
+    personas = rotulo.get("personas_firmas")
+    if personas is not None:
+        lineas.append(f"Personas con firma (solo el nombre): {len(personas)}"
+                      + (": " + ", ".join(personas) if personas else "") + ".")
+    proyecto = rotulo.get("proyecto")
+    if proyecto is not None:
+        prellena = [c for c in ("disenador", "revisor", "prefijo_no_plano") if c in proyecto]
+        prellena += [f"firmas.{f}" for f in proyecto.get("firmas", {})]
+        lineas.append(f"Proyecto{' «' + proyecto['nombre'] + '»' if proyecto.get('nombre') else ''}"
+                      f": prellena un plano nuevo con {', '.join(prellena) or 'nada'}.")
     for aviso in rotulo["avisos"]:
         lineas.append(f"  - {aviso}")
     return lineas
@@ -621,6 +631,12 @@ def main(argv: list[str] | None = None) -> int:
     p_html.add_argument("--notas", type=Path,
                         help="Carpeta con las notas típicas (.txt, una nota por línea; cada "
                              "subcarpeta es un grupo del catálogo).")
+    p_html.add_argument("--firmas", type=Path,
+                        help="Carpeta de firmas (una subcarpeta por persona): el editor lista "
+                             "los NOMBRES; las imágenes nunca se incrustan.")
+    p_html.add_argument("--proyecto", type=Path,
+                        help="proyecto.json con los datos que se repiten (diseñador, revisor, "
+                             "firmas, prefijo del No. PLANO) para prellenar un plano nuevo.")
     p_html.add_argument("--sobrescribir", action="store_true",
                         help="Reemplaza lo que genera el editor si la carpeta ya tiene contenido.")
 
@@ -633,6 +649,9 @@ def main(argv: list[str] | None = None) -> int:
                       help="Carpeta donde escribir editor_datos.json, plantilla.png y miniaturas/.")
     p_ed.add_argument("--notas", type=Path,
                       help="Carpeta con las notas típicas (.txt; cada subcarpeta es un grupo).")
+    p_ed.add_argument("--firmas", type=Path,
+                      help="Carpeta de firmas: solo se toman los nombres de las personas.")
+    p_ed.add_argument("--proyecto", type=Path, help="proyecto.json para prellenar un plano nuevo.")
     p_ed.add_argument("--sobrescribir", action="store_true",
                       help="Reemplaza los datos del editor si la carpeta ya tiene contenido.")
 
@@ -738,7 +757,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if todos_completos and sin_fallas else 1
         elif args.subcomando == "editor":
             ruta_html = generar_editor(args.carpeta, args.formato, args.salida, args.sobrescribir,
-                                       carpeta_notas=args.notas)
+                                       carpeta_notas=args.notas, carpeta_firmas=args.firmas,
+                                       ruta_proyecto=args.proyecto)
             carpeta = ruta_html.parent.resolve()
             print(f"Editor generado: {ruta_html.resolve()} "
                   f"({ruta_html.stat().st_size / 1024:.0f} KB)")
@@ -751,7 +771,8 @@ def main(argv: list[str] | None = None) -> int:
                   f"--salida \"{carpeta / 'plano.pdf'}\"")
         elif args.subcomando == "preparar-editor":
             datos = preparar_editor(args.carpeta, args.formato, args.salida, args.sobrescribir,
-                                    carpeta_notas=args.notas)
+                                    carpeta_notas=args.notas, carpeta_firmas=args.firmas,
+                                    ruta_proyecto=args.proyecto)
             print(texto_preparar_editor(datos, args.salida))
         elif args.subcomando == "detectar-elementos":
             _exigir_que_no_exista(args.salida, args.sobrescribir)

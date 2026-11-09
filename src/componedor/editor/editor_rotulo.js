@@ -1,5 +1,5 @@
 /*
- * Editor de planos — modelo del RÓTULO (subfase 4.3a). Lógica pura, sin pantalla: funciona en
+ * Editor de planos — modelo del RÓTULO (subfase 4.3a; prellenado, 4.3b). Lógica pura, sin pantalla: funciona en
  * el navegador (window.EditorRotulo) y en Node (module.exports), para probarla desde pytest.
  *
  * Regla de oro: abrir un plano.json y guardarlo SIN tocar nada debe dejar el JSON idéntico.
@@ -130,9 +130,30 @@
     cambiar(modelo, "notas", Object.keys(nuevo).length ? nuevo : undefined);
   }
 
+  /**
+   * Plano NUEVO (sin rótulo de origen): pone `valores` (campo -> valor, p. ej. los de
+   * proyecto.json) como cambios, así quedan COPIADOS en el plano al guardar. En un plano
+   * abierto no hace nada: lo que trae el plano manda. Devuelve los campos que puso.
+   */
+  function prellenar(modelo, valores) {
+    if (modelo.original !== null || !esObjeto(valores)) return [];
+    const puestos = [];
+    for (const [campo, v] of Object.entries(valores)) {
+      if (v === undefined) continue;
+      cambiar(modelo, campo, v);
+      puestos.push(campo);
+    }
+    return puestos;
+  }
+
   // ---------------------------------------------------------------------------------------
-  // Lo que los formularios (4.3b) no saben representar: se conserva y se avisa.
+  // Lo que los formularios no saben representar: se conserva y se avisa. Desde la 4.3b las
+  // listas de líneas sí se editan (una línea por renglón); lo que sigue aquí no.
   // ---------------------------------------------------------------------------------------
+
+  const textoRepresentable = (v) => v === null || typeof v === "string" ||
+    (typeof v === "number" && Number.isInteger(v)) ||
+    (Array.isArray(v) && v.every((x) => typeof x === "string" && !x.includes("\n")));
 
   /** Lista de textos con lo que el editor conserva sin poder editarlo. */
   function noRepresentable(modelo) {
@@ -144,15 +165,9 @@
       if (campos && !campos[clave]) lista.push("rotulo." + clave + " (el formato no tiene ese campo)");
       else if (clave === "notas" && esObjeto(v) && Array.isArray(v.archivos) && v.archivos.length) {
         lista.push("notas.archivos (" + v.archivos.length + " archivo(s) .txt referidos)");
-      } else if (Array.isArray(v) && campos && campos[clave] && campos[clave].tipo === "texto") {
-        lista.push("rotulo." + clave + " (dado como lista de líneas)");
-      }
-    }
-    if (esObjeto(r.firmas)) {
-      for (const [fila, item] of Object.entries(r.firmas)) {
-        for (const [col, v] of Object.entries(item || {})) {
-          if (Array.isArray(v)) lista.push("firmas." + fila + "." + col + " (varias líneas)");
-        }
+      } else if (campos && campos[clave] && campos[clave].tipo === "texto" && !campos[clave].calculado &&
+                 !textoRepresentable(v)) {
+        lista.push("rotulo." + clave + " (valor que el formulario no sabe mostrar)");
       }
     }
     return lista;
@@ -187,6 +202,7 @@
     notaParaGuardar,
     notas,
     cambiarNotasAdicionales,
+    prellenar,
     noRepresentable,
     resumenCatalogo,
   };

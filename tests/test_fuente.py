@@ -39,6 +39,21 @@ def test_ancho_proporcional_a_la_altura_y_caracteres_faltantes():
     assert f.glifo("A") > 0 and f.glifo("中") == 0
 
 
+@requiere_arial
+def test_rangos_unicode_coinciden_con_caracteres_faltantes():
+    """Los rangos que usa el editor (4.3b) dicen lo mismo que `caracteres_faltantes`."""
+    f = cargar_fuente(ARIAL)
+    rangos = f.rangos_unicode()
+    assert all(a <= b for a, b in rangos)
+    assert all(rangos[i][1] + 1 < rangos[i + 1][0] for i in range(len(rangos) - 1))  # unidos
+    assert len(rangos) < 400  # pocos: van incrustados en editor.html
+    tiene = lambda c: any(a <= ord(c) <= b for a, b in rangos)  # noqa: E731
+    for cp in list(range(33, 0x3000)) + [0x4E2D, 0x1F600]:
+        c = chr(cp)
+        if not c.isspace():
+            assert tiene(c) == (f.caracteres_faltantes(c) == []), hex(cp)
+
+
 def _ttf(cap: int, unidades: int = 2048, version_os2: int = 4) -> bytes:
     """TrueType mínimo con solo las tablas head y OS/2 (para leer la altura de mayúsculas)."""
     head = bytearray(54)

@@ -255,11 +255,12 @@ def test_notas_adicionales_con_vinetas_conservan_los_archivos():
 def test_lo_que_no_se_puede_editar_se_avisa(datos):
     r = js("""
         return R.noRepresentable(R.crearModelo(entrada.rotulo, entrada.datos.rotulo.definicion));
-    """, {"rotulo": {**ROTULO_EJEMPLO, "titulo": ["A", "B"], "campo_futuro": 1}, "datos": datos})
-    assert "notas.archivos (3 archivo(s) .txt referidos)" in r
-    assert "rotulo.titulo (dado como lista de líneas)" in r
-    assert "rotulo.campo_futuro (el formato no tiene ese campo)" in r
-    assert "firmas.reviso.nombre (varias líneas)" in r
+    """, {"rotulo": {**ROTULO_EJEMPLO, "titulo": ["A", "B"], "campo_futuro": 1,
+                     "revisor": {"raro": 1}}, "datos": datos})
+    # Desde la 4.3b las listas de líneas (título, REVISÓ) sí se editan: ya no se avisan.
+    assert r == ["notas.archivos (3 archivo(s) .txt referidos)",
+                 "rotulo.revisor (valor que el formulario no sabe mostrar)",
+                 "rotulo.campo_futuro (el formato no tiene ese campo)"]
 
 
 def test_resumen_del_catalogo():

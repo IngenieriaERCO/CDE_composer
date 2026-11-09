@@ -23,6 +23,8 @@ MARCADORES = {
     "/*@@CSS@@*/": "editor.css",
     "/*@@JS_LOGICA@@*/": "editor_logica.js",
     "/*@@JS_ROTULO@@*/": "editor_rotulo.js",
+    "/*@@JS_FORMULARIOS@@*/": "editor_formularios.js",
+    "/*@@JS_PANEL_ROTULO@@*/": "editor_panel_rotulo.js",
     "/*@@JS_UI@@*/": "editor_ui.js",
 }
 MARCADOR_DATOS = "@@DATOS_EDITOR@@"
@@ -30,16 +32,20 @@ MARCADOR_DATOS = "@@DATOS_EDITOR@@"
 
 def generar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
                    carpeta_salida: Path | str, sobrescribir: bool = False,
-                   carpeta_notas: Path | str | None = None) -> Path:
+                   carpeta_notas: Path | str | None = None,
+                   carpeta_firmas: Path | str | None = None,
+                   ruta_proyecto: Path | str | None = None) -> Path:
     """Escribe en `carpeta_salida` los datos del editor y `editor.html`. Devuelve su ruta.
 
     Mismas reglas que `preparar-editor`: no pisa una carpeta con contenido salvo con
     `sobrescribir`, y en ese caso reemplaza solo lo que genera. `carpeta_notas`: notas típicas
-    para el catálogo del rótulo (se incrustan; las firmas nunca).
+    para el catálogo del rótulo (se incrustan). `carpeta_firmas`: solo los NOMBRES de las
+    personas (las imágenes nunca). `ruta_proyecto`: proyecto.json para prellenar (4.3b).
     """
     carpeta_salida = Path(carpeta_salida)
     datos = preparar_editor(carpeta_paquetes, ruta_formato, carpeta_salida, sobrescribir,
-                            carpeta_notas=carpeta_notas)
+                            carpeta_notas=carpeta_notas, carpeta_firmas=carpeta_firmas,
+                            ruta_proyecto=ruta_proyecto)
     ruta = carpeta_salida / ARCHIVO_HTML
     ruta.write_text(construir_html(datos, carpeta_salida), encoding="utf-8", newline="\n")
     return ruta

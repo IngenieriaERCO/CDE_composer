@@ -80,25 +80,59 @@ La rosa de la plantilla se puede mover o quitar, como en el Layout se mueve un b
   (la quita de la plantilla y la vuelve a dibujar como vector donde usted la dejó).
 - Se guarda en el plano.json como `"rosa_vientos": {"visible": ..., "posicion_mm": [x, y]}`.
 
-## 2c. Rótulo (subfase 4.3a: datos y modelo; los formularios llegan en la 4.3b)
+## 2c. Rótulo: formularios (subfase 4.3b; notas y convenciones llegan en la 4.3c y 4.3d)
 
-El editor ya trae incrustado todo lo que necesitarán los formularios del rótulo:
+Generar el editor con todo lo del rótulo:
 
-- la **definición del rótulo** del formato (celdas en mm, alturas, líneas, formato de fecha:
-  `dd/mm/aa` en A1 ERCO, configurable con `rotulo.formato_fecha`);
-- la **tabla de anchos** de Arial (para medir los textos igual que `componer`);
-- el **catálogo de notas típicas** (si se generó con `--notas`), por grupos;
-- los **símbolos de convenciones** en PNG transparente a 20 px/mm, dibujados con su opacidad
-  (si falta la biblioteca, un aviso dice cómo generarla).
+```
+python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --salida data/editor ^
+    --notas "C:\...\notas_tipicas" --firmas firmas --proyecto "C:\...\proyecto.json"
+```
 
-Las **firmas en imagen nunca se incrustan** en editor.html: el plano.json solo guarda el nombre
-de la persona y `componer` busca la imagen en la carpeta de firmas.
+- `--notas`: catálogo de notas típicas (subcarpetas = grupos).
+- `--firmas <carpeta>`: la carpeta de firmas (una subcarpeta por persona). El editor solo
+  recibe los **nombres** de las personas, para elegirlos en una lista; **las imágenes nunca se
+  incrustan** en editor.html. Se omiten, con aviso, las carpetas sin PNG o con un nombre que
+  `componer` no aceptaría.
+- `--proyecto <proyecto.json>`: datos que se repiten en todos los planos del proyecto
+  (diseñador, revisor, nombres y matrículas de las firmas, prefijo del No. PLANO). Esquema en
+  [formato_proyecto.md](formato_proyecto.md). **Solo prellena un plano NUEVO**; al guardar,
+  los valores quedan copiados en el plano.json (`componer` no lee proyecto.json). Un plano que
+  se abre no se toca. Si el proyecto tiene errores, el editor no se genera y se listan todos.
 
-Panel **Rótulo** (a la derecha, informativo): cuántas notas típicas y símbolos trae el editor,
-si el plano abierto tiene rótulo y qué partes del rótulo el editor conservará sin poder
-editarlas (por ejemplo, notas tomadas de archivos `.txt` o un nombre en dos líneas).
+Panel **Rótulo** (a la derecha), por secciones que se pliegan:
 
-**Abrir y guardar sin tocar nada deja el plano.json idéntico.** El editor recuerda el plano
+- **Datos del plano**: Título, No. PLANO, HOJA, DE, coordenadas ESTE/NORTE, ESC. de
+  localización, Diseñador y Revisor. Las celdas de varias líneas (Título 3, Diseñador y Revisor
+  3, REVISÓ 2) usan una caja de varios renglones: **una línea por renglón**. Debajo, **ESCALA**
+  y **REV.** calculadas, de solo lectura, con la misma regla que `componer` (REV.: «0» si existe
+  la emisión 0; si no, la letra más alta entre C, B y A; vacía sin revisiones).
+- **Revisiones**: una tarjeta por revisión con **VER.** (lista con las letras libres: 0, A, B o
+  C, sin repetir), Fecha, Descripción, Dibujó, Diseñó, Revisó y Aprobó; botones **Quitar** y
+  **Agregar revisión** (toma la primera letra libre; cámbiela en la lista).
+- **Firmas**: DIBUJÓ, DISEÑÓ, REVISÓ y APROBÓ con Nombre, Matrícula, Firma y Fecha. La firma es
+  **Texto** (p. ej. iniciales) o **Persona**: un nombre de la lista de `--firmas`; en el plano
+  queda `{"imagen": "<persona>"}` y `componer` busca su PNG.
+- **Fechas**: se escriben a mano o con el **calendario** (ícono a la derecha), que las escribe en
+  el `formato_fecha` del formato (A1 ERCO: `dd/mm/aa`, p. ej. 09/11/26).
+- **Problemas del rótulo**: validación en vivo con **los mismos textos que `componer`**: tipo
+  de valor, salto de línea en una celda de una línea, letras de revisión inválidas o repetidas,
+  columnas desconocidas, caracteres que Arial no tiene (p. ej. «中») y una lista de líneas con
+  más líneas de las que admite la celda. La casilla con problema se pone en rojo. **Si el texto
+  cabe en su celda (y si se reduce) todavía lo dice solo `componer`** (subfase 4.3e).
+
+Reglas al escribir:
+
+- **Vaciar un campo lo quita del plano**: vuelve su valor por defecto (p. ej. «DEFINIR» en ESC.
+  de localización, que se ve como texto gris de ejemplo).
+- Se respeta la forma que traía el plano: un nombre dado como lista de líneas sigue siendo
+  lista; un número (`"hoja": 1`) sigue siendo número si escribe un número.
+- Lo que el formulario no sabe mostrar (un campo que el formato no tiene, notas tomadas de
+  archivos `.txt`, un valor raro) aparece en **Se conserva sin editar** y se guarda tal cual.
+- Notas y convenciones del plano se conservan; su edición llega en la 4.3c y 4.3d.
+
+**Abrir y guardar sin tocar nada deja el plano.json idéntico**; al editar, solo cambia lo
+editado. El editor recuerda el plano
 abierto y solo cambia lo que usted toca: un detalle que no se movió sale tal como venía
 (incluso con `"centrar": true`), el formato, la plantilla y el rótulo se conservan, y la rosa
 solo se escribe si el plano ya la traía o si usted la movió u ocultó.
@@ -204,8 +238,9 @@ fondo que está debajo no tapa al de encima.
   de línea LF.
 - Si el plano se **abrió**, lo que no se tocó sale **tal como venía** (ver «2c. Rótulo»):
   abrir y guardar sin cambios da el mismo JSON.
-- El editor **no edita el rótulo** todavía (formularios: subfase 4.3b): si abre un plano con
-  `rotulo`, lo **conserva tal cual** al guardar. Lo mismo con `"etiqueta_escala": false`.
+- El rótulo se edita en el panel **Rótulo** (sección 2c); lo que no se edita ahí (notas,
+  convenciones, lo que el formulario no sabe mostrar) se **conserva tal cual** al guardar. Lo
+  mismo con `"etiqueta_escala": false`.
 - En Edge y Chrome aparece el diálogo de **Guardar como** (nombre sugerido `plano.json`). Si el
   navegador no lo ofrece o falla (permisos, archivo abierto desde el disco), el plano se
   **descarga** a la carpeta de descargas: **muévalo** a la carpeta de `editor.html` antes de

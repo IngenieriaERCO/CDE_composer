@@ -197,6 +197,30 @@ def _buscar_firma(persona: str, variante: str | None, carpetas: tuple[Path, ...]
     return None
 
 
+def personas_firmas(carpeta: Path | str) -> tuple[list[str], list[str]]:
+    """(nombres de las carpetas de personas, avisos) para la lista del editor (subfase 4.3b).
+
+    Solo se leen NOMBRES: de las subcarpetas y de sus archivos, para saber si tienen algún PNG.
+    Ninguna imagen se abre ni se copia. Se omiten, con aviso, las carpetas con un nombre que
+    `componer` no aceptaría y las que no tienen ningún PNG. Orden alfabético."""
+    carpeta = Path(carpeta)
+    if not carpeta.is_dir():
+        return [], [f"firmas: no se encontró la carpeta '{carpeta}'"]
+    personas, avisos = [], []
+    for d in sorted((d for d in carpeta.iterdir() if d.is_dir()), key=lambda d: d.name.casefold()):
+        nombre = unicodedata.normalize("NFC", d.name)
+        if not NOMBRE_VALIDO.match(nombre):
+            avisos.append(f"firmas: se omitió la carpeta '{d.name}' (el nombre solo admite letras, "
+                          f"números, espacio, «_» y «-»)")
+        elif not any(a.is_file() and a.suffix.lower() == ".png" for a in d.iterdir()):
+            avisos.append(f"firmas: se omitió la carpeta '{d.name}' (no tiene ningún PNG)")
+        else:
+            personas.append(nombre)
+    if not personas and not avisos:
+        avisos.append(f"firmas: la carpeta '{carpeta}' no tiene carpetas de personas")
+    return personas, avisos
+
+
 def caja_firma(celda: Celda, relleno_mm: float) -> RectMM:
     """Dónde puede ir la firma (mm de papel): el ancho de la celda menos el relleno y, con
     `alto_max_mm`, un alto de max(alto_max_mm, alto útil de su fila) centrado en la fila,

@@ -955,7 +955,7 @@ Pruebas de la 4.2d/4.2e ajustadas a la estructura por persona (rutas y mensajes)
 `data/firmas/Ficticia Ocaña/firma.png` y `data/firmas/Ficticia Gómez/firma.png`; el plano de
 ejemplo usa `{"imagen": "Ficticia Núñez"}`, etc. Mismos tamaños que en la 4.2e.
 
-### Subfase 4.3a — Editor: datos y modelo del rótulo (sin formularios) ✅ (2026-11-09, sin commit)
+### Subfase 4.3a — Editor: datos y modelo del rótulo (sin formularios) ✅ (2026-11-09, commit b4716f9)
 
 Decisiones (Paso 0): notas COPIADAS al plano.json (en `adicionales`, con viñetas);
 `proyecto.json` como prellenado por copia (4.3b); fechas con selector, formato por defecto
@@ -1007,7 +1007,7 @@ La verificación de la 4.1 (rosa) sigue toda OK.
 símbolos: **576 KB**; el rótulo aporta 77 KB (símbolos 61 KB, definición + anchos + notas
 16 KB), como se estimó; el resto son miniaturas (via_ma: 255 KB).
 
-**Corrección de REV.** (2026-11-09, sin commit): la fila «0» es la emisión final (para
+**Corrección de REV.** (2026-11-09, commit b4716f9 junto con la 4.3a): la fila «0» es la emisión final (para
 construcción) y A, B, C son emisiones previas. Antes el orden era 0 < A < B < C y con
 revisiones 0, A y B salía REV. = B (incorrecto). Ahora el `orden` de `revisiones` en
 `A1_ERCO.json` es `["A", "B", "C", "0"]`: con «0», REV. = 0; si no, la mayor letra llena entre
@@ -1017,12 +1017,73 @@ ahora lista «A, B, C, 0». Pruebas: casos 0+A+B → 0, solo A+B → B, solo 0 �
 (en `ultima_revision` y en `componer`). Suite: **630**, todas pasan. `ejemplo_rotulo_v2.pdf`
 regenerado: REV. = 0.
 
-**Pendiente (4.3b)**: formularios del rótulo (campos simples, revisiones y firmas, con selector
-de fecha en `formato_fecha`); notas típicas con casillas, orden subir/bajar y notas a mano
-(copiadas en `adicionales`); selector de convenciones con miniaturas y descripción editable;
-`proyecto.json` (prellenado por copia); pegar, recortar y limpiar la firma en imagen; validación
-en vivo. Después (4.3e/f): maquetación en JavaScript con avisos idénticos a Python y vista
-previa dibujada.
+### Subfase 4.3b — Editor: formularios del rótulo, parte 1 ✅ (2026-11-09, sin commit)
+
+**Qué se hizo**
+- **Panel «Rótulo»** con formularios (`editor_panel_rotulo.js`, solo pantalla; reglas en
+  `editor_formularios.js`, lógica pura probada con Node):
+  - **Datos del plano**: Título, No. PLANO, HOJA, DE, ESTE, NORTE, ESC. de localización,
+    Diseñador, Revisor (caja de varios renglones en las celdas de varias líneas: una línea por
+    renglón). ESCALA y REV. calculadas, solo lectura, con la regla de `componer`.
+  - **Revisiones**: tarjeta por revisión con VER. (lista de letras libres, sin repetir), fecha,
+    descripción, dibujó, diseñó, revisó, aprobó; Quitar y Agregar revisión.
+  - **Firmas**: DIBUJÓ, DISEÑÓ, REVISÓ (2 líneas), APROBÓ con nombre, matrícula, fecha y firma
+    como **Texto** o **Persona** (lista de `--firmas`, guarda `{"imagen": "<persona>"}`).
+  - **Fechas** con calendario que escribe en `formato_fecha` (`dd/mm/aa`).
+  - **Validación en vivo con los mismos textos que `rotulo.py`/`firmas.py`**: campos
+    desconocidos, calculados escritos, tipos, saltos de línea, letras inválidas o repetidas,
+    columnas desconocidas, imagen fuera de FIRMA o con nombre inválido, caracteres que la
+    fuente no tiene y lista de líneas de más. La casilla con problema queda en rojo. Una
+    persona que no está en la lista es aviso. **Si el texto cabe** sigue siendo de `componer`
+    (4.3e).
+  - Forma de los valores: se respeta la del plano (lista sigue lista; entero sigue entero);
+    campo vacío = se quita (vuelve su `por_defecto`).
+- **`editor --firmas <carpeta>`** (`firmas.personas_firmas`): solo NOMBRES de las carpetas de
+  personas (con PNG y nombre válido; las demás se omiten con aviso). Ninguna imagen, nombre de
+  archivo ni ruta de la carpeta llega al HTML.
+- **`editor --proyecto <proyecto.json>`** (`proyecto.py`, esquema versión 1 en
+  `docs/formato_proyecto.md`): `nombre` (informativo), `disenador`, `revisor`,
+  `prefijo_no_plano` y `firmas.<fila>.{nombre, matricula}`; validado contra el formato con todos
+  los problemas juntos (si falla, no se genera el editor). Prellena SOLO un plano nuevo
+  (`EditorRotulo.prellenar`); al guardar queda copiado en el plano.json.
+- **Fuente**: `Fuente.rangos_unicode()` (Arial: 145 rangos, ~2 KB) en la tabla de la fuente
+  del editor: el JavaScript sabe exactamente qué caracteres tiene Arial (coincide con
+  `has_glyph` en los 196 608 primeros puntos de código).
+- `noRepresentable` ya no avisa las listas de líneas (ahora se editan); avisa valores que el
+  formulario no sabe mostrar.
+
+**Pruebas**: **672**, todas pasan (42 nuevas): proyecto.json (válido, 9 problemas juntos,
+versión, archivo inexistente / JSON roto / no UTF-8, formato sin rótulo); personas (nombres con
+tildes, sin PNG, nombre inválido, carpeta vacía o inexistente); `editor --firmas` incrusta solo
+los nombres (ni el base64 de 3 PNG sintéticos, ni «firma.png», ni la ruta, ni nada copiado a
+la carpeta del editor); `editor --proyecto` válido e inválido; rangos de la fuente = caracteres
+faltantes; con Node: **los 22 problemas de un rótulo malo salen con el mismo texto en
+JavaScript y en Python** (ni uno más ni uno menos), valores válidos sin problemas en los dos,
+REV. y ESCALA iguales a Python, fechas en 4 formatos y fechas inválidas, forma de los valores,
+revisiones (agregar, cambiar letra, llenar las 4, quitar), firmas (texto, persona, quitar),
+**ida y vuelta tras editar** (solo cambia lo editado, mismo orden de claves, y Python acepta
+el resultado), ida y vuelta sin tocar (6 planos), prellenado de proyecto (plano nuevo sí,
+abierto no, copiado al guardar y aceptado por Python).
+
+**Verificación en Edge** (`data/verificacion_editor/verificar_formularios.mjs`, fuera del
+repo): 14 comprobaciones OK, sin errores de JavaScript: lista de 3 personas y ninguna imagen
+en el HTML; plano nuevo prellenado desde `data/proyecto_ejemplo.json` y aceptado por
+`componer`; el ejemplo real abierto y guardado sin tocar = idéntico; REV. «0», ESCALA
+«INDICADAS»; editar con el formulario (HOJA, quitar NORTE, descripción, revisión C con fecha del
+calendario 09/11/26, APROBÓ de texto a persona) da el original + solo esos 5 cambios y
+`componer` lo acepta (4 firmas en imagen, REV. 0); un «中» en No. PLANO muestra el texto de
+Python y la casilla en rojo. Las verificaciones de la 4.3a (actualizada: ahora los nombres de
+personas sí van; las imágenes no), de la rosa y del editor base siguen todas OK.
+
+**Peso**: editor de `data/input_ejemplo` con notas, símbolos, 3 personas y proyecto: **624 KB**
+(era 576 KB: +48 KB, sobre todo los dos JS nuevos y los rangos de la fuente).
+
+**Pendiente**: 4.3b2 (pegar, recortar y limpiar la firma en imagen), 4.3c (notas típicas con
+casillas, orden subir/bajar y notas a mano), 4.3d (convenciones con miniaturas), 4.3e/f
+(maquetación en JavaScript: si cabe y si se reduce, con avisos idénticos a Python; vista previa
+dibujada). El calendario abre en la fecha escrita solo si está en `formato_fecha`: las fechas
+del ejemplo real (`data/`) se pasaron a `dd/mm/aa` (06/11/26) y el PDF compone igual (mismas
+1427 palabras salvo las 7 fechas, mismos 20 086 trazos y 4 imágenes, REV. 0).
 
 ## Pendientes (después de las Fases 1 y 2)
 

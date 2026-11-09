@@ -19,7 +19,7 @@ body {
   font: 13px/1.4 "Segoe UI", system-ui, sans-serif;
   color: var(--texto); background: var(--fondo);
 }
-button, select, input { font: inherit; }
+button, select, input, textarea { font: inherit; }
 button {
   padding: 4px 10px; border: 1px solid var(--borde); border-radius: 4px;
   background: #fff; color: var(--texto); cursor: pointer;
@@ -74,6 +74,30 @@ main { flex: 1; display: flex; min-height: 0; }
 .propiedades input { width: 110px; padding: 3px 6px; border: 1px solid var(--borde); border-radius: 4px; }
 .propiedades .botones { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .propiedades .medida { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--suave); }
+
+/* Panel «Rótulo» (4.3b): etiqueta arriba y entrada a todo el ancho. */
+.form-rotulo .seccion { border: 1px solid var(--borde); border-radius: 4px; padding: 4px 8px; margin: 6px 0; }
+.form-rotulo summary { cursor: pointer; font-weight: 600; padding: 2px 0; }
+.form-rotulo .campo { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
+.form-rotulo .etiqueta { color: var(--suave); font-size: 12px; }
+.form-rotulo input, .form-rotulo textarea, .form-rotulo select {
+  width: 100%; padding: 3px 6px; border: 1px solid var(--borde); border-radius: 4px; background: #fff;
+}
+.form-rotulo textarea { resize: vertical; }
+.form-rotulo .invalido { border-color: var(--muy-fuerte); background: #fef2f2; }
+.form-rotulo .calculado { background: #f3f4f6; color: var(--texto); font-weight: 600; }
+.form-rotulo .fecha { display: grid; grid-template-columns: 1fr 34px; gap: 4px; }
+.form-rotulo .fecha input[type="date"] { padding: 3px 2px; color: transparent; }
+.form-rotulo .firma { display: grid; grid-template-columns: 90px 1fr; gap: 4px; }
+.form-rotulo .tarjeta-tabla { border-top: 1px dashed var(--borde); padding: 6px 0 2px; }
+.form-rotulo .tarjeta-tabla .cabeza { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.form-rotulo .tarjeta-tabla .cabeza select { width: 70px; }
+.form-rotulo .botones { display: flex; gap: 6px; margin: 6px 0; }
+.form-rotulo .medida { font-size: 12px; color: var(--suave); }
+.form-rotulo .nota-detalle { font-size: 12px; color: var(--fuerte); }
+.form-rotulo .subtitulo { font-size: 12px; font-weight: 600; margin: 8px 0 4px; }
+.problemas-rotulo li.error { border-color: var(--muy-fuerte); background: #fef2f2; }
+.problemas-rotulo li.aviso { border-color: var(--aviso); background: #fffbeb; }
 
 .lista-plano { margin: 0; padding-left: 22px; }
 .lista-plano li { cursor: pointer; padding: 2px 0; }

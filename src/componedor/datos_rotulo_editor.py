@@ -13,7 +13,8 @@
   escribir, y la proporción de las mayúsculas: con eso el JavaScript mide igual que Python.
 - `definicion_editor(definicion)`: las celdas del rótulo (mm de papel) en JSON.
 
-Las FIRMAS en imagen nunca se incrustan: aquí no se lee la carpeta de firmas.
+Las FIRMAS en imagen nunca se incrustan: de `editor --firmas` solo llegan los NOMBRES de las
+carpetas de personas (`firmas.personas_firmas`, subfase 4.3b), para elegir en una lista.
 """
 
 from pathlib import Path
@@ -99,8 +100,10 @@ def simbolos_editor(definicion: DefinicionRotulo, carpeta_salida: Path) -> tuple
 
 
 def tabla_anchos(fuente: Fuente) -> dict:
+    """"rangos_unicode" (4.3b): todos los caracteres que la fuente tiene, en rangos de puntos de
+    código; con eso el editor marca los caracteres faltantes igual que `componer`."""
     return {"nombre": fuente.nombre, "altura_mayusculas": fuente.altura_mayusculas,
-            "anchos_em": fuente.anchos_em(CARACTERES)}
+            "anchos_em": fuente.anchos_em(CARACTERES), "rangos_unicode": fuente.rangos_unicode()}
 
 
 def definicion_editor(definicion: DefinicionRotulo) -> dict:

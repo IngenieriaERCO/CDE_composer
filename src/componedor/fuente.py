@@ -55,6 +55,18 @@ class Fuente:
         return {c: self._font.glyph_advance(ord(c)) for c in dict.fromkeys(caracteres)
                 if self._font.has_glyph(ord(c))}
 
+    def rangos_unicode(self) -> list[list[int]]:
+        """Los caracteres que la fuente tiene, como rangos [desde, hasta] de puntos de código
+        (los mismos que `caracteres_faltantes` acepta). Para que el editor valide igual que
+        Python (subfase 4.3b): Arial cabe en ~150 rangos."""
+        rangos: list[list[int]] = []
+        for c in sorted(set(self._font.valid_codepoints())):
+            if rangos and c == rangos[-1][1] + 1:
+                rangos[-1][1] = c
+            else:
+                rangos.append([c, c])
+        return rangos
+
     def glifo(self, caracter: str) -> int:
         """Número de glifo del carácter en la fuente (0 si no lo tiene)."""
         return self._font.has_glyph(ord(caracter))

@@ -221,7 +221,7 @@ borradores), con la autorización de cada persona. Cada persona tiene su propia 
 fácil ver qué firmas hay de quién y retirarlas.
 
 **Fechas**: `componer` escribe las fechas tal como vienen (texto). El formato define cómo las
-escribirá el editor con su selector de fecha (subfase 4.3b): `rotulo.formato_fecha`, por defecto
+escribe el editor con su selector de fecha (calendario, subfase 4.3b): `rotulo.formato_fecha`, por defecto
 `"dd/mm/aa"` (A1 ERCO); se admiten día, mes y año una vez cada uno, con `aa` o `aaaa`,
 separados por `/`, `-` o `.` (p. ej. `"aaaa-mm-dd"`).
 
