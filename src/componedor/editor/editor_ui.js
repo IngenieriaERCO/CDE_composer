@@ -415,8 +415,17 @@
     alCambiar: marcarCambios,
   });
 
+  /** Panel «Notas» (4.3c): catálogo con casillas y notas del plano (editor_panel_notas.js). */
+  const panelNotas = window.EditorPanelNotas.crear({
+    panel: document.getElementById("panel-notas"),
+    datos: DATOS_ROTULO,
+    modelo: () => estado.rotulo,
+    alCambiar: marcarCambios,
+  });
+
   function pintarRotulo() {
     panelRotulo.pintar();
+    panelNotas.reiniciar(); // vuelve a leer las notas del rótulo actual
   }
 
   /** Panel «Rosa de los vientos»: mostrar/ocultar, X / Y y restaurar posición. */
@@ -859,7 +868,8 @@
     mover: (id, pos) => mover(estado.colocaciones.find((c) => c.id === id), pos),
     texto: textoPlano, advertencias: () => ultimasAdvertencias,
     moverRosa, mostrarRosa, restaurarRosa, abrir,
-    rotulo: () => R.serializar(estado.rotulo), validacionRotulo: () => panelRotulo.validacion() };
+    rotulo: () => R.serializar(estado.rotulo), validacionRotulo: () => panelRotulo.validacion(),
+    validacionNotas: () => panelNotas.validacion() };
 
   pintarCatalogo();
   pintarRotulo();

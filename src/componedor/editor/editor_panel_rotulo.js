@@ -25,6 +25,7 @@
     const FORMATO_FECHA = DEF ? DEF.formato_fecha : "dd/mm/aa";
     let marcables = []; // [{nodo, claves}] para marcar en rojo los que tienen error
     let calculados = {}; // campo -> input de solo lectura
+    let crecientes = []; // cajas que crecen con el texto (Título)
     let cajaProblemas = null;
 
     const modelo = () => opciones.modelo();
@@ -89,6 +90,18 @@
       return caja;
     }
 
+    /** Alto de una caja de texto según su contenido, hasta `maxLineas` (después, barra). */
+    function crecer(caja, maxLineas) {
+      const estilo = getComputedStyle(caja);
+      const bordes = parseFloat(estilo.borderTopWidth) + parseFloat(estilo.borderBottomWidth);
+      const maximo = (parseFloat(estilo.lineHeight) || 17) * maxLineas + parseFloat(estilo.paddingTop) +
+        parseFloat(estilo.paddingBottom) + bordes;
+      caja.style.height = "auto";
+      const alto = caja.scrollHeight + bordes;
+      caja.style.height = Math.min(alto, maximo) + "px";
+      caja.style.overflowY = alto > maximo + 1 ? "auto" : "hidden";
+    }
+
     function fila(etiqueta, entrada) {
       const f = nodo("label", { class: "campo" });
       f.append(nodo("span", { class: "etiqueta" }, etiqueta), entrada);
@@ -117,6 +130,12 @@
         const placeholder = c.por_defecto ? c.por_defecto + " (por defecto)" : "";
         const entrada = entradaTexto(actual, c.celda, ["rotulo." + c.campo, "campo '" + c.campo + "'"],
           (v) => cambiar(c.campo, v), placeholder);
+        if (c.campo === "titulo") {
+          // El título crece con el texto, sin barra de desplazamiento, hasta ~6 renglones.
+          entrada.classList.add("crece");
+          entrada.addEventListener("input", () => crecer(entrada, 6));
+          crecientes.push(entrada);
+        }
         s.appendChild(fila(c.etiqueta, entrada));
       }
       for (const [nombre, campo] of Object.entries(DEF.campos)) {
@@ -143,7 +162,10 @@
       // Siempre la lista del modelo en ese momento (lo escrito después de dibujar ya está ahí).
       const fresca = () => R.valor(modelo(), F.TABLA_REVISIONES) || [];
       const guardar = (nueva) => cambiar(F.TABLA_REVISIONES, F.revisionesParaGuardar(nueva));
-      actual.forEach((item, i) => {
+      // Se muestran en el orden del rótulo (de arriba abajo: 0, C, B, A), no en el de llenado;
+      // `i` sigue siendo la posición en la lista del plano.
+      for (const i of F.ordenRotulo(actual, tabla)) {
+        const item = actual[i];
         const tarjeta = nodo("div", { class: "tarjeta-tabla" });
         const cabeza = nodo("div", { class: "cabeza" });
         const letra = F.letrasValidas([item], tabla)[0] || null;
@@ -164,20 +186,32 @@
           guardar(F.quitarRevision(fresca(), i));
           pintar();
         });
-        cabeza.append(nodo("span", { class: "etiqueta" }, "VER."), select, quitar);
+        // Línea 1: VER. y Fecha (y Quitar); luego Descripción; las demás en cuadrícula 2 x 2.
+        const ver = fila("VER.", select);
+        ver.classList.add("ver");
+        cabeza.appendChild(ver);
         tarjeta.appendChild(cabeza);
+        const cuadricula = nodo("div", { class: "dos-columnas" });
         for (const col of tabla.columnas) {
           if (col.clave === tabla.columna_clave) continue;
           const celda = F.celdaTabla(DEF, F.TABLA_REVISIONES, letra || tabla.filas[0].clave, col.clave);
           const claves = ["rotulo.revisiones[" + i + "]." + col.clave];
           if (letra) claves.push("campo '" + celda.ruta + "'");
           const escribir = (v) => guardar(F.cambiarCeldaRevision(fresca(), i, col.clave, v));
-          const entrada = col.clave === F.COLUMNA_FECHA ? entradaFecha(item[col.clave], celda, claves, escribir)
-            : entradaTexto(item[col.clave], celda, claves, escribir);
-          tarjeta.appendChild(fila(F.etiquetaColumna(col.clave), entrada));
+          if (col.clave === F.COLUMNA_FECHA) {
+            const f = fila(F.etiquetaColumna(col.clave), entradaFecha(item[col.clave], celda, claves, escribir));
+            f.classList.add("crece-fila");
+            cabeza.appendChild(f);
+          } else if (col.clave === "descripcion") {
+            tarjeta.appendChild(fila(F.etiquetaColumna(col.clave), entradaTexto(item[col.clave], celda, claves, escribir)));
+          } else {
+            cuadricula.appendChild(fila(F.etiquetaColumna(col.clave), entradaTexto(item[col.clave], celda, claves, escribir)));
+          }
         }
+        cabeza.appendChild(quitar);
+        tarjeta.appendChild(cuadricula);
         s.appendChild(tarjeta);
-      });
+      }
       const agregar = nodo("button", { type: "button" }, "Agregar revisión");
       agregar.disabled = !F.agregarRevision(actual, tabla);
       if (agregar.disabled) agregar.title = "Ya están todas las letras (" + tabla.orden.join(", ") + ")";
@@ -207,6 +241,9 @@
         const item = (firmas && firmas[f.clave]) || {};
         const tarjeta = nodo("div", { class: "tarjeta-tabla" });
         tarjeta.appendChild(nodo("div", { class: "cabeza" }, F.etiquetaFilaFirma(f.clave)));
+        // De a dos por fila, en el orden del formato: Nombre | Matrícula, Firma | Fecha.
+        const cuadricula = nodo("div", { class: "dos-columnas firmas" });
+        tarjeta.appendChild(cuadricula);
         for (const col of tabla.columnas) {
           const celda = F.celdaTabla(DEF, F.TABLA_FIRMAS, f.clave, col.clave);
           const claves = ["rotulo.firmas." + f.clave + "." + col.clave, "campo '" + celda.ruta + "'",
@@ -216,7 +253,7 @@
           if (col.acepta_imagen) entrada = entradaFirma(item[col.clave], celda, claves, escribir);
           else if (col.clave === F.COLUMNA_FECHA) entrada = entradaFecha(item[col.clave], celda, claves, escribir);
           else entrada = entradaTexto(item[col.clave], celda, claves, escribir);
-          tarjeta.appendChild(fila(F.etiquetaColumna(col.clave), entrada));
+          cuadricula.appendChild(fila(F.etiquetaColumna(col.clave), entrada));
         }
         s.appendChild(tarjeta);
       }
@@ -312,6 +349,7 @@
     function pintar() {
       marcables = [];
       calculados = {};
+      crecientes = [];
       if (!DATOS || !DEF) {
         panel.replaceChildren(nodo("div", { class: "vacio" }, "El formato no tiene sección de rótulo."));
         cajaProblemas = null;
@@ -324,11 +362,12 @@
         for (const t of conserva) s.appendChild(nodo("div", { class: "medida" }, t));
         partes.push(s);
       }
-      partes.push(nodo("div", { class: "medida" }, "Notas y convenciones: se editan en la próxima versión; las del plano se conservan."));
+      partes.push(nodo("div", { class: "medida" }, "Las notas se editan en el panel «Notas»; las convenciones, en la próxima versión (las del plano se conservan)."));
       const titulo = nodo("div", { class: "subtitulo" }, "Problemas del rótulo");
       cajaProblemas = nodo("ul", { class: "advertencias problemas-rotulo" });
       partes.push(titulo, cajaProblemas, seccionInformacion());
       panel.replaceChildren(...partes);
+      for (const caja of crecientes) crecer(caja, 6);
       refrescar();
     }
 

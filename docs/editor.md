@@ -129,10 +129,55 @@ Reglas al escribir:
   lista; un número (`"hoja": 1`) sigue siendo número si escribe un número.
 - Lo que el formulario no sabe mostrar (un campo que el formato no tiene, notas tomadas de
   archivos `.txt`, un valor raro) aparece en **Se conserva sin editar** y se guarda tal cual.
-- Notas y convenciones del plano se conservan; su edición llega en la 4.3c y 4.3d.
+- Las convenciones del plano se conservan; su edición llega en la 4.3d.
+
+Presentación compacta (4.3c): cada revisión con **VER. y Fecha en la misma línea**, la
+descripción debajo y **Dibujó / Diseñó / Revisó / Aprobó en una cuadrícula de 2 × 2**; las
+revisiones se muestran **en el orden del rótulo** (de arriba abajo: 0, C, B, A), no en el
+orden en que se llenaron (el plano.json conserva su orden). En Firmas, **Nombre | Matrícula** en
+una fila y **Firma | Fecha** en otra. El **Título crece solo** con el texto, sin barra, hasta
+unos 6 renglones.
 
 **Abrir y guardar sin tocar nada deja el plano.json idéntico**; al editar, solo cambia lo
-editado. El editor recuerda el plano
+editado.
+
+## 2d. Notas (subfase 4.3c)
+
+Panel **Notas** (a la derecha, debajo de Rótulo):
+
+- **Notas del plano**: la lista de lo que irá en la celda NOTAS, con su **número en vivo**
+  (1…N; las viñetas no se numeran). Cada nota tiene **↑ subir**, **↓ bajar** y **✕ quitar**, y
+  su **texto y sus viñetas se pueden editar**, porque la nota queda **copiada** en el plano (no
+  enlazada al .txt). El texto va en una sola línea (Enter no hace salto); `componer` la parte en
+  la celda. Viñetas: una por línea.
+- Si el plano trae `"archivos"` (notas desde .txt), se muestran como **«Vienen de archivos
+  (editar a mano)»** y se conservan intactos: en el PDF van primero, por eso la numeración de
+  la lista se ve como «+1.», «+2.»… (sigue después de ellas).
+- **Agregar nota a mano**: texto y, si quiere, viñetas (una por línea).
+- **Notas típicas**: el catálogo de `--notas`, por grupo (subcarpeta). Cada nota tiene una
+  **casilla**: al marcarla pasa al final de «Notas del plano»; al desmarcarla, sale. Una nota ya
+  elegida no se repite. Si la línea del .txt traía su propio número («3. …»), se ve el aviso de
+  que se quitó.
+- Lo elegido se guarda en `rotulo.notas.adicionales`, en el orden de la lista: texto, u objeto
+  `{"texto", "vinetas"}` si lleva viñetas. Lo que no se toca sale tal como venía.
+- **Problemas de las notas**, en vivo y con los mismos textos que `componer`: forma de la nota,
+  saltos de línea, viñetas mal formadas, caracteres que Arial no tiene (la nota queda en rojo) y
+  el aviso de número propio. Una nota vacía es un aviso del editor (`componer` la omite sin
+  decir nada). **Si las notas caben en la celda todavía lo dice solo `componer`** (4.3e).
+- Al abrir un plano, una nota igual a una del catálogo queda con su casilla marcada.
+- **Notas que ya vienen de archivos**: si una ruta de `"archivos"` es el **mismo .txt** que uno
+  del catálogo (la ruta se compara como la resuelve `componer`: desde la carpeta del
+  plano.json, que es la del editor, con `\` o `/`, `.` y `..`, sin distinguir mayúsculas en
+  Windows), sus notas típicas aparecen con la **casilla desactivada** y la etiqueta **«ya
+  incluida desde archivos»**, para no duplicarlas; la cabecera del .txt dice cómo lo trae el
+  plano. Un .txt con el mismo contenido en **otra** carpeta es otro archivo y no cuenta.
+- Si una nota de la lista (copiada o a mano) tiene el **mismo texto** que una de esos .txt
+  (espacios y número propio normalizados como en `componer`; las viñetas no cuentan), se avisa
+  en vivo: **«esta nota ya viene en <archivo> (línea n); saldría dos veces en el plano»**, y la
+  nota queda en amarillo. Es un aviso del editor: `componer` la escribiría dos veces.
+- El editor solo conoce las notas de los .txt del catálogo (`--notas`); de un .txt de
+  `"archivos"` que no está en el catálogo dice «no está en el catálogo: el editor no ve sus
+  notas». El editor recuerda el plano
 abierto y solo cambia lo que usted toca: un detalle que no se movió sale tal como venía
 (incluso con `"centrar": true`), el formato, la plantilla y el rótulo se conservan, y la rosa
 solo se escribe si el plano ya la traía o si usted la movió u ocultó.
@@ -238,8 +283,9 @@ fondo que está debajo no tapa al de encima.
   de línea LF.
 - Si el plano se **abrió**, lo que no se tocó sale **tal como venía** (ver «2c. Rótulo»):
   abrir y guardar sin cambios da el mismo JSON.
-- El rótulo se edita en el panel **Rótulo** (sección 2c); lo que no se edita ahí (notas,
-  convenciones, lo que el formulario no sabe mostrar) se **conserva tal cual** al guardar. Lo
+- El rótulo se edita en los paneles **Rótulo** y **Notas** (secciones 2c y 2d); lo que no se
+  edita ahí (convenciones, notas de archivos .txt, lo que el formulario no sabe mostrar) se
+  **conserva tal cual** al guardar. Lo
   mismo con `"etiqueta_escala": false`.
 - En Edge y Chrome aparece el diálogo de **Guardar como** (nombre sugerido `plano.json`). Si el
   navegador no lo ofrece o falla (permisos, archivo abierto desde el disco), el plano se

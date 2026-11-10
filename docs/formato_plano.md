@@ -326,7 +326,9 @@ tenga). El PDF de la biblioteca sale de un plano de ERCO y **no se versiona**; e
   que la de la nota. Una viñeta antes de cualquier nota del archivo es **error**.
 - **Adicionales**: lista; cada elemento es un texto (una nota) o un objeto
   `{"texto": "LOS MATERIALES CUMPLIRÁN:", "vinetas": ["NORMA A.", "NORMA B."]}` (sin saltos de
-  línea; campos desconocidos son error).
+  línea; campos desconocidos son error). Un texto vacío se omite (no se numera). El editor
+  (panel «Notas», subfase 4.3c) escribe aquí las notas elegidas del catálogo y las escritas a
+  mano, **copiadas** y en el orden de su lista; no toca `archivos`.
 - **Orden y numeración**: primero las de los archivos (en el orden de la lista), luego las
   adicionales; numeración continua 1, 2, 3, …
 - **Cómo quedan** (celda NOTAS: X 673,2–827,4, Y 271,3–419,3 mm):

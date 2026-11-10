@@ -207,8 +207,11 @@ HOJA/DE, coordenadas, diseñador, revisor…), las **revisiones** y las **firmas
 persona de la lista de `--firmas`), con calendario para las fechas (`dd/mm/aa`), ESCALA y REV.
 calculadas y validación en vivo con los mismos textos que `componer`. `--proyecto` prellena un
 plano nuevo con los datos que se repiten ([docs/formato_proyecto.md](docs/formato_proyecto.md)).
+El panel **Notas** muestra el catálogo de notas típicas por tema con casillas, la lista de
+notas del plano (numerada en vivo, con subir/bajar/quitar y texto editable) y notas a mano con
+viñetas; se guardan copiadas en `rotulo.notas.adicionales`.
 Abrir y guardar un plano sin tocar nada deja el plano.json idéntico; al editar, solo cambia lo
-editado. Notas y convenciones se editan desde la 4.3c/4.3d. De las firmas solo llegan los
+editado. Las convenciones se editan desde la 4.3d. De las firmas solo llegan los
 **nombres** de las personas: las imágenes nunca se incrustan.
 Guía completa en [docs/editor.md](docs/editor.md).
 Si Node está instalado, `pytest` prueba también la lógica del editor (JavaScript).

@@ -1017,7 +1017,7 @@ ahora lista «A, B, C, 0». Pruebas: casos 0+A+B → 0, solo A+B → B, solo 0 �
 (en `ultima_revision` y en `componer`). Suite: **630**, todas pasan. `ejemplo_rotulo_v2.pdf`
 regenerado: REV. = 0.
 
-### Subfase 4.3b — Editor: formularios del rótulo, parte 1 ✅ (2026-11-09, sin commit)
+### Subfase 4.3b — Editor: formularios del rótulo, parte 1 ✅ (2026-11-09, commit 39f73e1)
 
 **Qué se hizo**
 - **Panel «Rótulo»** con formularios (`editor_panel_rotulo.js`, solo pantalla; reglas en
@@ -1084,6 +1084,79 @@ casillas, orden subir/bajar y notas a mano), 4.3d (convenciones con miniaturas),
 dibujada). El calendario abre en la fecha escrita solo si está en `formato_fecha`: las fechas
 del ejemplo real (`data/`) se pasaron a `dd/mm/aa` (06/11/26) y el PDF compone igual (mismas
 1427 palabras salvo las 7 fechas, mismos 20 086 trazos y 4 imágenes, REV. 0).
+
+### Subfase 4.3c — Editor: notas (y panel Rótulo compacto) ✅ (2026-11-09, sin commit)
+
+**Qué se hizo**
+- **Panel «Notas»** (`editor_panel_notas.js`, solo pantalla; reglas en `editor_notas.js`, lógica
+  pura probada con Node):
+  - **Notas del plano**: lista con numeración en vivo (1…N; con `archivos`, «+1.», «+2.»…
+    porque van después de las de los .txt), ↑ ↓ ✕, texto (una línea; Enter no hace salto) y
+    viñetas (una por línea) editables: la nota está copiada.
+  - **Notas típicas** por grupo con casillas: marcar = al final de la lista; desmarcar = sale;
+    no se repite. Clave de cada nota: ruta relativa del .txt + línea
+    («vias/generales_vias.txt, línea 4»), porque el `origen` de Python solo trae el nombre del
+    archivo. Al abrir un plano, una nota igual a una típica queda marcada. El aviso de número
+    propio de la línea del .txt se muestra junto a la nota.
+  - **Agregar nota a mano**, con viñetas.
+  - Se guarda en `rotulo.notas.adicionales` en el orden de la lista; lo no tocado sale tal como
+    venía (`original`); `archivos` y cualquier otra clave de `notas` intactos. Adicionales que
+    la lista no sabe mostrar: la lista queda de solo lectura y se conservan.
+  - **Validación en vivo con los mismos textos que `notas.py` y `rotulo._notas`**: tipo de
+    `notas`, campos desconocidos, `archivos` y `adicionales` mal formados, salto de línea, texto
+    vacío en un objeto, viñetas que no son lista de textos, caracteres que la fuente no tiene
+    y el aviso de número propio. Una nota adicional vacía: aviso propio del editor (Python la
+    omite sin mensaje). Los .txt de `archivos` no se leen desde el navegador (solo se revisa que
+    sea lista de textos); con `archivos`, el «la nota k» de los mensajes de caracteres cuenta
+    solo las adicionales. Si caben: `componer` (4.3e).
+- **Panel Rótulo compacto** (sin cambiar reglas): revisiones con VER. y Fecha en una línea y
+  Dibujó/Diseñó/Revisó/Aprobó en 2 × 2, mostradas en el orden del rótulo (0, C, B, A;
+  `ordenRotulo`, la lista del plano no se reordena); firmas con Nombre | Matrícula y Firma |
+  Fecha; el Título crece solo hasta ~6 renglones. Panel derecho de 330 a 380 px.
+
+**Pruebas**: **686**, todas pasan (14 nuevas, con Node): errores de 5 casos de notas malas =
+los de Python (mismos textos, ni uno más ni uno menos); avisos de número propio = los de
+Python; nota vacía (Python callado, editor avisa); catálogo real de `catalogo_notas` (claves,
+aviso de número propio, marcar sin repetir, desmarcar); enlazar notas del plano con el
+catálogo; operaciones (subir, bajar, quitar, a mano con viñetas); lista no representable se
+conserva; ida y vuelta sin tocar (6 planos) y tras elegir, ordenar y editar (solo cambia
+`adicionales`, la nota no tocada sale igual, Python la acepta); orden de revisiones 0, C, B, A.
+
+**Verificación en Edge** (`data/verificacion_editor/verificar_notas.mjs`, fuera del repo):
+14 comprobaciones OK, sin errores de JavaScript, con el ejemplo real: archivos como «Vienen de
+archivos», catálogo General (1), hidraulica (3), vias (7), numeración «+1. +2.», guardar sin
+tocar = idéntico; marcar 3 típicas, desmarcar una, quitar y volver a poner otra (no se repite),
+subir/bajar, editar texto y nota a mano con viñetas → el plano guardado = original con solo
+`adicionales` cambiado, y `componer` lo compone con esas notas en el PDF; «中» da el texto de
+Python y la nota en rojo; «3. …» a mano da el aviso de número propio; revisiones 0, B, A;
+Título sin barra. Las verificaciones de la 4.3b (ajustada al nuevo orden de las revisiones),
+4.3a, rosa y editor base siguen OK.
+
+**Peso**: editor del ejemplo **655 KB** (670 617 bytes; era 624 KB: +31 KB de los dos JS nuevos
+y los ajustes).
+
+**Ajuste (2026-11-10, sin commit): notas que ya vienen de archivos.**
+- Python (`datos_rotulo_editor.rutas_desde_el_plano`): cada .txt del catálogo lleva `ruta_plano`
+  (relativa a la carpeta del editor, donde va el plano.json) y `absoluta`.
+- JavaScript (`editor_notas.js`): `archivosIncluidos` compara cada ruta de `archivos` con esas
+  rutas (normalizando `\`, `.`, `..`, tildes y mayúsculas); sus notas típicas quedan con la
+  casilla desactivada y «ya incluida desde archivos», no se pueden marcar (`marcar` las
+  rechaza) ni se enlazan al abrir un plano. `avisosRepetidas`: una adicional con el mismo texto
+  (normalizado como `notas._nota`) que una nota de esos .txt da «esta nota ya viene en
+  <archivo> (línea n); saldría dos veces en el plano» (aviso del editor; la nota en amarillo).
+  Un .txt de `archivos` fuera del catálogo no se puede leer desde el navegador: el panel lo dice.
+- Pruebas: **695**, todas pasan (9 nuevas, con Node): rutas del catálogo vistas desde el plano;
+  «mismo archivo» igual a `componer` (ruta resuelta desde la carpeta del plano y
+  `os.path.samefile`) con `\`, `.`, `..`, mayúsculas, ruta absoluta, otro archivo con el mismo
+  contenido, archivo inexistente y ruta mal escrita; «mismo texto» igual a `notas.leer_notas`
+  (espacios, número propio, viñetas que no cuentan, sin punto o en minúsculas = distinta);
+  incluidas que no se marcan ni se enlazan.
+- Verificación en Edge (`verificar_notas_archivos.mjs`, plano de prueba
+  `data/editor_rotulo/plano_notas_archivos.json`): 9 comprobaciones OK, sin errores de
+  JavaScript; las de notas, formularios y rótulo siguen OK. Editor del ejemplo: 662 KB.
+
+**Pendiente**: 4.3b2 (firma en imagen: pegar, recortar, limpiar), 4.3d (convenciones), 4.3e/f
+(maquetación en JavaScript y vista previa).
 
 ## Pendientes (después de las Fases 1 y 2)
 

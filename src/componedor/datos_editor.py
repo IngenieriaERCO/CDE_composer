@@ -28,6 +28,7 @@ from componedor.comprobacion_dibujo import tiene_fondo_de_pagina
 from componedor.datos_rotulo_editor import (
     catalogo_notas,
     definicion_editor,
+    rutas_desde_el_plano,
     simbolos_editor,
     tabla_anchos,
 )
@@ -112,13 +113,13 @@ def construir_datos_editor(carpeta_paquetes: Path | str, ruta_formato: Path | st
         "rechazados": rechazados,
         # Subfase 4.3a (aditivo): definición del rótulo, tabla de anchos de la fuente, catálogo
         # de notas y símbolos (los PNG se agregan en preparar_editor). Nunca firmas.
-        "rotulo": _datos_rotulo(formato, carpeta_notas, carpeta_firmas, proyecto),
+        "rotulo": _datos_rotulo(formato, carpeta_notas, carpeta_firmas, proyecto, carpeta_salida),
     }
     return datos, entradas
 
 
 def _datos_rotulo(formato: Formato, carpeta_notas, carpeta_firmas=None,
-                  proyecto: dict | None = None) -> dict | None:
+                  proyecto: dict | None = None, carpeta_salida=None) -> dict | None:
     if formato.rotulo is None:
         return None
     avisos = []
@@ -133,6 +134,9 @@ def _datos_rotulo(formato: Formato, carpeta_notas, carpeta_firmas=None,
         fuente = None
         avisos.append(f"fuente: {e}")
     notas = catalogo_notas(carpeta_notas) if carpeta_notas is not None else None
+    if notas is not None and carpeta_salida is not None:
+        # 4.3c: cómo nombra un plano.json (en la carpeta del editor) a cada .txt del catálogo.
+        rutas_desde_el_plano(notas, carpeta_notas, carpeta_salida)
     return {"definicion": definicion_editor(formato.rotulo), "fuente": fuente,
             "notas": notas, "simbolos": [], "avisos": avisos,
             "personas_firmas": personas, "proyecto": proyecto}

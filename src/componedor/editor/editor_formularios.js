@@ -338,6 +338,27 @@
     return tabla.orden.filter((l) => !usadas.includes(l));
   }
 
+  /**
+   * Posiciones de la lista en el orden en que se ven en el rótulo: de arriba abajo, el `orden`
+   * al revés (A1 ERCO: 0, C, B, A). Las revisiones con letra no válida o repetida, al final, en
+   * su orden de llegada. Solo para mostrar: la lista del plano no se reordena.
+   */
+  function ordenRotulo(lista, tabla) {
+    const arriba = tabla.orden.slice().reverse();
+    const vistas = new Set();
+    const clave = (i) => {
+      const item = lista[i];
+      let letra = esObjeto(item) ? item[tabla.columna_clave] : undefined;
+      if (esEntero(letra)) letra = String(letra);
+      const k = arriba.indexOf(letra);
+      if (k < 0 || vistas.has(letra)) return arriba.length + i;
+      vistas.add(letra);
+      return k;
+    };
+    const claves = (lista || []).map((x, i) => clave(i));
+    return claves.map((k, i) => i).sort((a, b) => claves[a] - claves[b] || a - b);
+  }
+
   /** Lista con una revisión nueva (la primera letra libre según el orden). null si no hay letra. */
   function agregarRevision(lista, tabla) {
     const libres = letrasLibres(lista, tabla, -1);
@@ -623,6 +644,7 @@
     escalaComun,
     revisionesRepresentables,
     letrasLibres,
+    ordenRotulo,
     agregarRevision,
     cambiarCeldaRevision,
     quitarRevision,

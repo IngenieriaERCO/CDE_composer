@@ -17,6 +17,7 @@ Las FIRMAS en imagen nunca se incrustan: de `editor --firmas` solo llegan los NO
 carpetas de personas (`firmas.personas_firmas`, subfase 4.3b), para elegir en una lista.
 """
 
+import os
 from pathlib import Path
 
 import pymupdf
@@ -62,6 +63,25 @@ def catalogo_notas(carpeta: Path | str) -> dict:
     orden = sorted(grupos, key=lambda t: (t != GRUPO_RAIZ, t.casefold()))
     return {"carpeta": str(carpeta), "grupos": [{"titulo": t, "archivos": grupos[t]} for t in orden],
             "avisos": [] if grupos else [f"la carpeta de notas '{carpeta}' no tiene archivos .txt"]}
+
+
+def rutas_desde_el_plano(catalogo: dict, carpeta_notas: Path | str, carpeta_plano: Path | str) -> dict:
+    """Agrega a cada .txt del catálogo (subfase 4.3c) cómo lo nombraría un plano.json guardado en
+    `carpeta_plano` (la del editor): "ruta_plano", relativa a esa carpeta con «/» (como la
+    resuelve `componer`), y "absoluta". Con eso el editor sabe qué notas típicas ya entran por
+    `rotulo.notas.archivos`. Si no hay ruta relativa posible (otra unidad de disco), la absoluta."""
+    carpeta_notas = Path(carpeta_notas).resolve()
+    carpeta_plano = Path(carpeta_plano).resolve()
+    for grupo in catalogo["grupos"]:
+        for a in grupo["archivos"]:
+            ruta = carpeta_notas / a["archivo"]
+            try:
+                relativa = Path(os.path.relpath(ruta, carpeta_plano)).as_posix()
+            except ValueError:
+                relativa = ruta.as_posix()
+            a["ruta_plano"] = relativa
+            a["absoluta"] = ruta.as_posix()
+    return catalogo
 
 
 def simbolos_editor(definicion: DefinicionRotulo, carpeta_salida: Path) -> tuple[list[dict], list[str]]:
