@@ -1085,7 +1085,7 @@ dibujada). El calendario abre en la fecha escrita solo si está en `formato_fech
 del ejemplo real (`data/`) se pasaron a `dd/mm/aa` (06/11/26) y el PDF compone igual (mismas
 1427 palabras salvo las 7 fechas, mismos 20 086 trazos y 4 imágenes, REV. 0).
 
-### Subfase 4.3c — Editor: notas (y panel Rótulo compacto) ✅ (2026-11-09, sin commit)
+### Subfase 4.3c — Editor: notas (y panel Rótulo compacto) ✅ (2026-11-09, commit 3680f57)
 
 **Qué se hizo**
 - **Panel «Notas»** (`editor_panel_notas.js`, solo pantalla; reglas en `editor_notas.js`, lógica
@@ -1135,7 +1135,7 @@ Título sin barra. Las verificaciones de la 4.3b (ajustada al nuevo orden de las
 **Peso**: editor del ejemplo **655 KB** (670 617 bytes; era 624 KB: +31 KB de los dos JS nuevos
 y los ajustes).
 
-**Ajuste (2026-11-10, sin commit): notas que ya vienen de archivos.**
+**Ajuste (2026-11-10, commit 3680f57): notas que ya vienen de archivos.**
 - Python (`datos_rotulo_editor.rutas_desde_el_plano`): cada .txt del catálogo lleva `ruta_plano`
   (relativa a la carpeta del editor, donde va el plano.json) y `absoluta`.
 - JavaScript (`editor_notas.js`): `archivosIncluidos` compara cada ruta de `archivos` con esas
@@ -1155,8 +1155,50 @@ y los ajustes).
   `data/editor_rotulo/plano_notas_archivos.json`): 9 comprobaciones OK, sin errores de
   JavaScript; las de notas, formularios y rótulo siguen OK. Editor del ejemplo: 662 KB.
 
-**Pendiente**: 4.3b2 (firma en imagen: pegar, recortar, limpiar), 4.3d (convenciones), 4.3e/f
-(maquetación en JavaScript y vista previa).
+**Pendiente** (al cerrar la 4.3c): 4.3b2 (firma en imagen: pegar, recortar, limpiar), 4.3d
+(convenciones), 4.3e/f (maquetación en JavaScript y vista previa).
+
+### Subfase 4.3d — Editor: convenciones ✅ (2026-11-10, sin commit)
+
+**Qué se hizo**
+- **Panel «Convenciones»** (`editor_panel_convenciones.js`, solo pantalla; reglas en
+  `editor_convenciones.js`, lógica pura probada con Node):
+  - **Convenciones del plano** (n de 24): miniatura, número y lugar en la leyenda en vivo
+    («columna izquierda, fila 3»; llenado por columna 1–12 / 13–24, como `rotulo_formato`),
+    ↑ ↓ ✕ y descripción editable (vacía = la de por defecto, en gris).
+  - **Símbolos disponibles**: los del índice con su miniatura (PNG ya incrustado, con su
+    opacidad) y casilla; sin repetir; con 24, aviso «La tabla de convenciones está llena…».
+  - Se guarda en `rotulo.convenciones`: `{"simbolo"}` y `"descripcion"` solo si es distinta de la
+    de por defecto (una lista de líneas sigue siendo lista); lo no tocado sale como vino; un
+    símbolo que el índice no tiene se conserva y se marca «símbolo desconocido».
+  - **Validación en vivo con los mismos textos que `rotulo._convenciones`** (tipo, más de 24,
+    objeto, campo desconocido, id inexistente con la lista de válidos, repetido) y la revisión
+    de la descripción en su celda `convenciones.<k>.descripcion` (tipo, saltos, líneas de más,
+    carácter sin glifo). Si cabe: `componer` (4.3e).
+- `docs/editor.md`: sección 2e; se arregló un párrafo que la inserción de la 2d había partido.
+
+**Pruebas**: **714**, todas pasan (19 nuevas, con Node y una biblioteca sintética real hecha
+con `extraer_simbolos`): errores de 7 casos malos = los de `preparar_rotulo` (mismos textos);
+3 casos válidos sin problemas en los dos; mensajes de id inexistente y repetido; casillas
+(1, 12, 13, 24, 25); marcar sin repetir y tope de 24 con aviso; descripción solo si cambió;
+desconocido y no representable; ida y vuelta sin tocar (incluidas las 12 del ejemplo, que la
+biblioteca sintética no conoce) y tras ordenar y editar (solo cambia lo tocado; Python acepta).
+
+**Verificación en Edge** (`data/verificacion_editor/verificar_convenciones.mjs`, fuera del
+repo): 11 comprobaciones OK, sin errores de JavaScript, con el ejemplo real: 12 convenciones
+y 12 casillas marcadas, «columna izquierda, fila 1…12», miniaturas cargadas, guardar sin tocar
+= idéntico; desmarcar y volver a marcar `gps`, subirla, editar «CORTE (TERRAPLÉN)» y vaciar la
+de `via_existente` → solo esos cambios, y `componer` lo compone (12 símbolos, «VÍA EXISTENTE»
+por defecto en el PDF); «中» da el texto de Python; un `no_existe` queda en la casilla 13
+(columna derecha, fila 1), marcado como desconocido, con el error de Python, y se conserva
+al guardar. Las verificaciones de notas, notas desde archivos, formularios y rótulo siguen OK.
+Con la biblioteca actual hay 12 símbolos: la columna derecha y el tope de 24 se prueban con
+Node (y la columna derecha también en Edge, con el símbolo desconocido).
+
+**Peso**: editor del ejemplo **681 KB** (697 523 bytes; era 662 KB).
+
+**Pendiente**: 4.3b2 (firma en imagen: pegar, recortar, limpiar), 4.3e/f (maquetación en
+JavaScript: si cabe y si se reduce; vista previa dibujada).
 
 ## Pendientes (después de las Fases 1 y 2)
 

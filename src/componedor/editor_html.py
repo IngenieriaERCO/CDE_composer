@@ -27,6 +27,8 @@ MARCADORES = {
     "/*@@JS_PANEL_ROTULO@@*/": "editor_panel_rotulo.js",
     "/*@@JS_NOTAS@@*/": "editor_notas.js",
     "/*@@JS_PANEL_NOTAS@@*/": "editor_panel_notas.js",
+    "/*@@JS_CONVENCIONES@@*/": "editor_convenciones.js",
+    "/*@@JS_PANEL_CONVENCIONES@@*/": "editor_panel_convenciones.js",
     "/*@@JS_UI@@*/": "editor_ui.js",
 }
 MARCADOR_DATOS = "@@DATOS_EDITOR@@"

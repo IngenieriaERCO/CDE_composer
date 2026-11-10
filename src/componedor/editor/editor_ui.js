@@ -423,9 +423,18 @@
     alCambiar: marcarCambios,
   });
 
+  /** Panel «Convenciones» (4.3d): símbolos con casillas y su lista (editor_panel_convenciones.js). */
+  const panelConvenciones = window.EditorPanelConvenciones.crear({
+    panel: document.getElementById("panel-convenciones"),
+    datos: DATOS_ROTULO,
+    modelo: () => estado.rotulo,
+    alCambiar: marcarCambios,
+  });
+
   function pintarRotulo() {
     panelRotulo.pintar();
     panelNotas.reiniciar(); // vuelve a leer las notas del rótulo actual
+    panelConvenciones.reiniciar(); // y las convenciones
   }
 
   /** Panel «Rosa de los vientos»: mostrar/ocultar, X / Y y restaurar posición. */
@@ -869,7 +878,7 @@
     texto: textoPlano, advertencias: () => ultimasAdvertencias,
     moverRosa, mostrarRosa, restaurarRosa, abrir,
     rotulo: () => R.serializar(estado.rotulo), validacionRotulo: () => panelRotulo.validacion(),
-    validacionNotas: () => panelNotas.validacion() };
+    validacionNotas: () => panelNotas.validacion(), validacionConvenciones: () => panelConvenciones.validacion() };
 
   pintarCatalogo();
   pintarRotulo();

@@ -139,7 +139,10 @@ una fila y **Firma | Fecha** en otra. El **Título crece solo** con el texto, si
 unos 6 renglones.
 
 **Abrir y guardar sin tocar nada deja el plano.json idéntico**; al editar, solo cambia lo
-editado.
+editado. El editor recuerda el plano abierto y solo cambia lo que usted toca: un detalle que
+no se movió sale tal como venía (incluso con `"centrar": true`), el formato, la plantilla y el
+rótulo se conservan, y la rosa solo se escribe si el plano ya la traía o si usted la movió u
+ocultó.
 
 ## 2d. Notas (subfase 4.3c)
 
@@ -177,10 +180,32 @@ Panel **Notas** (a la derecha, debajo de Rótulo):
   nota queda en amarillo. Es un aviso del editor: `componer` la escribiría dos veces.
 - El editor solo conoce las notas de los .txt del catálogo (`--notas`); de un .txt de
   `"archivos"` que no está en el catálogo dice «no está en el catálogo: el editor no ve sus
-  notas». El editor recuerda el plano
-abierto y solo cambia lo que usted toca: un detalle que no se movió sale tal como venía
-(incluso con `"centrar": true`), el formato, la plantilla y el rótulo se conservan, y la rosa
-solo se escribe si el plano ya la traía o si usted la movió u ocultó.
+  notas».
+
+## 2e. Convenciones (subfase 4.3d)
+
+Panel **Convenciones** (a la derecha, debajo de Notas):
+
+- **Convenciones del plano** (n de 24): cada una con su **miniatura**, su número de casilla y,
+  en vivo, **en qué lugar de la leyenda queda**: «columna izquierda, fila 3»… El llenado es
+  por columna, como en `componer`: 1–12 en la columna izquierda y 13–24 en la derecha. Botones
+  **↑ subir**, **↓ bajar** y **✕ quitar**; la **descripción se puede editar** (hasta 2 líneas,
+  una por renglón). Vacía = la descripción por defecto del índice (se ve en gris).
+- **Símbolos disponibles**: los de `simbolos/indice.json`, con su miniatura (PNG incrustado,
+  dibujado con su opacidad: `limite_predio_proyectado` al 50 %) y su descripción por defecto.
+  Cada uno tiene una **casilla**: marcar = al final de la lista; desmarcar = sale. Un símbolo
+  no se repite. Con 24 en la lista, marcar uno más no lo agrega y avisa: «La tabla de
+  convenciones está llena: admite 24 (dos columnas de 12). Quite una para agregar otra.»
+- Se guarda en `rotulo.convenciones` en el orden de la lista: `{"simbolo": "<id>"}` y
+  `"descripcion"` **solo si** usted la cambió respecto de la de por defecto. Lo que no se toca
+  sale tal como vino.
+- Un símbolo que el plano trae y **el índice no tiene** se conserva (se puede mover o quitar) y
+  se marca en rojo como **«símbolo desconocido»**.
+- **Problemas de las convenciones**, en vivo y con los mismos textos que `componer`: símbolo
+  que no está en la biblioteca (con la lista de válidos), repetido, más de 24, campo
+  desconocido, descripción con un tipo o un número de líneas que la celda no admite y
+  caracteres que Arial no tiene. **Si cada descripción cabe en su casilla todavía lo dice solo
+  `componer`** (4.3e).
 
 ## 3. Qué se ve en la hoja
 

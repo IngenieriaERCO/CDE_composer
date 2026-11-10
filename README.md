@@ -211,7 +211,9 @@ El panel **Notas** muestra el catálogo de notas típicas por tema con casillas,
 notas del plano (numerada en vivo, con subir/bajar/quitar y texto editable) y notas a mano con
 viñetas; se guardan copiadas en `rotulo.notas.adicionales`.
 Abrir y guardar un plano sin tocar nada deja el plano.json idéntico; al editar, solo cambia lo
-editado. Las convenciones se editan desde la 4.3d. De las firmas solo llegan los
+editado. El panel **Convenciones** muestra los símbolos del índice como miniaturas con
+casillas, y la lista del plano con la casilla de la leyenda de cada uno (columna y fila, en
+vivo), subir/bajar/quitar y descripción editable (tope de 24). De las firmas solo llegan los
 **nombres** de las personas: las imágenes nunca se incrustan.
 Guía completa en [docs/editor.md](docs/editor.md).
 Si Node está instalado, `pytest` prueba también la lógica del editor (JavaScript).

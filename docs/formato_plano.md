@@ -263,6 +263,8 @@ No se compone el plano. El rótulo tiene 1 problema:
   `relleno`.
 - **Llenado por columna**: las primeras 12 van en la columna izquierda (símbolo +
   descripción) de arriba abajo; de la 13.ª a la 24.ª, en la columna derecha. Máximo 24.
+- El editor (panel «Convenciones», subfase 4.3d) escribe esta lista en el orden elegido y
+  agrega `"descripcion"` solo si la persona cambió la de por defecto.
 - **El símbolo** se copia como **vector** desde la biblioteca (`show_pdf_page`), **centrado**
   en su casilla. Nunca se agranda: si no cabe en el espacio útil (casilla menos 0,6 mm por
   lado: unos 20,2 × 9,3 mm en las filas 1 a 8 y 20,2 × 8,4 mm en las 9 a 12) se reduce,

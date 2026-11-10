@@ -116,6 +116,19 @@ main { flex: 1; display: flex; min-height: 0; }
 .form-rotulo .nota-plano .numero { min-width: 26px; }
 .form-rotulo .nota-plano .origen { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .form-rotulo button.mini { padding: 1px 7px; }
+/* Panel «Convenciones» (4.3d). */
+.form-rotulo .miniatura-simbolo { width: 64px; height: 26px; flex: none; display: flex; align-items: center;
+  justify-content: center; background: #fff; border: 1px solid #e5e7eb; border-radius: 3px; }
+.form-rotulo .miniatura-simbolo img { max-width: 60px; max-height: 22px; }
+.form-rotulo .simbolo-catalogo { display: grid; grid-template-columns: 18px 64px 1fr; align-items: center; gap: 6px;
+  margin: 4px 0; cursor: pointer; font-size: 12px; }
+.form-rotulo .simbolo-catalogo input { width: auto; }
+.form-rotulo .id-simbolo { font-size: 11px; color: var(--suave); }
+.form-rotulo .convencion-plano { border-top: 1px dashed var(--borde); padding: 6px 0; display: flex; flex-direction: column; gap: 4px; }
+.form-rotulo .convencion-plano .cabeza { display: flex; align-items: center; gap: 4px; }
+.form-rotulo .convencion-plano .numero { min-width: 26px; }
+.form-rotulo .convencion-plano .origen { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.form-rotulo .convencion-plano.desconocida .id-simbolo { color: var(--muy-fuerte); font-weight: 600; }
 .form-rotulo .de-archivos { background: #f9fafb; border-radius: 4px; padding: 4px 6px; margin: 4px 0; }
 .form-rotulo .botones { display: flex; gap: 6px; margin: 6px 0; }
 .form-rotulo .medida { font-size: 12px; color: var(--suave); }

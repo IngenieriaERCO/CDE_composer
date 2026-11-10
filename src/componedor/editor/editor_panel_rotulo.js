@@ -362,7 +362,7 @@
         for (const t of conserva) s.appendChild(nodo("div", { class: "medida" }, t));
         partes.push(s);
       }
-      partes.push(nodo("div", { class: "medida" }, "Las notas se editan en el panel «Notas»; las convenciones, en la próxima versión (las del plano se conservan)."));
+      partes.push(nodo("div", { class: "medida" }, "Las notas se editan en el panel «Notas» y las convenciones en el panel «Convenciones»."));
       const titulo = nodo("div", { class: "subtitulo" }, "Problemas del rótulo");
       cajaProblemas = nodo("ul", { class: "advertencias problemas-rotulo" });
       partes.push(titulo, cajaProblemas, seccionInformacion());
