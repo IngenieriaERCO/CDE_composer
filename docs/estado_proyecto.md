@@ -1200,7 +1200,7 @@ Node (y la columna derecha también en Edge, con el símbolo desconocido).
 **Pendiente** (al cerrar la 4.3d): 4.3b2 (firma en imagen: pegar, recortar, limpiar), 4.3e/f
 (maquetación en JavaScript: si cabe y si se reduce; vista previa dibujada).
 
-### Subfase 4.3b2 — Editor: cargar, recortar y limpiar una firma ✅ (2026-11-10, sin commit)
+### Subfase 4.3b2 — Editor: cargar, recortar y limpiar una firma ✅ CERRADA (2026-11-10, commit 5beb494)
 
 (La 4.3d quedó en el commit d032e3b.)
 
@@ -1256,7 +1256,7 @@ desde archivos, formularios y rótulo (ajustadas: buscan el archivo de una perso
 
 **Peso**: editor del ejemplo **718 KB** (735 509 bytes; era 681 KB).
 
-**Mejora (2026-11-10, sin commit): sombras e iluminación despareja.**
+**Mejora (2026-11-10, en el mismo commit 5beb494): sombras e iluminación despareja.**
 - `editor_firma.js`: `estimarFondo` (máximo por bloques de ~1/40 del lado mayor, cierre
   morfológico entre bloques vecinos —máximo y luego mínimo— y promedio 3 x 3, interpolación
   bilineal) y `compensarFondo` (cada píxel dividido por su fondo, antes del umbral; opción
@@ -1280,8 +1280,42 @@ desde archivos, formularios y rótulo (ajustadas: buscan el archivo de una perso
   puede tener carpetas reales del usuario y subcarpetas).
 - Editor del ejemplo: **727 KB** (744 405 bytes).
 
-**Pendiente**: 4.3e/f (maquetación en JavaScript: si cabe y si se reduce; vista previa
-dibujada).
+**Cierre de la 4.3b2**: commit **5beb494** en `fase-4`; **742 pruebas**, todas pasan.
+
+### Pendiente en la Fase 4 (al 2026-11-10)
+
+- **4.3e — Avisos «no cabe / se reducirá» en el editor**: maquetación de textos en JavaScript
+  con la tabla de anchos ya incrustada (título, celdas de revisiones y firmas, notas,
+  descripciones de convenciones), con los mismos avisos que `componer` («se escribió a X mm»,
+  «no cabe…») y **pruebas de paridad con Python** (mismos textos y mismas alturas).
+- **4.3f — Vista previa dibujada en el lienzo**: textos del rótulo, notas numeradas, símbolos
+  de convenciones y etiquetas «ESC: 1:N» dibujados en su sitio sobre la hoja, para ver el plano
+  como saldrá antes de componer.
+- **4.4 — Contenido del área de dibujo y localización**: tablas de cantidades de movimiento de
+  tierras, escala de colores (cortes y rellenos) e imagen de localización en su recuadro.
+
+### Preguntas abiertas para Alan
+
+1. **¿Qué pasa después de la emisión 0?** La tabla de revisiones del rótulo tiene filas A, B, C
+   y 0, y REV. muestra «0» cuando existe (emisión para construcción). Si hay cambios después de
+   construcción (¿revisión 1, 2…?, ¿se reemplaza la tabla?), hoy no hay fila ni regla para
+   eso.
+2. **Firma montada sobre la fila de abajo.** Con `alto_max_mm` = 5,0 la firma de DIBUJÓ (fila de
+   4,5 mm, Y 39,0–43,5) baja **1,1 mm** sobre la fila DISEÑÓ (medido en
+   `plano_prueba_firma_luis.pdf`; no hay aviso porque esa fila no tiene firma). ¿Es aceptable,
+   o se alargan las filas de la tabla de firmas en la plantilla (~7 mm cada una)? Alternativa
+   sin tocar la plantilla: bajar `alto_max_mm` a ~3,3 mm (la firma cabe en su fila, más chica).
+3. **¿Cuándo se monta el remoto de GitHub?** El repositorio no tiene remoto; `main` está en la
+   Fase 2 y las ramas `fase-3` (4 commits) y `fase-4` (16 commits, incluye los de la Fase 3)
+   no están integradas en `main`. Falta decidir el remoto, quién revisa y cómo se integran.
+4. **Firma: ¿nombre completo o iniciales?** Qué va en la columna FIRMA cuando no hay imagen
+   (iniciales, rúbrica escrita) y cómo se escribe el NOMBRE en las firmas (completo, con
+   segundo apellido, con cargo en segunda línea como REVISÓ).
+5. **Versionado al subir el repositorio**: qué entra y qué no. Hoy están **fuera de git**
+   (`.gitignore`): `plantillas/*.pdf` (rótulo de ERCO), la biblioteca de símbolos
+   `simbolos/*.pdf` (`simbolos/indice.json` sí está versionado), las firmas (`firmas/`, datos
+   personales) y todo `data/`, donde están las notas típicas de ejemplo (.txt). ¿Cuáles deben
+   entrar, y dónde viven los que no (¿SharePoint?, ¿carpeta compartida?)?
 
 ## Pendientes (después de las Fases 1 y 2)
 
@@ -1299,6 +1333,7 @@ dibujada).
 - **Anotaciones SHX perdidas**: las 83 anotaciones con el texto SHX del rótulo no pasan al
   PDF final (`show_pdf_page` no copia anotaciones); el aspecto no cambia, pero ese texto no
   se puede buscar.
-- **Versionado de plantillas**: decidir con Alan si `plantillas/*.pdf` entra al repositorio.
+- **Versionado de plantillas**: decidir con Alan si `plantillas/*.pdf` entra al repositorio
+  (ahora en «Preguntas abiertas para Alan», punto 5, junto con biblioteca, notas y firmas).
 - **Detalles que no caben en A1** (plano_completo, via_ma): el inventario sugiere una escala
   aproximada; reexportarlos a esa escala es una decisión de diseño, fuera del componedor.
