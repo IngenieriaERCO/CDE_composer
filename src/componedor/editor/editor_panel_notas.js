@@ -7,6 +7,10 @@
  * - «Notas del plano»: numeración en vivo (1…N; las viñetas no se numeran), subir, bajar,
  *   quitar, y texto y viñetas editables (la nota está COPIADA en el plano).
  * - Notas a mano, con viñetas (una por línea).
+ * - Tamaño (4.3e): las notas se MIDEN en su celda. «No cabe» (rojo) va en la tarjeta de la nota
+ *   que nombra; la reducción de todas («se escribieron a X mm», ámbar), las de archivos y «el
+ *   editor no puede medir…» (ámbar, informativo) van arriba de «Notas del plano». Todo, además,
+ *   en «Problemas de las notas», con los textos de `componer`.
  * Lo elegido se guarda en rotulo.notas.adicionales; "archivos" se conserva intacto.
  */
 (function (raiz) {
@@ -20,9 +24,11 @@
     const DATOS = opciones.datos;
     const CATALOGO = DATOS ? DATOS.notas : null;
     const FUENTE = DATOS ? DATOS.fuente : null;
+    const DEF = DATOS ? DATOS.definicion : null;
     const TIENE_CAMPO = !!(DATOS && DATOS.definicion && Object.values(DATOS.definicion.campos).some((c) => c.tipo === "notas"));
     let estado = { archivos: [], items: [], editable: true };
-    let marcables = []; // [{nodo, indice}]
+    let marcables = []; // [{nodo, indice, aviso, tamano}]
+    let cajaTamano = null; // mensajes de tamaño de todas las notas, arriba de la lista
     let crecientes = [];
     let cajaProblemas = null;
 
@@ -145,6 +151,9 @@
       const s = nodo("details", { class: "seccion" });
       s.open = true;
       s.appendChild(nodo("summary", {}, "Notas del plano (" + estado.items.length + ")"));
+      cajaTamano = nodo("ul", { class: "advertencias problemas-rotulo junto-campo" });
+      cajaTamano.hidden = true;
+      s.appendChild(cajaTamano);
       if (estado.archivos.length) {
         const caja = nodo("div", { class: "de-archivos" });
         caja.appendChild(nodo("div", { class: "subtitulo" }, "Vienen de archivos (editar a mano):"));
@@ -199,8 +208,10 @@
         });
         const aviso = nodo("div", { class: "aviso-nota" });
         aviso.hidden = true;
-        marcables.push({ nodo: texto, indice: i, aviso });
-        tarjeta.append(texto, aviso, vinetas);
+        const tamano = nodo("ul", { class: "advertencias problemas-rotulo junto-campo" });
+        tamano.hidden = true;
+        marcables.push({ nodo: texto, indice: i, aviso, tamano, vinetas });
+        tarjeta.append(texto, aviso, vinetas, tamano);
         s.appendChild(tarjeta);
       });
       if (!estado.items.length) {
@@ -238,31 +249,47 @@
     // -------------------------------------------------------------------------------------
 
     function validacion() {
-      return N.validarNotas(R.valor(modelo(), "notas"), FUENTE, CATALOGO);
+      return N.validarNotas(R.valor(modelo(), "notas"), FUENTE, CATALOGO, DEF);
     }
 
     function refrescar() {
       if (!cajaProblemas) return;
       const v = validacion();
+      const tamano = N.mensajesTamano(v);
       for (const m of marcables) {
+        // La tarjeta i es rotulo.notas.adicionales[i] (el «nota k» de Python cuenta también las
+        // de archivos; el «(adicionales[i])» del mensaje, no).
+        const propios = tamano.porNota.get(m.indice) || { errores: [], avisos: [] };
+        listar(m.tamano, propios);
+        const enVineta = propios.errores.some((e) => /^campo 'notas', nota \d+, viñeta /.test(e));
+        m.vinetas.classList.toggle("invalido", enVineta);
         const marca = "adicionales[" + m.indice + "]";
         m.nodo.classList.toggle("invalido", v.errores.some((e) => e.includes(marca + ":") ||
-          e.includes(marca + ".") || e.includes("(" + marca + ")")));
+          e.includes(marca + ".") || (e.includes("(" + marca + ")") && !/^campo 'notas', nota \d+, viñeta /.test(e))));
         // Repetida de un .txt de "archivos": en amarillo, con el aviso debajo de la nota.
         const repetida = v.avisos.find((a) => a.startsWith("rotulo.notas." + marca + ": esta nota ya viene en "));
         m.nodo.classList.toggle("repetida", !!repetida);
         m.aviso.textContent = repetida ? repetida.slice(repetida.indexOf("esta nota")) : "";
         m.aviso.hidden = !repetida;
       }
+      if (cajaTamano) listar(cajaTamano, tamano.generales);
       const filas = v.errores.map((e) => nodo("li", { class: "error" }, e))
         .concat(v.avisos.map((a) => nodo("li", { class: "aviso" }, a)));
       if (!filas.length) filas.push(nodo("li", { class: "ninguna" }, "Sin problemas en las notas."));
       cajaProblemas.replaceChildren(...filas);
     }
 
+    /** Muestra {errores, avisos} en una lista (oculta si no hay ninguno). */
+    function listar(lista, mensajes) {
+      lista.replaceChildren(...mensajes.errores.map((e) => nodo("li", { class: "error" }, e)),
+        ...mensajes.avisos.map((a) => nodo("li", { class: "aviso" }, a)));
+      lista.hidden = !lista.children.length;
+    }
+
     function pintar() {
       marcables = [];
       crecientes = [];
+      cajaTamano = null;
       if (!DATOS || !TIENE_CAMPO) {
         panel.replaceChildren(nodo("div", { class: "vacio" }, "El formato no tiene campo de notas."));
         cajaProblemas = null;
@@ -271,7 +298,7 @@
       cajaProblemas = nodo("ul", { class: "advertencias problemas-rotulo" });
       panel.replaceChildren(seccionPlano(), seccionAMano(), seccionCatalogo(),
         nodo("div", { class: "subtitulo" }, "Problemas de las notas"), cajaProblemas,
-        nodo("div", { class: "medida" }, "Si las notas caben en su celda lo dice componer (el editor todavía no lo calcula)."));
+        nodo("div", { class: "medida" }, "El editor mide las notas con la fuente del rótulo (como componer); componer lo vuelve a comprobar."));
       for (const [caja, max] of crecientes) crecer(caja, max);
       refrescar();
     }

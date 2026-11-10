@@ -207,7 +207,11 @@ HOJA/DE, coordenadas, diseñador, revisor…), las **revisiones** y las **firmas
 persona de la lista de `--firmas` o nueva; «Cargar firma…» recorta y limpia una imagen de la
 firma solo en el navegador y la guarda como `firmas/<persona>/firma.png`, sin incrustarla
 nunca), con calendario para las fechas (`dd/mm/aa`), ESCALA y REV.
-calculadas y validación en vivo con los mismos textos que `componer`. `--proyecto` prellena un
+calculadas y validación en vivo con los mismos textos que `componer`. Cada texto del rótulo
+(título, revisiones, firmas, notas y descripciones de convenciones) se **mide** como en
+`componer`: si se reducirá, aviso ámbar «se escribió a X mm» junto al campo; si no cabe ni a la
+altura mínima, error rojo con el mismo texto de `componer` (el editor ayuda; `componer` vuelve a
+validar todo). `--proyecto` prellena un
 plano nuevo con los datos que se repiten ([docs/formato_proyecto.md](docs/formato_proyecto.md)).
 El panel **Notas** muestra el catálogo de notas típicas por tema con casillas, la lista de
 notas del plano (numerada en vivo, con subir/bajar/quitar y texto editable) y notas a mano con

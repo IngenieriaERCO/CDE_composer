@@ -8,9 +8,10 @@
  *     una celda de una sola línea; caracteres que la fuente no tiene (`rangos_unicode`);
  *   - revisiones: letra válida y sin repetir, columnas conocidas;
  *   - firmas: filas y columnas conocidas; {"imagen": "<persona>[/<archivo>]"} solo en FIRMA.
- * Lo que depende de MEDIR el texto (si cabe, si se reduce) queda para la maquetación en
- * JavaScript (4.3e); hasta entonces lo dice `componer`. La única excepción es una lista de
- * líneas con más líneas de las que admite la celda: no cabe a ninguna altura.
+ * Medir (4.3e): cada texto se maqueta con editor_maquetacion.js (copia de `maquetacion.py`):
+ * si no cabe ni a la altura mínima, el error de `TextoNoCabe`; si se escribe más pequeño, la
+ * advertencia de `rotulo.preparar_rotulo` («se escribió a X mm»), con los mismos textos. Sin
+ * rectángulo de celda o sin tabla de anchos solo se revisa la cantidad de líneas a mano.
  *
  * Forma de los valores: el formulario respeta la que traía el plano (una lista de líneas sigue
  * siendo lista; un entero, entero si se escribe un entero). Un campo vacío se QUITA del plano
@@ -20,13 +21,14 @@
  */
 (function (raiz, fabrica) {
   "use strict";
-  const api = fabrica();
+  const M = typeof module === "object" && module.exports ? require("./editor_maquetacion.js") : raiz.EditorMaquetacion;
+  const api = fabrica(M);
   if (typeof module === "object" && module.exports) {
     module.exports = api;
   } else {
     raiz.EditorFormularios = api;
   }
-})(typeof self !== "undefined" ? self : this, function () {
+})(typeof self !== "undefined" ? self : this, function (M) {
   "use strict";
 
   const esObjeto = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -102,7 +104,8 @@
 
   function celdaTexto(nombre, campo) {
     return { ruta: nombre, ancho_mm: campo.rect_mm[2] - campo.rect_mm[0], altura_mm: campo.altura_mm,
-      altura_min_mm: campo.altura_min_mm, lineas_max: campo.lineas_max };
+      altura_min_mm: campo.altura_min_mm, lineas_max: campo.lineas_max, rect_mm: campo.rect_mm.slice(),
+      alinear: campo.alinear };
   }
 
   /** Celda (fila, columna) de una tabla de la definición. */
@@ -112,7 +115,8 @@
     const c = t.columnas.find((x) => x.clave === columna);
     return { ruta: tabla + "." + fila + "." + columna, ancho_mm: c.x_mm[1] - c.x_mm[0],
       altura_mm: t.altura_mm, altura_min_mm: t.altura_min_mm, lineas_max: f.lineas_max,
-      acepta_imagen: !!c.acepta_imagen };
+      acepta_imagen: !!c.acepta_imagen, rect_mm: [c.x_mm[0], f.y_mm[0], c.x_mm[1], f.y_mm[1]],
+      alinear: c.alinear };
   }
 
   function etiquetaColumna(clave) {
@@ -209,9 +213,10 @@
   /**
    * {errores, avisos} de un valor de texto en `celda`. `sitio`: dónde está en el plano
    * ("rotulo.revisiones[0].fecha"); la celda trae su `ruta` ("revisiones.A.fecha"), que es lo
-   * que nombra Python en los problemas de fuente y de tamaño.
+   * que nombra Python en los problemas de fuente y de tamaño. `interlineado`: el de la
+   * definición (para medir el alto de varias líneas).
    */
-  function validarTexto(valor, celda, sitio, fuente, relleno) {
+  function validarTexto(valor, celda, sitio, fuente, relleno, interlineado) {
     const errores = problemasContenido(valor, sitio, celda.lineas_max);
     const avisos = [];
     if (errores.length || valor === undefined || valor === null) return { errores, avisos };
@@ -226,7 +231,14 @@
       avisos.push("campo '" + celda.ruta + "': el editor no sabe si la fuente tiene los caracteres " +
         desconocidos.map(pyRepr).join(" ") + "; componer lo comprobará");
     }
-    // Líneas explícitas de más: no caben a ninguna altura (mismo texto que maquetacion.py).
+    if (M && Array.isArray(celda.rect_mm) && fuente.anchos_em && typeof interlineado === "number") {
+      const m = M.maquetar(celda, esEntero(valor) ? String(valor) : valor, fuente, relleno || 0, interlineado);
+      if (m.problema) errores.push(m.problema);
+      else if (m.sin_medir) avisos.push(avisoSinMedir(celda.ruta, m.sin_medir));
+      else if (m.reducido_desde !== null) avisos.push(M.avisoReducido(m));
+      return { errores, avisos };
+    }
+    // Sin medir: líneas explícitas de más no caben a ninguna altura (mismo texto que maquetacion.py).
     if (Array.isArray(valor) && valor.length > celda.lineas_max) {
       const util = celda.ancho_mm - 2 * (relleno || 0);
       const minima = celda.altura_min_mm < celda.altura_mm ? ", la mínima permitida" : "";
@@ -235,6 +247,30 @@
         " (altura " + mm1(celda.altura_min_mm) + " mm" + minima + ")");
     }
     return { errores, avisos };
+  }
+
+  /**
+   * ¿El mensaje (error o aviso) es de uno de esos campos? (4.3e) `claves`: como las marca el
+   * panel: "rotulo.titulo" (forma del valor), "campo 'titulo'" (fuente y tamaño: «campo
+   * 'titulo': …», «campo 'titulo', línea 2: …» y la advertencia «… el campo 'titulo' se
+   * escribió a …») o "rotulo.firmas.dibujo:" (terminada en «:», solo ese prefijo).
+   */
+  function mensajeDeCampo(mensaje, claves) {
+    return claves.some((k) => (k.endsWith(":") ? mensaje.startsWith(k)
+      : mensaje.startsWith(k + ":") || mensaje.startsWith(k + ".") || mensaje.startsWith(k + ",") ||
+        mensaje.includes(" el " + k + " se escribió a ")));
+  }
+
+  /** {errores, avisos} de una validación que son de esos campos (mismo orden). */
+  function mensajesDeCampo(validacion, claves) {
+    return { errores: validacion.errores.filter((e) => mensajeDeCampo(e, claves)),
+      avisos: validacion.avisos.filter((a) => mensajeDeCampo(a, claves)) };
+  }
+
+  /** Aviso propio del editor: un carácter que la tabla de anchos no trae no se puede medir. */
+  function avisoSinMedir(ruta, caracteres) {
+    return "campo '" + ruta + "': el editor no puede medir los caracteres " + caracteres.map(pyRepr).join(" ") +
+      "; componer dirá si el texto cabe";
   }
 
   // ---------------------------------------------------------------------------------------
@@ -427,7 +463,7 @@
         if (!(col in item)) continue;
         const v = col === clave ? letra : item[col];
         const r = validarTexto(v, celdaTabla(definicion, TABLA_REVISIONES, letra, col), sitio + "." + col,
-          fuente, definicion.relleno_mm);
+          fuente, definicion.relleno_mm, definicion.interlineado);
         errores.push(...r.errores);
         avisos.push(...r.avisos);
       }
@@ -502,7 +538,8 @@
           avisos.push(...r.avisos);
           continue;
         }
-        const r = validarTexto(item[col], celda, sitio + "." + col, fuente, definicion.relleno_mm);
+        const r = validarTexto(item[col], celda, sitio + "." + col, fuente, definicion.relleno_mm,
+          definicion.interlineado);
         errores.push(...r.errores);
         avisos.push(...r.avisos);
       }
@@ -575,7 +612,9 @@
         }
         continue;
       }
-      const r = validarTexto(v, celdaTexto(nombre, campo), "rotulo." + nombre, fuente, definicion.relleno_mm);
+      // Sin valor va el por defecto («DEFINIR»): Python también lo maqueta.
+      const r = validarTexto(v === undefined && campo.por_defecto ? campo.por_defecto : v, celdaTexto(nombre, campo),
+        "rotulo." + nombre, fuente, definicion.relleno_mm, definicion.interlineado);
       errores.push(...r.errores);
       avisos.push(...r.avisos);
     }
@@ -634,6 +673,9 @@
     fuenteTiene,
     caracteresFaltantes,
     validarTexto,
+    avisoSinMedir,
+    mensajeDeCampo,
+    mensajesDeCampo,
     partesFormato,
     formatearFecha,
     fechaIso,

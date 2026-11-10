@@ -156,8 +156,15 @@ nada de ella en la página).
 - **Problemas del rótulo**: validación en vivo con **los mismos textos que `componer`**: tipo
   de valor, salto de línea en una celda de una línea, letras de revisión inválidas o repetidas,
   columnas desconocidas, caracteres que Arial no tiene (p. ej. «中») y una lista de líneas con
-  más líneas de las que admite la celda. La casilla con problema se pone en rojo. **Si el texto
-  cabe en su celda (y si se reduce) todavía lo dice solo `componer`** (subfase 4.3e).
+  más líneas de las que admite la celda. La casilla con problema se pone en rojo.
+- **¿Cabe?** (subfase 4.3e): el editor **mide** cada texto con la tabla de anchos de Arial,
+  igual que `componer` (mismo corte en líneas y misma reducción de 0,1 en 0,1 mm hasta la
+  altura mínima). Si se escribe más pequeño, la casilla queda en **ámbar** con el aviso
+  «Advertencia: en el rótulo, el campo 'titulo' se escribió a 2.2 mm de altura (pedida 2.5 mm)
+  para que quepa en su celda.» debajo; si no cabe ni a la mínima, en **rojo** con el error de
+  `componer` (campo, texto, medida y tamaño). En revisiones y firmas el mensaje va al pie de la
+  tarjeta. Todo aparece además en «Problemas del rótulo». Un carácter que la tabla del editor no
+  trae (p. ej. «Ω») no se puede medir: aviso, y `componer` decide.
 
 Reglas al escribir:
 
@@ -204,7 +211,14 @@ Panel **Notas** (a la derecha, debajo de Rótulo):
 - **Problemas de las notas**, en vivo y con los mismos textos que `componer`: forma de la nota,
   saltos de línea, viñetas mal formadas, caracteres que Arial no tiene (la nota queda en rojo) y
   el aviso de número propio. Una nota vacía es un aviso del editor (`componer` la omite sin
-  decir nada). **Si las notas caben en la celda todavía lo dice solo `componer`** (4.3e).
+  decir nada).
+- **¿Caben?** (4.3e): las notas se miden en su celda como en `componer` (las de archivos
+  primero, sangría francesa, viñetas, medio renglón entre notas, bajando todas juntas hasta
+  1,5 mm). Una nota que no cabe queda en rojo con el error en su tarjeta; «las notas se
+  escribieron a X mm» (ámbar) va arriba de «Notas del plano». Si un .txt de `"archivos"` no está
+  en el catálogo, el editor no conoce sus notas y **no mide**: aviso ámbar informativo («el
+  editor no puede medir las notas: '…' no está en el catálogo; componer lo comprobará»), que no
+  es un error del plano.
 - Al abrir un plano, una nota igual a una del catálogo queda con su casilla marcada.
 - **Notas que ya vienen de archivos**: si una ruta de `"archivos"` es el **mismo .txt** que uno
   del catálogo (la ruta se compara como la resuelve `componer`: desde la carpeta del
@@ -242,8 +256,9 @@ Panel **Convenciones** (a la derecha, debajo de Notas):
 - **Problemas de las convenciones**, en vivo y con los mismos textos que `componer`: símbolo
   que no está en la biblioteca (con la lista de válidos), repetido, más de 24, campo
   desconocido, descripción con un tipo o un número de líneas que la celda no admite y
-  caracteres que Arial no tiene. **Si cada descripción cabe en su casilla todavía lo dice solo
-  `componer`** (4.3e).
+  caracteres que Arial no tiene. Desde la 4.3e cada descripción se **mide** en su casilla
+  (2 líneas, 1,8 -> 1,5 mm): «no cabe» en rojo y «se escribió a X mm» en ámbar, debajo de la
+  descripción y en Problemas, con los textos de `componer`.
 
 ## 3. Qué se ve en la hoja
 

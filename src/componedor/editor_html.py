@@ -23,6 +23,7 @@ MARCADORES = {
     "/*@@CSS@@*/": "editor.css",
     "/*@@JS_LOGICA@@*/": "editor_logica.js",
     "/*@@JS_ROTULO@@*/": "editor_rotulo.js",
+    "/*@@JS_MAQUETACION@@*/": "editor_maquetacion.js",
     "/*@@JS_FORMULARIOS@@*/": "editor_formularios.js",
     "/*@@JS_FIRMA@@*/": "editor_firma.js",
     "/*@@JS_DIALOGO_FIRMA@@*/": "editor_dialogo_firma.js",

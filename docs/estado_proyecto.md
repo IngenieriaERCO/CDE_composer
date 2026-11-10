@@ -1282,12 +1282,91 @@ desde archivos, formularios y rótulo (ajustadas: buscan el archivo de una perso
 
 **Cierre de la 4.3b2**: commit **5beb494** en `fase-4`; **742 pruebas**, todas pasan.
 
+### Subfase 4.3e — Editor: avisos «no cabe / se reducirá» ✅ (2026-11-10, sin commit)
+
+El editor **mide** cada texto del rótulo como `componer` y avisa en vivo, junto al campo, con
+los mismos textos. Sigue siendo una ayuda: `componer` vuelve a maquetar y validar todo.
+
+- **`editor_maquetacion.js`** (nuevo, lógica pura, Node y navegador): copia de
+  `maquetacion.py` (`alturasAProbar`, `partirEnLineas`, `maquetar` con las posiciones de cada
+  línea) y de `notas.maquetar_notas` (`maquetarNotas`: numeradas, sangría francesa, viñetas,
+  media línea entre notas, pegadas arriba). Ancho = suma de avances de la tabla `anchos_em` ×
+  tamaño (como PyMuPDF, sin kerning: diferencia medida 0 mm en 3000 textos). Para que los textos
+  sean idénticos: `fmt` redondea como `f"{v:.1f}"` de Python (al par en los empates exactos:
+  0.25 -> «0.2»; `toFixed` daría «0.3»), `redondear`/`redondearEntero` como `round`, y los
+  espacios son los de `str.split()`/`strip()` (incluye el espacio duro). Un carácter que la
+  tabla del editor no trae (p. ej. «Ω», que Arial sí tiene) no se mide: `{sin_medir}`.
+- **`editor_formularios.js`**: `validarTexto` maqueta (celda con `rect_mm` y `alinear`, más el
+  interlineado): «no cabe» = el error de `TextoNoCabe`; reducción = la advertencia de
+  `rotulo.preparar_rotulo`; sin medir = aviso del editor «el editor no puede medir los
+  caracteres …; componer dirá si el texto cabe». Sin valor se mide el por defecto («DEFINIR»),
+  como Python. Cubre título, campos simples, revisiones y firmas (nombre, matrícula, cargo).
+  `mensajeDeCampo`/`mensajesDeCampo`: qué mensajes son de qué campo (incluye «campo 'titulo',
+  línea 2:» y «… el campo 'titulo' se escribió a …»).
+- **`editor_convenciones.js`**: la descripción se mide por la misma vía.
+- **`editor_notas.js`**: `validarNotas(valor, fuente, catalogo, definicion)` mide las notas
+  (`medirNotas`): las de los .txt de `"archivos"` que están en el catálogo van primero (en su
+  orden; un .txt repetido, dos veces, como Python), luego las adicionales. Si un .txt no está en
+  el catálogo (o tuvo problemas al leerse), no se mide: aviso **ámbar e informativo** «el editor
+  no puede medir las notas: '<archivo>' no está en el catálogo; componer lo comprobará», que no
+  cuenta como error. Además, los avisos de lectura de esos .txt (número propio) se muestran
+  primero, en el orden de `componer` (ajustada la prueba de la 4.3c que esperaba otro orden).
+  `mensajesTamano` reparte los mensajes por nota adicional.
+- **Pantalla**: rótulo — casilla roja («no cabe») o ámbar («se reducirá») y la lista de
+  mensajes debajo del campo (en revisiones y firmas, al pie de la tarjeta); notas — error en la
+  tarjeta de la nota (el textarea de viñetas en rojo si el problema es de una viñeta) y los
+  generales (reducción de todas, notas de archivos, «no se puede medir») arriba de «Notas del
+  plano»; convenciones — debajo de la descripción. Todo, además, en la lista de Problemas de
+  cada panel, con el mismo estilo (`.advertencias.problemas-rotulo`). Se quitaron los textos
+  «el editor todavía no lo calcula».
+- `editor_html.py` / `editor.html`: nuevo marcador `/*@@JS_MAQUETACION@@*/`, antes de los
+  formularios.
+
+**Pruebas**: **791**, todas pasan (49 nuevas):
+- `test_editor_maquetacion_js.py` (12): números y espacios como Python; alturas a probar; anchos
+  ±1e-9 mm (300 textos al azar); corte en líneas; **todas las celdas de A1** con 35 textos, 7
+  listas y 3 enteros (> 1500 casos: mismas líneas, posiciones, anchos, alturas y textos de «no
+  cabe»), celda baja inventada (falta de alto, alineación derecha y centrada); título lleno en 3
+  líneas, reducido y que no cabe; **justo en el borde** (el texto más ancho que cabe a cada
+  altura de 2,5 a 2,0 y uno con un punto más; firmas, revisiones y No. PLANO al borde exacto);
+  600 textos al azar; notas (vacías, viñetas, palabra más ancha que el texto o que la viñeta, 9 y
+  10 notas, y las fronteras con A1: 20 notas largas a 1,8 mm, 21 a 1,7, 24 a 1,5 y 25 no caben);
+  16 juegos de notas al azar; textos de las advertencias.
+- `test_editor_cabe_js.py` (37): `F.validarRotulo` / `C.validarConvenciones` / `N.validarNotas`
+  contra `preparar_rotulo` sobre los mismos valores (mismos errores; sin errores, mismas
+  advertencias): título que cabe, se reduce (2,1 mm) y no cabe, 8 títulos límite (3 y 4 líneas a
+  mano, saltos de línea, palabra larga, tildes/ñ/guiones, vacío, entero); revisiones y firmas;
+  por defecto; caracteres sin ancho; 8 casos de convenciones (1,7 mm y «no cabe»); notas
+  adicionales en las fronteras 20/21/24/25; 10 casos con archivos del catálogo, viñetas y
+  repetidos; archivo fuera del catálogo (aviso, sin error); sin definición no se mide; reparto de
+  mensajes por campo y por nota.
+- Las pruebas de paridad anteriores siguen igual (p. ej. los 22 problemas de los formularios).
+  Límite conocido: un entero de más de 15 cifras pierde precisión al leerse en JavaScript (no se
+  usa en el rótulo; la prueba usa enteros normales). Las pruebas con PyMuPDF midiendo cientos de
+  notas tardan: el barrido de notas se redujo a las fronteras.
+
+**Verificación en Edge** (`data/verificacion_editor/verificar_maquetacion.mjs` y
+`esperado_cabe.py`, fuera del repo; editor propio en `data/editor_cabe`, generado **sin
+`--firmas` ni `--proyecto`**): 25 comprobaciones OK, **sin errores de JavaScript**. Cada mensaje
+de la pantalla se compara con Python sobre el plano.json que guardaría el editor: título que se
+reduce a **2,2 mm** (ámbar, aviso debajo y en Problemas; `componer` escribe el PDF con el mismo
+aviso); descripción de convención que no cabe (rojo, mismo aspecto que los demás errores;
+`componer` se niega con el mismo error); nota que no cabe (solo esa nota en rojo); 21 notas que
+bajan a 1,7 mm (aviso arriba de la lista); .txt fuera del catálogo (solo avisos); una revisión y
+una firma que no caben (cada error al pie de su tarjeta). Capturas en
+`data/verificacion_editor/maquetacion/`: `01_titulo_se_reduce.png`, `02_convencion_no_cabe.png`,
+`03_nota_no_cabe.png`, `04_revision_y_firma_no_caben.png`.
+
+**Peso**: editor del ejemplo **754 KB** (772 484 bytes; era 727 KB, 744 405 bytes): **+27,4 KB**,
+todo código (16 KB del módulo nuevo, con sus comentarios; ~12 KB en los demás); los datos no
+cambian.
+
+**Nota**: el `editor.html` sigue llevando rutas absolutas del disco (las del catálogo de notas,
+4.3c, y `carpeta_editor`), que incluyen la carpeta de usuario de Windows. No es de esta
+subfase; queda anotado por si se comparte un editor fuera del equipo.
+
 ### Pendiente en la Fase 4 (al 2026-11-10)
 
-- **4.3e — Avisos «no cabe / se reducirá» en el editor**: maquetación de textos en JavaScript
-  con la tabla de anchos ya incrustada (título, celdas de revisiones y firmas, notas,
-  descripciones de convenciones), con los mismos avisos que `componer` («se escribió a X mm»,
-  «no cabe…») y **pruebas de paridad con Python** (mismos textos y mismas alturas).
 - **4.3f — Vista previa dibujada en el lienzo**: textos del rótulo, notas numeradas, símbolos
   de convenciones y etiquetas «ESC: 1:N» dibujados en su sitio sobre la hoja, para ver el plano
   como saldrá antes de componer.

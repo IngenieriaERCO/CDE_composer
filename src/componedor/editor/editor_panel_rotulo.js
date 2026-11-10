@@ -4,7 +4,9 @@
  * (EditorRotulo). Aquí: campos simples, ESCALA y REV. (solo lectura), revisiones y firmas.
  *
  * Al escribir, el valor va directo al modelo (sin volver a dibujar el panel, para no perder el
- * cursor) y se revalida todo. Agregar, quitar o cambiar la letra de una revisión, o el modo de
+ * cursor) y se revalida todo. Desde la 4.3e cada texto se MIDE: «no cabe» (rojo) y «se
+ * escribió a X mm» (ámbar) se muestran debajo del campo (en revisiones y firmas, al pie de su
+ * tarjeta) y en «Problemas del rótulo», con los textos de `componer`. Agregar, quitar o cambiar la letra de una revisión, o el modo de
  * una firma, sí vuelve a dibujar el panel.
  */
 (function (raiz) {
@@ -27,10 +29,11 @@
     const nuevas = new Set(); // filas de firmas con «Persona nueva…» abierta
     const NUEVA = "\u0000nueva"; // valor de la opción «Persona nueva…» (no es un nombre válido)
     const FORMATO_FECHA = DEF ? DEF.formato_fecha : "dd/mm/aa";
-    let marcables = []; // [{nodo, claves}] para marcar en rojo los que tienen error
+    let marcables = []; // [{nodo, claves}]: rojo si tiene error, ámbar si se reduce
     let calculados = {}; // campo -> input de solo lectura
     let crecientes = []; // cajas que crecen con el texto (Título)
     let cajaProblemas = null;
+    let cajasJunto = new Map(); // contenedor -> <ul> de mensajes junto al campo
 
     const modelo = () => opciones.modelo();
     const valor = (campo) => R.valor(modelo(), campo);
@@ -384,11 +387,19 @@
         entrada.placeholder = "(vacía)";
       }
       const v = validacion();
+      // Mensajes junto al campo: debajo de la fila, o al pie de la tarjeta (revisiones, firmas).
+      const junto = new Map(); // contenedor -> {errores, avisos} sin repetir
       for (const m of marcables) {
-        const mal = v.errores.some((e) => m.claves.some((k) => e.startsWith(k + ":") || e.startsWith(k + ".") ||
-          (k.endsWith(":") && e.startsWith(k))));
-        m.nodo.classList.toggle("invalido", mal);
+        const propios = F.mensajesDeCampo(v, m.claves);
+        m.nodo.classList.toggle("invalido", propios.errores.length > 0);
+        m.nodo.classList.toggle("reducido", !propios.errores.length && propios.avisos.length > 0);
+        const contenedor = m.nodo.closest(".tarjeta-tabla") || m.nodo.closest(".campo");
+        if (!contenedor) continue;
+        if (!junto.has(contenedor)) junto.set(contenedor, { errores: new Set(), avisos: new Set() });
+        propios.errores.forEach((e) => junto.get(contenedor).errores.add(e));
+        propios.avisos.forEach((a) => junto.get(contenedor).avisos.add(a));
       }
+      for (const [contenedor, mensajes] of junto) mostrarJunto(contenedor, mensajes);
       if (!cajaProblemas) return;
       const filas = v.errores.map((e) => nodo("li", { class: "error" }, e))
         .concat(v.avisos.map((a) => nodo("li", { class: "aviso" }, a)));
@@ -396,8 +407,23 @@
       cajaProblemas.replaceChildren(...filas);
     }
 
+    /** Lista de mensajes junto a un campo (al pie de la tarjeta, o debajo de la fila). */
+    function mostrarJunto(contenedor, mensajes) {
+      let lista = cajasJunto.get(contenedor);
+      if (!lista) {
+        lista = nodo("ul", { class: "advertencias problemas-rotulo junto-campo" });
+        if (contenedor.classList.contains("tarjeta-tabla")) contenedor.appendChild(lista);
+        else contenedor.after(lista);
+        cajasJunto.set(contenedor, lista);
+      }
+      lista.replaceChildren(...[...mensajes.errores].map((e) => nodo("li", { class: "error" }, e)),
+        ...[...mensajes.avisos].map((a) => nodo("li", { class: "aviso" }, a)));
+      lista.hidden = !lista.children.length;
+    }
+
     function pintar() {
       marcables = [];
+      cajasJunto = new Map();
       calculados = {};
       crecientes = [];
       if (!DATOS || !DEF) {

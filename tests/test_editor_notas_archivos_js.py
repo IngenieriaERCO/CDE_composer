@@ -140,11 +140,15 @@ def test_mismo_texto_que_python(entorno):
             "catalogo": entorno["catalogo"]})
     assert r == esperado
     # Y van en validarNotas, después de los avisos de Python (número propio) y sin errores.
+    # Desde la 4.3e los avisos de los .txt del catálogo van primero, como en `componer`.
     v = js("return N.validarNotas(entrada.valor, null, entrada.catalogo);",
            {"valor": {"archivos": archivos_plan, "adicionales": ADICIONALES},
             "catalogo": entorno["catalogo"]})
     assert v["errores"] == [] and v["avisos"][-4:] == esperado
-    assert v["avisos"][0].startswith("Advertencia: la nota de adicionales[2] traía su propio número")
+    _, avisos_python, _ = leer_notas({"archivos": archivos_plan[:2], "adicionales": ADICIONALES},
+                                     entorno["editor"])
+    assert v["avisos"][:len(avisos_python)] == avisos_python
+    assert any(a.startswith("Advertencia: la nota de adicionales[2] traía su propio número") for a in v["avisos"])
 
 
 def test_sin_archivos_del_catalogo_no_hay_avisos(entorno):

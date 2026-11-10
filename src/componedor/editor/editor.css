@@ -175,6 +175,10 @@ main { flex: 1; display: flex; min-height: 0; }
 .form-rotulo .subtitulo { font-size: 12px; font-weight: 600; margin: 8px 0 4px; }
 .problemas-rotulo li.error { border-color: var(--muy-fuerte); background: #fef2f2; }
 .problemas-rotulo li.aviso { border-color: var(--aviso); background: #fffbeb; }
+/* 4.3e: «no cabe» (rojo) y «se reducirá» (ámbar) junto al campo, como en la lista de Problemas. */
+.form-rotulo .reducido { border-color: var(--aviso); background: #fffbeb; }
+.junto-campo { margin: 3px 0 4px; }
+.junto-campo li { font-size: 11px; padding: 2px 6px; overflow-wrap: anywhere; }
 
 .lista-plano { margin: 0; padding-left: 22px; }
 .lista-plano li { cursor: pointer; padding: 2px 0; }

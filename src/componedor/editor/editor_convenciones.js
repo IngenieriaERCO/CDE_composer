@@ -9,8 +9,9 @@
  * - Casilla de la leyenda: llenado por columna, como `componer` (rotulo_formato: pareja
  *   izquierda de arriba abajo, luego la derecha): con 24, 1–12 izquierda y 13–24 derecha.
  * - Validación: los MISMOS textos que rotulo._convenciones (+ _contenido y la revisión de
- *   caracteres de la fuente sobre la celda «convenciones.<k>.descripcion»). Si la descripción
- *   CABE en su celda lo dice `componer` (4.3e).
+ *   caracteres de la fuente sobre la celda «convenciones.<k>.descripcion»). Desde la 4.3e la
+ *   descripción también se MIDE (editor_maquetacion.js, vía F.validarTexto): «no cabe» y «se
+ *   escribió a X mm», con los textos de `componer`.
  */
 (function (raiz, fabrica) {
   "use strict";
@@ -47,7 +48,8 @@
   function celdaDescripcion(c, i) {
     const d = c.descripciones[i];
     return { ruta: c.nombre + "." + (i + 1) + ".descripcion", ancho_mm: d.rect_mm[2] - d.rect_mm[0],
-      altura_mm: d.altura_mm, altura_min_mm: d.altura_min_mm, lineas_max: d.lineas_max };
+      altura_mm: d.altura_mm, altura_min_mm: d.altura_min_mm, lineas_max: d.lineas_max,
+      rect_mm: d.rect_mm.slice(), alinear: d.alinear };
   }
 
   // ---------------------------------------------------------------------------------------
@@ -95,7 +97,8 @@
       if (i >= c.capacidad) return;
       const celda = celdaDescripcion(c, i);
       const texto = "descripcion" in item ? item.descripcion : porId.get(ident).descripcion;
-      const r = F.validarTexto(texto, celda, sitio + ".descripcion", fuente, definicion.relleno_mm);
+      const r = F.validarTexto(texto, celda, sitio + ".descripcion", fuente, definicion.relleno_mm,
+        definicion.interlineado);
       errores.push(...r.errores);
       avisos.push(...r.avisos);
     });

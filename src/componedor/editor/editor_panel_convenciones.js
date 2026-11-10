@@ -110,8 +110,10 @@
           guardar();
           refrescar();
         });
-        marcables.push({ nodo: entrada, indice: i });
-        tarjeta.appendChild(entrada);
+        const junto = nodo("ul", { class: "advertencias problemas-rotulo junto-campo" });
+        junto.hidden = true;
+        marcables.push({ nodo: entrada, indice: i, junto });
+        tarjeta.append(entrada, junto);
         s.appendChild(tarjeta);
       });
       if (!estado.items.length) s.appendChild(nodo("div", { class: "vacio" }, "Ninguna: marque símbolos abajo."));
@@ -164,6 +166,12 @@
         const marca = "convenciones[" + m.indice + "]";
         const ruta = "campo 'convenciones." + (m.indice + 1) + ".descripcion'";
         m.nodo.classList.toggle("invalido", v.errores.some((e) => e.includes(marca + ".") || e.includes(marca + ":") || e.startsWith(ruta)));
+        // 4.3e: «no cabe» (rojo) y «se escribió a X mm» (ámbar) de esta descripción, debajo de ella.
+        const propios = F.mensajesDeCampo(v, [ruta]);
+        m.nodo.classList.toggle("reducido", !m.nodo.classList.contains("invalido") && propios.avisos.length > 0);
+        m.junto.replaceChildren(...propios.errores.map((e) => nodo("li", { class: "error" }, e)),
+          ...propios.avisos.map((a) => nodo("li", { class: "aviso" }, a)));
+        m.junto.hidden = !m.junto.children.length;
       }
       const filas = v.errores.map((e) => nodo("li", { class: "error" }, e))
         .concat(v.avisos.map((a) => nodo("li", { class: "aviso" }, a)));
@@ -181,7 +189,7 @@
       cajaProblemas = nodo("ul", { class: "advertencias problemas-rotulo" });
       panel.replaceChildren(seccionPlano(), seccionSimbolos(),
         nodo("div", { class: "subtitulo" }, "Problemas de las convenciones"), cajaProblemas,
-        nodo("div", { class: "medida" }, "Si cada descripción cabe en su casilla lo dice componer (el editor todavía no lo calcula)."));
+        nodo("div", { class: "medida" }, "El editor mide cada descripción con la fuente del rótulo (como componer); componer lo vuelve a comprobar."));
       refrescar();
     }
 

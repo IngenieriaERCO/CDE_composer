@@ -13,7 +13,12 @@
  *   revisión de caracteres de rotulo._notas. Los archivos .txt referidos no se pueden leer
  *   desde el navegador: solo se revisa que "archivos" sea una lista de textos; y como sus notas
  *   van antes, con "archivos" el número «la nota k» de los mensajes de caracteres cuenta solo
- *   las adicionales. Si las notas CABEN en la celda lo dice `componer` (4.3e).
+ *   las adicionales.
+ * - Medir (4.3e, con la definición del rótulo): las notas se maquetan con editor_maquetacion.js
+ *   (copia de `notas.maquetar_notas`): «no cabe» es un error y «se escribieron a X mm», una
+ *   advertencia, con los textos de `componer`. Las de "archivos" van primero, en su orden; si
+ *   un .txt de "archivos" no está en el catálogo, sus notas no se conocen y NO se mide: aviso
+ *   informativo («el editor no puede medir las notas…»), que no es un error del plano.
  * - Aviso propio del editor (Python lo omite sin decir nada): una nota adicional vacía.
  * - Notas que ya entran por "archivos" (4.3c): si una ruta de "archivos" es un .txt del
  *   catálogo (misma ruta, vista desde la carpeta del plano.json), sus notas típicas no se
@@ -22,14 +27,16 @@
  */
 (function (raiz, fabrica) {
   "use strict";
-  const F = typeof module === "object" && module.exports ? require("./editor_formularios.js") : raiz.EditorFormularios;
-  const api = fabrica(F);
+  const nodo = typeof module === "object" && module.exports;
+  const F = nodo ? require("./editor_formularios.js") : raiz.EditorFormularios;
+  const M = nodo ? require("./editor_maquetacion.js") : raiz.EditorMaquetacion;
+  const api = fabrica(F, M);
   if (typeof module === "object" && module.exports) {
     module.exports = api;
   } else {
     raiz.EditorNotas = api;
   }
-})(typeof self !== "undefined" ? self : this, function (F) {
+})(typeof self !== "undefined" ? self : this, function (F, M) {
   "use strict";
 
   const esObjeto = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -109,10 +116,11 @@
 
   /**
    * {errores, avisos, notas} del valor "notas" del plano. `avisos`: los de Python (número
-   * propio) y, al final, los propios del editor (nota vacía; con `catalogo`, nota repetida de
-   * un .txt de `archivos`).
+   * propio), la de reducción y, al final, los propios del editor (nota vacía; con `catalogo`,
+   * nota repetida de un .txt de `archivos`; notas que no se pueden medir). Con `definicion`
+   * (la del rótulo) se miden las notas: «no cabe» va en `errores`.
    */
-  function validarNotas(valor, fuente, catalogo) {
+  function validarNotas(valor, fuente, catalogo, definicion) {
     const errores = [];
     const avisos = [];
     const avisosEditor = [];
@@ -149,7 +157,90 @@
           fuente.nombre + " no tiene: " + faltan.map(F.pyRepr).join(" "));
       }
     });
-    return { errores, avisos: avisos.concat(avisosEditor, avisosRepetidas(valor, catalogo)), notas };
+    // notas.leer_notas: los avisos de los .txt de «archivos» (número propio) van primero; el
+    // editor los conoce si el .txt está en el catálogo.
+    const deArchivos = [];
+    for (const ruta of Array.isArray(archivos) ? archivos : []) {
+      const a = archivoDelCatalogo(ruta, catalogo);
+      if (a) deArchivos.push(...(a.avisos || []));
+    }
+    avisos.unshift(...deArchivos);
+    const medida = errores.length ? null : medirNotas(Array.isArray(archivos) ? archivos : [], notas, fuente, catalogo, definicion);
+    if (medida && medida.problema) errores.push(medida.problema);
+    if (medida && medida.aviso) avisos.push(medida.aviso);
+    const sinMedir = medida && medida.sin_medir ? [medida.sin_medir] : [];
+    return { errores, avisos: avisos.concat(avisosEditor, avisosRepetidas(valor, catalogo), sinMedir), notas };
+  }
+
+  /**
+   * Los mensajes de TAMAÑO de las notas (4.3e), repartidos para la pantalla: los que nombran una
+   * nota adicional «(adicionales[i])» van con ella (`porNota`: i -> {errores, avisos}); los
+   * demás (reducción de todas, notas de archivos, no se pudo medir) van en `generales`.
+   */
+  function mensajesTamano(validacion) {
+    const esDeTamano = (m) => m.startsWith("campo 'notas'") || m.startsWith("Advertencia: en el rótulo, las notas se escribieron a ") ||
+      m.startsWith("el editor no puede medir las notas");
+    const porNota = new Map();
+    const generales = { errores: [], avisos: [] };
+    for (const [tipoMensaje, lista] of [["errores", validacion.errores], ["avisos", validacion.avisos]]) {
+      for (const m of lista.filter(esDeTamano)) {
+        const de = /\(adicionales\[(\d+)\]\)/.exec(m);
+        if (de) {
+          const i = Number(de[1]);
+          if (!porNota.has(i)) porNota.set(i, { errores: [], avisos: [] });
+          porNota.get(i)[tipoMensaje].push(m);
+        } else {
+          generales[tipoMensaje].push(m);
+        }
+      }
+    }
+    return { porNota, generales };
+  }
+
+  /** El campo de notas de la definición del rótulo (o null). */
+  function campoNotas(definicion) {
+    if (!definicion || !definicion.campos) return null;
+    for (const c of Object.values(definicion.campos)) if (c.tipo === "notas") return c;
+    return null;
+  }
+
+  /**
+   * Las notas que escribiría `componer` (las de `archivos`, en su orden, y luego las
+   * adicionales) medidas en su celda: {problema} | {aviso} (reducción) | {sin_medir} | {} | null
+   * (sin definición o sin tabla de anchos: no se mide).
+   */
+  function medirNotas(archivos, adicionales, fuente, catalogo, definicion) {
+    const campo = campoNotas(definicion);
+    if (!campo || !M || !fuente || !fuente.anchos_em) return null;
+    const lista = [];
+    for (const ruta of archivos) {
+      const a = archivoDelCatalogo(ruta, catalogo);
+      if (!a || (a.problemas && a.problemas.length)) {
+        return { sin_medir: "el editor no puede medir las notas: '" + ruta + "' no está en el catálogo; componer lo comprobará" };
+      }
+      for (const n of a.notas) lista.push({ texto: n.texto, vinetas: n.vinetas || [], origen: n.origen });
+    }
+    lista.push(...adicionales);
+    const m = M.maquetarNotas(campo, lista, fuente, definicion.relleno_mm, definicion.interlineado);
+    if (m.problema) return { problema: m.problema };
+    if (m.sin_medir) {
+      return { sin_medir: "campo 'notas': el editor no puede medir los caracteres " + m.sin_medir.map(F.pyRepr).join(" ") +
+        "; componer dirá si las notas caben" };
+    }
+    return m.reducido_desde !== null ? { aviso: M.avisoNotasReducidas(m) } : {};
+  }
+
+  /** El .txt del catálogo que corresponde a una ruta de `archivos` (o null). */
+  function archivoDelCatalogo(ruta, catalogo) {
+    if (typeof ruta !== "string" || !catalogo) return null;
+    const buscada = normalizarRutaArchivo(ruta);
+    for (const g of catalogo.grupos) {
+      for (const a of g.archivos) {
+        const suya = esAbsoluta(ruta.replace(/\\/g, "/")) ? a.absoluta : a.ruta_plano;
+        if (suya && normalizarRutaArchivo(suya) === buscada) return a;
+      }
+    }
+    return null;
   }
 
   // ---------------------------------------------------------------------------------------
@@ -396,6 +487,8 @@
     tipo,
     leerNota,
     validarNotas,
+    medirNotas,
+    mensajesTamano,
     adicionalRepresentable,
     claveNota,
     avisosDeNota,
