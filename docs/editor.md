@@ -264,7 +264,8 @@ Panel **Convenciones** (a la derecha, debajo de Notas):
 
 | Elemento | Aspecto |
 |---|---|
-| Hoja A1 completa | `plantilla.png` de fondo (rótulo incluido, sin detalles). |
+| Hoja A1 completa | La plantilla de fondo (rótulo incluido, sin detalles), en **vector** desde la 4.3f (`plantilla.svg`): sus líneas y letras se ven nítidas a cualquier zoom. |
+| Vista previa del rótulo (4.3f) | Textos del rótulo, notas, convenciones, cajas de firma y etiquetas «ESC: 1:N» donde los pondrá `componer` (ver sección 3b). |
 | Área de dibujo | Borde azul discontinuo: es la ÚNICA zona activa. |
 | Rótulo, localización, notas, convenciones, cajetín | Capa gris rayada: bloqueadas, no se puede colocar nada encima. Salen solo de los datos `zonas` (el editor no deduce nada del dibujo). |
 | Rosa de los vientos | Dibujada por el editor en su posición actual, con borde naranja discontinuo y el nombre «rosa_vientos (movible)». Se arrastra (ver sección 2b). El borde se pone rojo si un detalle la tapa. |
@@ -288,12 +289,52 @@ El botón **Vista limpia** (o mantener pulsada la tecla **V**) oculta todo lo qu
 edición: el rayado de las zonas bloqueadas, el borde del área de dibujo, los contornos de
 página y de dibujo, las etiquetas de los detalles, las marcas de los elementos fijos (también
 el borde de la rosa, no la rosa) y la selección. Queda solo la plantilla con los detalles y
-la rosa, como saldrá impreso (salvo los textos del rótulo y las etiquetas «ESC: 1:N», que
-el editor todavía no muestra: ver Limitaciones).
+la rosa, como saldrá impreso. Con la casilla **Vista previa del rótulo** encendida, también
+se ven los textos del rótulo, las notas, las convenciones y las etiquetas «ESC: 1:N» (las
+marcas rojas o ámbar de la vista previa sí se ocultan: son ayudas).
 
 - El **botón** es un interruptor: queda presionado hasta que lo vuelva a pulsar.
 - La **tecla V** es momentánea: vista limpia mientras la mantiene; al soltarla vuelve todo.
 - El **arrastre sigue funcionando** en vista limpia (y las flechas, y el panel de selección).
+
+### 3b. Vista previa del rótulo (subfase 4.3f)
+
+La casilla **Vista previa del rótulo** (barra de arriba, encendida al abrir) dibuja sobre la
+hoja, en su sitio, lo que `componer` escribirá:
+
+- los **textos del rótulo**: título, No. PLANO, ESCALA y REV. (calculadas), HOJA / DE,
+  coordenadas, diseñador, revisor, cada celda de las **revisiones** y de las **firmas**
+  (nombre, matrícula, firma en texto, fecha); un campo sin valor muestra su valor por defecto
+  («DEFINIR»), como `componer`;
+- las **notas** numeradas, con su sangría francesa y sus viñetas (las de los .txt de
+  `archivos`, si están en el catálogo, y luego las adicionales);
+- los **símbolos de convenciones** en su casilla de la leyenda (centrados y, si no caben,
+  reducidos, como `componer`), con su descripción;
+- las **etiquetas «ESC: 1:N»** de cada detalle: debajo de su dibujo o, si no caben, encima;
+- la **caja de cada firma en imagen**, punteada en azul con «firma: <persona>». La imagen de
+  la firma **no** se muestra: el editor nunca la tiene (datos personales).
+
+Qué tan fiel es:
+
+- Las **posiciones y alturas** son las de `componer`: el editor usa la misma maquetación que ya
+  usa para medir (copia en JavaScript de la de Python, probada con `pytest` a ±1e-6 mm). Si un
+  texto se reduce para caber, se dibuja reducido.
+- Las letras son Arial, sin kerning, con el ancho de cada línea fijado al que calcula
+  `componer`. En Edge se comprobó contra el PDF compuesto: la base de cada línea coincide con
+  la de los caracteres del PDF (diferencia 0,000 mm; tolerancia ±0,1 mm). Si el navegador no
+  tiene la misma Arial, el editor lo avisa al abrir.
+- Un campo con **problema** (no cabe, salto de línea en una celda de una línea, tipo no
+  válido, carácter que Arial no tiene) **no se dibuja**: su celda se marca en **rojo**, y al
+  pasar el ratón se lee el mismo error de `componer`. Los demás campos se siguen dibujando.
+  Lo que el editor no puede medir (un .txt de notas fuera del catálogo) se marca en **ámbar**.
+- Una etiqueta «ESC» que no cabe ni debajo ni encima no se dibuja, y su aviso sale **en vivo**
+  en la lista de Advertencias con el texto de `componer` (sección 5).
+
+Al arrastrar un detalle solo se recalculan las etiquetas «ESC»: el rótulo se vuelve a dibujar
+únicamente cuando cambian sus datos o las escalas de los detalles. Medido en Edge: el arrastre
+cuesta lo mismo con y sin vista previa (~4 ms de trabajo por movimiento; un cuadro, ~17 ms).
+
+El editor sigue siendo una ayuda: `componer` vuelve a maquetar y a validar todo.
 
 ### Detalles traslapados: elegir el de abajo
 
@@ -347,6 +388,14 @@ Dependen de si el detalle de **encima** (o el que toca un elemento fijo) tiene f
 La rosa cuenta **en su posición actual**; oculta, no cuenta. `componer` usa la misma regla
 con la posición guardada en el plano.json.
 
+**Etiquetas «ESC: 1:N» (4.3f).** Al final de la lista sale, también en amarillo, el aviso de
+`componer` cuando la etiqueta de un detalle no cabe ni debajo ni encima de su dibujo (se
+saldría del área de dibujo o se montaría sobre otro dibujo, la rosa u otra etiqueta), por
+ejemplo: «Advertencia: no se dibujó la etiqueta «ESC: 1:50» del detalle 'p1': no cabe a 3 mm
+de su dibujo (debajo: se monta sobre el dibujo de 'p2'; encima: se monta sobre el dibujo de
+'p3'). Mueva el detalle o ponga "etiqueta_escala": false.» Se calcula aunque la vista previa
+esté apagada.
+
 Si dos detalles se cruzan y solo uno tiene fondo, cuenta el de **encima**: un detalle con
 fondo que está debajo no tapa al de encima.
 
@@ -390,5 +439,8 @@ fondo que está debajo no tapa al de encima.
 - Las miniaturas son imágenes de baja resolución, solo para ubicar; la exactitud la da
   `componer` (verifica cada dibujo a ±0,1 mm).
 - Un detalle que no cabe en el área de dibujo no se puede colocar (reexpórtelo a otra escala).
-- Todavía no muestra ni edita los **textos del rótulo** ni las **etiquetas «ESC: 1:N»** de
-  los detalles (los escribe `componer`; una etiqueta que no cabe se avisa al componer).
+- La vista previa no muestra la **imagen de las firmas** (solo su caja) ni la tabla de
+  cantidades, la escala de colores o la localización (subfase 4.4).
+- Las posiciones de los detalles que usa la vista previa son las del editor, antes de
+  redondearlas a 0,01 mm al guardar: una etiqueta «ESC» puede quedar hasta 0,005 mm corrida
+  respecto del PDF.

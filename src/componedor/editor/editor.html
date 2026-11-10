@@ -20,6 +20,8 @@
   <button id="btn-ajustar" type="button" title="Ver la hoja completa">Ajustar</button>
   <button id="btn-vista-limpia" type="button" aria-pressed="false"
           title="Ver solo la plantilla y los detalles, como saldrá impreso (o mantenga pulsada la tecla V)">Vista limpia</button>
+  <label class="interruptor" title="Dibujar en la hoja los textos del rótulo, las notas, las convenciones, las cajas de las firmas y las etiquetas «ESC: 1:N» donde los pondrá componer">
+    <input id="vista-previa" type="checkbox" checked> Vista previa del rótulo</label>
   <label class="paso">Paso
     <select id="paso" title="Paso de ajuste al arrastrar y con las flechas">
       <option value="0.1">0,1 mm</option>
@@ -106,6 +108,12 @@
 </script>
 <script>
 /*@@JS_CONVENCIONES@@*/
+</script>
+<script>
+/*@@JS_VISTA_PREVIA@@*/
+</script>
+<script>
+/*@@JS_LIENZO_ROTULO@@*/
 </script>
 <script>
 /*@@JS_PANEL_CONVENCIONES@@*/

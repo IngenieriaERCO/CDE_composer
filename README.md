@@ -29,7 +29,7 @@ papel (origen en la esquina inferior izquierda de la hoja, Y hacia arriba).
 | `inventario` | Lista los detalles de una carpeta: aceptados o rechazados (con motivos), tamaños, si caben en la zona y escala sugerida. |
 | `componer` | Compone un plano con varios detalles a partir de un `plano.json`: detalles, textos del rótulo, etiquetas «ESC: 1:N» y rosa de los vientos (ver [docs/formato_plano.md](docs/formato_plano.md)). |
 | `editor` | Genera `editor.html`, un editor visual de planos de un solo archivo (arrastrar detalles y la rosa, y guardar el plano.json). Ver [docs/editor.md](docs/editor.md). |
-| `preparar-editor` | Prepara `editor_datos.json`, `plantilla.png`, `rosa.png` y miniaturas para el editor de planos (ver [docs/formato_editor_datos.md](docs/formato_editor_datos.md)). |
+| `preparar-editor` | Prepara `editor_datos.json`, `plantilla.png`, `plantilla.svg`, `rosa.png` y miniaturas para el editor de planos (ver [docs/formato_editor_datos.md](docs/formato_editor_datos.md)). |
 | `detectar-elementos` | Mide los elementos fijos de la plantilla dentro del área de dibujo (la rosa de los vientos) y genera un PDF de verificación. |
 | `extraer-simbolos` | Arma la biblioteca de símbolos de CONVENCIONES (vector) desde la leyenda de un plano real: `simbolos/convenciones_erco.pdf` (no se versiona) e `indice.json`. |
 
@@ -221,6 +221,11 @@ editado. El panel **Convenciones** muestra los símbolos del índice como miniat
 casillas, y la lista del plano con la casilla de la leyenda de cada uno (columna y fila, en
 vivo), subir/bajar/quitar y descripción editable (tope de 24). De las firmas solo llegan los
 **nombres** de las personas: las imágenes nunca se incrustan.
+Con la casilla **Vista previa del rótulo**, el lienzo dibuja en su sitio los textos del rótulo,
+las notas numeradas, los símbolos de convenciones, las etiquetas «ESC: 1:N» y la caja de cada
+firma en imagen, con las mismas posiciones y alturas que `componer`. Un campo que no cabe no se
+dibuja y su celda queda en rojo; una etiqueta «ESC» que no cabe se avisa en vivo. La plantilla
+de fondo va en vector (nítida al acercar).
 Guía completa en [docs/editor.md](docs/editor.md).
 Si Node está instalado, `pytest` prueba también la lógica del editor (JavaScript).
 

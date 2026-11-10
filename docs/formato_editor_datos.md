@@ -12,6 +12,8 @@ data/editor/
   editor_datos.json      estructura de abajo
   plantilla.png          la hoja con el rótulo, SIN detalles y SIN la rosa de los vientos
                          (lado mayor: 1600 px)
+  plantilla.svg          la misma hoja en VECTOR (subfase 4.3f): trazos y textos como curvas;
+                         el editor.html la incrusta en lugar del PNG (nítida al acercar)
   rosa.png               la rosa sola, transparente (lado mayor: 600 px); solo si el formato
                          tiene plantilla y declara la rosa
   simbolos/<id>.png      cada símbolo de convenciones, transparente, a 20 px/mm (subfase 4.3a)
@@ -27,8 +29,8 @@ Las imágenes son **solo para mostrar** en el editor. El editor escribe un `plan
 vectorial, **revalidando todo**: estos datos nunca son la fuente de la verdad.
 
 Si la carpeta ya tiene contenido, `preparar-editor` no la pisa salvo con `--sobrescribir`;
-en ese caso reemplaza solo lo que genera (`editor_datos.json`, `plantilla.png` y las
-miniaturas, borrando las viejas) y no toca nada más.
+en ese caso reemplaza solo lo que genera (`editor_datos.json`, `plantilla.png`,
+`plantilla.svg` y las miniaturas, borrando las viejas) y no toca nada más.
 
 ## Coordenadas
 
@@ -48,7 +50,8 @@ miniaturas, borrando las viejas) y no toca nada más.
   "version": 1,
   "formato": "../../formatos/A1_ERCO.json",
   "hoja": {"ancho_mm": 841.0, "alto_mm": 594.0},
-  "imagen_plantilla": {"archivo": "plantilla.png", "ancho_px": 1600, "alto_px": 1131},
+  "imagen_plantilla": {"archivo": "plantilla.png", "ancho_px": 1600, "alto_px": 1131,
+                       "svg": {"archivo": "plantilla.svg"}},
   "zonas": [
     {"nombre": "area_dibujo", "rect_mm": [22.7, 22.7, 662.4, 571.3], "editable": true},
     {"nombre": "rotulo", "rect_mm": [672.4, 12.7, 828.3, 581.3], "editable": false}
@@ -87,7 +90,7 @@ miniaturas, borrando las viejas) y no toca nada más.
 | `version` | Versión de esta estructura (hoy 1). |
 | `formato` | Ruta del formato, para escribir en `plano.json`. |
 | `hoja` | Tamaño de la hoja en mm. |
-| `imagen_plantilla` | `plantilla.png` y su tamaño real en píxeles. |
+| `imagen_plantilla` | `plantilla.png` y su tamaño real en píxeles (el lienzo del editor usa esos píxeles como unidades). **(4.3f, aditivo):** `svg` → `plantilla.svg`, la misma hoja en vector; el editor.html la incrusta en lugar del PNG. Sin `svg` (datos anteriores), el editor usa el PNG. |
 | `zonas[]` | Cada zona del formato con `rect_mm` `[x0, y0, x1, y1]`. **Solo `area_dibujo` es `editable: true`**; el rótulo y las demás zonas están bloqueadas. |
 | `elementos_plantilla[]` | Cosas fijas del rótulo dentro del área de dibujo, en su lugar de la plantilla (hoy solo la rosa de los vientos). Se pueden tapar, pero `componer` lo advierte. |
 | `rosa_vientos` | **(Agregado en la subfase 4.1; aditivo.)** La rosa movible: `rect_mm` es su lugar original en la plantilla y `imagen` su PNG (`null` si el formato no tiene plantilla). `null` si el formato no declara la rosa. Para las advertencias, el editor reemplaza en `elementos_plantilla` la rosa por su rectángulo actual (u omite la rosa si está oculta), igual que `rosa.elementos_visibles` en `componer`. |
@@ -100,7 +103,7 @@ miniaturas, borrando las viejas) y no toca nada más.
 | `detalles[].tiene_fondo` | **(Agregado en la subfase 3.4; aditivo, el resto no cambia.)** `true` si el PDF trae el fondo blanco de página completa (paquetes antiguos del exportador), `false` si no. Misma regla con la que `componer` lo detecta (`comprobacion_dibujo.tiene_fondo_de_pagina`). Decide si la miniatura es transparente u opaca y qué advertencias de traslape aplican. Si falta (datos anteriores), el editor supone `true`. |
 | `detalles[].notas` | Notas del inventario (no cabe, escala sugerida aproximada, duplicado). |
 | `detalles[].miniatura` | PNG del detalle y su tamaño en píxeles. |
-| `rotulo` | **(Agregado en la subfase 4.3a; aditivo.)** `null` si el formato no tiene sección `rotulo`. Si la tiene: `definicion` (celdas del rótulo en mm, alturas, líneas, `formato_fecha`), `fuente` (`nombre`, `altura_mayusculas`, `anchos_em`: ancho de avance de cada carácter en fracciones del em, el mismo que usa `componer`, y —4.3b— `rangos_unicode`: todos los caracteres que la fuente tiene, como rangos `[desde, hasta]` de puntos de código, para marcar los faltantes igual que `componer`), `notas` (catálogo de notas típicas de `--notas`, o `null`: `grupos` → `archivos` → `notas` con `texto`, `vinetas` y `origen`, más `avisos` y `problemas` de lectura por archivo; desde el ajuste de la 4.3c cada archivo trae también `ruta_plano`, su ruta vista desde la carpeta del editor —donde va el plano.json— con «/», y `absoluta`, para saber qué notas típicas ya entran por `rotulo.notas.archivos`), `simbolos` (cada símbolo de convenciones: `id`, `descripcion`, `opacidad`, `tamano_dibujo_mm`, `margen_mm` e `imagen` → `simbolos/<id>.png`, transparente, 20 px/mm, con su opacidad) y `avisos`. **(Subfase 4.3b, aditivo):** `personas_firmas` (de `--firmas`: lista de NOMBRES de las carpetas de personas, ordenada; `null` sin `--firmas`) y `proyecto` (de `--proyecto`: el proyecto.json ya validado, ver [formato_proyecto.md](formato_proyecto.md); `null` sin `--proyecto`). **Nunca** trae imágenes de firmas, sus nombres de archivo ni la carpeta. |
+| `rotulo` | **(Agregado en la subfase 4.3a; aditivo.)** `null` si el formato no tiene sección `rotulo`. Si la tiene: `definicion` (celdas del rótulo en mm, alturas, líneas, `formato_fecha`; desde la 4.3f cada tabla trae `cuerpo_y`: `[abajo, arriba]` del cuerpo de la tabla sin encabezado, o `null`, para la caja de la firma de `firmas.caja_firma`), `fuente` (`nombre`, `altura_mayusculas`, `anchos_em`: ancho de avance de cada carácter en fracciones del em, el mismo que usa `componer`, y —4.3b— `rangos_unicode`: todos los caracteres que la fuente tiene, como rangos `[desde, hasta]` de puntos de código, para marcar los faltantes igual que `componer`; —4.3f— `ascenso_em` y `descenso_em`: la caja de línea de la fuente en fracciones del em, el descenso positivo hacia abajo, la misma de `Fuente.caja_vertical_mm`, para colocar las etiquetas «ESC: 1:N» como `componer`), `notas` (catálogo de notas típicas de `--notas`, o `null`: `grupos` → `archivos` → `notas` con `texto`, `vinetas` y `origen`, más `avisos` y `problemas` de lectura por archivo; desde el ajuste de la 4.3c cada archivo trae también `ruta_plano`, su ruta vista desde la carpeta del editor —donde va el plano.json— con «/», y `absoluta`, para saber qué notas típicas ya entran por `rotulo.notas.archivos`), `simbolos` (cada símbolo de convenciones: `id`, `descripcion`, `opacidad`, `tamano_dibujo_mm`, `margen_mm` e `imagen` → `simbolos/<id>.png`, transparente, 20 px/mm, con su opacidad) y `avisos`. **(Subfase 4.3b, aditivo):** `personas_firmas` (de `--firmas`: lista de NOMBRES de las carpetas de personas, ordenada; `null` sin `--firmas`) y `proyecto` (de `--proyecto`: el proyecto.json ya validado, ver [formato_proyecto.md](formato_proyecto.md); `null` sin `--proyecto`). **Nunca** trae imágenes de firmas, sus nombres de archivo ni la carpeta. |
 | `rechazados[]` | Paquetes rechazados con sus motivos (`[categoría] texto`, los del importador). El editor los lista pero **no se pueden arrastrar**. |
 
 La aceptación y los motivos salen del inventario (`inventario.construir_inventario`, que usa

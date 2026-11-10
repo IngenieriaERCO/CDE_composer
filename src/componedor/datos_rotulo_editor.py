@@ -121,8 +121,12 @@ def simbolos_editor(definicion: DefinicionRotulo, carpeta_salida: Path) -> tuple
 
 def tabla_anchos(fuente: Fuente) -> dict:
     """"rangos_unicode" (4.3b): todos los caracteres que la fuente tiene, en rangos de puntos de
-    código; con eso el editor marca los caracteres faltantes igual que `componer`."""
+    código; con eso el editor marca los caracteres faltantes igual que `componer`.
+    "ascenso_em" / "descenso_em" (4.3f): la caja de línea de la fuente (fracción del em, el
+    descenso positivo hacia abajo), la de `Fuente.caja_vertical_mm`; con ella el editor coloca
+    las etiquetas «ESC: 1:N» como `etiquetas_escala`."""
     return {"nombre": fuente.nombre, "altura_mayusculas": fuente.altura_mayusculas,
+            "ascenso_em": fuente.ascender_em, "descenso_em": fuente.descender_em,
             "anchos_em": fuente.anchos_em(CARACTERES), "rangos_unicode": fuente.rangos_unicode()}
 
 
@@ -139,6 +143,8 @@ def definicion_editor(definicion: DefinicionRotulo) -> dict:
                 "tipo": "tabla", "altura_mm": primera.altura_mm,
                 "altura_min_mm": primera.altura_min_mm,
                 "columna_clave": campo.columna_clave, "orden": list(campo.orden),
+                # Y del cuerpo de la tabla, sin encabezado (4.3f: caja de la firma).
+                "cuerpo_y": (list(primera.cuerpo_y) if primera.cuerpo_y is not None else None),
                 "filas": [{"clave": f, "y_mm": [campo.celdas[(f, campo.columnas[0])].rect[1],
                                                 campo.celdas[(f, campo.columnas[0])].rect[3]],
                            "lineas_max": campo.celdas[(f, campo.columnas[0])].lineas_max}

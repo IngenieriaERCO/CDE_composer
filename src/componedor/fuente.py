@@ -48,6 +48,16 @@ class Fuente:
         tamano = pt_a_mm(self.tamano_pt(altura_mm))
         return -self._font.descender * tamano, self._font.ascender * tamano
 
+    @property
+    def ascender_em(self) -> float:
+        """Ascenso de la caja de línea, en fracciones del em (sobre la línea base)."""
+        return self._font.ascender
+
+    @property
+    def descender_em(self) -> float:
+        """Descenso de la caja de línea, en fracciones del em, POSITIVO hacia abajo."""
+        return -self._font.descender
+
     def anchos_em(self, caracteres: str) -> dict[str, float]:
         """Ancho de avance de cada carácter que la fuente tiene, en fracciones del em (el
         ancho de un texto = suma de avances × tamaño en pt; PyMuPDF no aplica kerning). Para la

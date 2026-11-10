@@ -212,6 +212,24 @@
   function medirNotas(archivos, adicionales, fuente, catalogo, definicion) {
     const campo = campoNotas(definicion);
     if (!campo || !M || !fuente || !fuente.anchos_em) return null;
+    const r = notasParaComponer(archivos, adicionales, catalogo);
+    if (r.sin_medir) return r;
+    const lista = r.lista;
+    const m = M.maquetarNotas(campo, lista, fuente, definicion.relleno_mm, definicion.interlineado);
+    if (m.problema) return { problema: m.problema };
+    if (m.sin_medir) {
+      return { sin_medir: "campo 'notas': el editor no puede medir los caracteres " + m.sin_medir.map(F.pyRepr).join(" ") +
+        "; componer dirá si las notas caben" };
+    }
+    return m.reducido_desde !== null ? { aviso: M.avisoNotasReducidas(m) } : {};
+  }
+
+  /**
+   * Las notas en el orden en que `componer` las escribe (4.3f): las de los .txt de `archivos`
+   * (del catálogo, en su orden) y luego las adicionales ya leídas ({texto, vinetas, origen}).
+   * {lista} o, si un .txt no está en el catálogo (o tuvo problemas al leerse), {sin_medir}.
+   */
+  function notasParaComponer(archivos, adicionales, catalogo) {
     const lista = [];
     for (const ruta of archivos) {
       const a = archivoDelCatalogo(ruta, catalogo);
@@ -221,13 +239,7 @@
       for (const n of a.notas) lista.push({ texto: n.texto, vinetas: n.vinetas || [], origen: n.origen });
     }
     lista.push(...adicionales);
-    const m = M.maquetarNotas(campo, lista, fuente, definicion.relleno_mm, definicion.interlineado);
-    if (m.problema) return { problema: m.problema };
-    if (m.sin_medir) {
-      return { sin_medir: "campo 'notas': el editor no puede medir los caracteres " + m.sin_medir.map(F.pyRepr).join(" ") +
-        "; componer dirá si las notas caben" };
-    }
-    return m.reducido_desde !== null ? { aviso: M.avisoNotasReducidas(m) } : {};
+    return { lista };
   }
 
   /** El .txt del catálogo que corresponde a una ruta de `archivos` (o null). */
@@ -488,6 +500,7 @@
     leerNota,
     validarNotas,
     medirNotas,
+    notasParaComponer,
     mensajesTamano,
     adicionalRepresentable,
     claveNota,

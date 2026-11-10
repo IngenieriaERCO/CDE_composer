@@ -116,6 +116,35 @@ def test_definicion_del_rotulo_para_el_editor():
     json.dumps(d)  # todo es JSON
 
 
+@requiere_arial
+def test_caja_de_linea_de_la_fuente_para_el_editor():
+    """4.3f: con ascenso/descenso en em el editor reproduce `caja_vertical_mm` (etiquetas ESC)."""
+    fuente = cargar_fuente(ARIAL)
+    tabla = tabla_anchos(fuente)
+    assert tabla["ascenso_em"] > 0.8 and 0.1 < tabla["descenso_em"] < 0.3
+    for altura in (1.5, 2.0, 2.5, 3.7):
+        em_mm = altura / tabla["altura_mayusculas"]
+        descenso, ascenso = fuente.caja_vertical_mm(altura)
+        assert tabla["descenso_em"] * em_mm == pytest.approx(descenso, abs=1e-9)
+        assert tabla["ascenso_em"] * em_mm == pytest.approx(ascenso, abs=1e-9)
+    json.dumps(tabla)
+
+
+def test_definicion_trae_el_cuerpo_de_las_tablas():
+    """4.3f: "cuerpo_y" de cada tabla = el de sus celdas (la caja de la firma lo usa)."""
+    rotulo = cargar_formato(RUTA_A1, usar_plantilla=False).rotulo
+    d = definicion_editor(rotulo)
+    for nombre in ("firmas", "revisiones"):
+        campo = rotulo.campos[nombre]
+        esperado = next(iter(campo.celdas.values())).cuerpo_y
+        assert all(c.cuerpo_y == esperado for c in campo.celdas.values())
+        assert d["campos"][nombre]["cuerpo_y"] == (list(esperado) if esperado else None)
+    cuerpo = d["campos"]["firmas"]["cuerpo_y"]
+    filas = d["campos"]["firmas"]["filas"]
+    assert cuerpo[0] <= min(f["y_mm"][0] for f in filas) + 1e-9
+    assert cuerpo[1] >= max(f["y_mm"][1] for f in filas) - 1e-9
+
+
 @pytest.mark.parametrize("formato, valido", [
     ("dd/mm/aa", True), ("aaaa-mm-dd", True), ("mm.dd.aaaa", True),
     ("dd/mm/dd", False), ("dd/mm-aa", False), ("dd/mm", False), ("d/m/a", False), (3, False),

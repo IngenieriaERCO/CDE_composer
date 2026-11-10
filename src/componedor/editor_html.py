@@ -31,6 +31,8 @@ MARCADORES = {
     "/*@@JS_NOTAS@@*/": "editor_notas.js",
     "/*@@JS_PANEL_NOTAS@@*/": "editor_panel_notas.js",
     "/*@@JS_CONVENCIONES@@*/": "editor_convenciones.js",
+    "/*@@JS_VISTA_PREVIA@@*/": "editor_vista_previa.js",
+    "/*@@JS_LIENZO_ROTULO@@*/": "editor_lienzo_rotulo.js",
     "/*@@JS_PANEL_CONVENCIONES@@*/": "editor_panel_convenciones.js",
     "/*@@JS_UI@@*/": "editor_ui.js",
 }
@@ -61,8 +63,11 @@ def generar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
 def construir_html(datos: dict, carpeta_salida: Path) -> str:
     """El HTML completo con todo incrustado. Las imágenes se leen de `carpeta_salida`."""
     incrustados = copy.deepcopy(datos)
-    incrustados["imagen_plantilla"]["data_url"] = _data_url(
-        carpeta_salida / datos["imagen_plantilla"]["archivo"])
+    # La plantilla en vector (4.3f) si está; si no, el PNG (datos anteriores).
+    svg = datos["imagen_plantilla"].get("svg")
+    incrustados["imagen_plantilla"]["data_url"] = (
+        _data_url(carpeta_salida / svg["archivo"], "image/svg+xml") if svg
+        else _data_url(carpeta_salida / datos["imagen_plantilla"]["archivo"]))
     for detalle in incrustados["detalles"]:
         detalle["miniatura"]["data_url"] = _data_url(carpeta_salida / detalle["miniatura"]["archivo"])
     rosa = incrustados.get("rosa_vientos")
@@ -94,5 +99,5 @@ def _recurso(nombre: str) -> str:
     return resources.files("componedor").joinpath("editor", nombre).read_text(encoding="utf-8")
 
 
-def _data_url(ruta: Path) -> str:
-    return "data:image/png;base64," + base64.b64encode(ruta.read_bytes()).decode("ascii")
+def _data_url(ruta: Path, tipo: str = "image/png") -> str:
+    return f"data:{tipo};base64," + base64.b64encode(ruta.read_bytes()).decode("ascii")

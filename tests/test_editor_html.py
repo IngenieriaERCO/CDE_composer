@@ -7,7 +7,8 @@ import pytest
 
 from componedor.advertencias import PLANTILLAS
 from componedor.cli import main
-from componedor.editor_html import datos_incrustados, generar_editor
+from componedor.datos_editor import preparar_editor
+from componedor.editor_html import construir_html, datos_incrustados, generar_editor
 from conftest import crear_paquete_real, crear_plantilla_sintetica, escribir_formato
 
 ROSA = [612.0, 51.0, 652.0, 91.0]
@@ -51,10 +52,32 @@ def test_datos_incrustados(entorno):
     assert datos["elementos_plantilla"] == [{"nombre": "rosa_vientos", "rect_mm": ROSA}]
     assert datos["advertencias"] == PLANTILLAS  # mismos textos que componer
     assert datos["carpeta_editor"] == str((entorno / "editor").resolve())
-    # Imágenes incrustadas: PNG en base64.
-    for url in (datos["imagen_plantilla"]["data_url"], datos["detalles"][0]["miniatura"]["data_url"]):
-        assert url.startswith("data:image/png;base64,")
-        assert base64.b64decode(url.split(",", 1)[1])[:8] == b"\x89PNG\r\n\x1a\n"
+    # Imágenes incrustadas en base64: la plantilla en SVG (4.3f), las miniaturas en PNG.
+    url = datos["imagen_plantilla"]["data_url"]
+    assert url.startswith("data:image/svg+xml;base64,")
+    assert base64.b64decode(url.split(",", 1)[1]) == (entorno / "editor" / "plantilla.svg").read_bytes()
+    url = datos["detalles"][0]["miniatura"]["data_url"]
+    assert url.startswith("data:image/png;base64,")
+    assert base64.b64decode(url.split(",", 1)[1])[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_sin_svg_usa_el_png(entorno):
+    """Datos sin "svg" (anteriores a la 4.3f): el editor incrusta plantilla.png como antes."""
+    datos = preparar_editor(entorno / "input", entorno / "formato.json", entorno / "editor")
+    del datos["imagen_plantilla"]["svg"]
+    url = datos_incrustados(construir_html(datos, entorno / "editor"))["imagen_plantilla"]["data_url"]
+    assert url.startswith("data:image/png;base64,")
+
+
+def test_vista_previa_del_rotulo_incrustada(entorno):
+    """4.3f: la casilla «Vista previa del rótulo» y sus dos módulos van dentro del HTML."""
+    html = _generar(entorno).read_text(encoding="utf-8")
+    assert 'id="vista-previa"' in html and "Vista previa del rótulo" in html
+    # Orden: la vista previa necesita maquetación, formularios y notas; la interfaz, las dos.
+    marcas = ["raiz.EditorMaquetacion = api", "raiz.EditorFormularios = api", "raiz.EditorNotas = api",
+              "raiz.EditorVistaPrevia = api", "raiz.EditorLienzoRotulo =", "function empezarArrastre"]
+    posiciones = [html.index(m) for m in marcas]
+    assert posiciones == sorted(posiciones)
 
 
 def test_tambien_deja_los_datos_del_editor(entorno):
@@ -62,7 +85,8 @@ def test_tambien_deja_los_datos_del_editor(entorno):
     carpeta = entorno / "editor"
     # rosa.png: la rosa de los vientos aparte, para moverla (subfase 4.1).
     assert {p.name for p in carpeta.iterdir()} == {"editor.html", "editor_datos.json",
-                                                   "plantilla.png", "rosa.png", "miniaturas"}
+                                                   "plantilla.png", "plantilla.svg", "rosa.png",
+                                                   "miniaturas"}
     assert (carpeta / "miniaturas" / "a.png").is_file()
 
 

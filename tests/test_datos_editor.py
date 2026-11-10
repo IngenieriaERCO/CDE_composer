@@ -91,7 +91,7 @@ def test_preparar_escribe_json_y_png(entorno):
     # Hoja A1 horizontal: lado mayor 1600 px (594 / 841 x 1600 = 1130,03, PyMuPDF redondea
     # hacia arriba). El JSON trae el tamaño real de cada imagen.
     assert datos["imagen_plantilla"] == {"archivo": "plantilla.png", "ancho_px": 1600,
-                                         "alto_px": 1131}
+                                         "alto_px": 1131, "svg": {"archivo": "plantilla.svg"}}
     png = pymupdf.Pixmap(str(salida / "plantilla.png"))
     assert (png.width, png.height) == (1600, 1131)
     miniatura = next(x for x in datos["detalles"] if x["id"] == "a")["miniatura"]
@@ -142,6 +142,34 @@ def test_rosa_aparte_y_plantilla_sin_rosa(entorno):
     escala = hoja.width / 841.0
     # En plantilla.png, donde estaba el borde izquierdo de la rosa (X 612) no queda tinta.
     x = round(612.0 * escala)
+    filas = range(round((594 - 91) * escala) + 3, round((594 - 51) * escala) - 3)
+    assert all(hoja.pixel(xx, y)[0] > 200 for y in filas for xx in (x - 1, x, x + 1))
+
+
+def test_plantilla_en_svg_igual_que_el_png_y_sin_rosa(entorno):
+    """4.3f: plantilla.svg es la MISMA hoja base que plantilla.png, en vector: A1 (841 x 594
+    mm), sin la rosa, con los textos como curvas (no necesita fuentes) y sin cargar nada de
+    afuera. Rasterizada al mismo tamaño se ve igual que el PNG."""
+    salida = entorno / "editor"
+    preparar_editor(entorno / "input", entorno / "formato.json", salida)
+    texto = (salida / "plantilla.svg").read_text(encoding="utf-8")
+    assert texto.startswith("<svg") and "<text" not in texto
+    assert "href=\"http" not in texto and "url(http" not in texto
+    with pymupdf.open(stream=texto.encode("utf-8"), filetype="svg") as doc:
+        pagina = doc[0]
+        assert pagina.rect.width * 25.4 / 72 == pytest.approx(841.0, abs=0.1)
+        assert pagina.rect.height * 25.4 / 72 == pytest.approx(594.0, abs=0.1)
+        hoja = pagina.get_pixmap(matrix=pymupdf.Matrix(1600 / pagina.rect.width, 1600 / pagina.rect.width))
+    png = pymupdf.Pixmap(str(salida / "plantilla.png"))
+    assert (hoja.width, hoja.height) == (png.width, png.height)
+    # Mismo dibujo: casi todos los píxeles iguales (solo difiere el suavizado de los bordes).
+    a, b = hoja.samples, png.samples
+    distintos = sum(1 for i in range(0, len(a), 3 * 7) if abs(a[i] - b[i]) > 60)
+    assert distintos / (len(a) / (3 * 7)) < 0.002
+    tinta = sum(1 for i in range(0, len(a), 3 * 7) if a[i] < 128)
+    assert tinta > 100  # hay dibujo (marco y rótulo)
+    escala = hoja.width / 841.0
+    x = round(612.0 * escala)  # borde izquierdo de la rosa: sin tinta
     filas = range(round((594 - 91) * escala) + 3, round((594 - 51) * escala) - 3)
     assert all(hoja.pixel(xx, y)[0] > 200 for y in filas for xx in (x - 1, x, x + 1))
 

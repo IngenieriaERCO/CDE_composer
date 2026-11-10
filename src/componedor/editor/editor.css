@@ -239,3 +239,14 @@ main { flex: 1; display: flex; min-height: 0; }
 #hoja.vista-limpia .detalle .pagina,
 #hoja.vista-limpia .detalle .dibujo,
 #hoja.vista-limpia .detalle .etiqueta { display: none; }
+
+/* Vista previa del rótulo (4.3f): textos como los escribe componer (Arial, negro, sin kerning). */
+.barra .interruptor { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; }
+.vp-capa { pointer-events: none; }
+.vp-texto { font-family: Arial, "Liberation Sans", sans-serif; fill: #000; white-space: pre;
+  font-kerning: none; font-variant-ligatures: none; font-feature-settings: "kern" 0, "liga" 0; text-rendering: geometricPrecision; }
+.vp-caja-firma { fill: rgba(29,78,216,.05); stroke: #1d4ed8; stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+.vp-rotulo-firma { font-family: Arial, sans-serif; fill: #1d4ed8; text-anchor: middle; font-style: italic; }
+.vp-problema { fill: rgba(220,38,38,.18); stroke: #dc2626; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.vp-problema.aviso { fill: rgba(217,119,6,.15); stroke: #d97706; stroke-dasharray: 5 3; }
+#hoja.vista-limpia .vp-ayuda { display: none; }

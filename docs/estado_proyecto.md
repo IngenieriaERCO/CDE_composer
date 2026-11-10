@@ -1365,11 +1365,95 @@ cambian.
 4.3c, y `carpeta_editor`), que incluyen la carpeta de usuario de Windows. No es de esta
 subfase; queda anotado por si se comparte un editor fuera del equipo.
 
+### Subfase 4.3f — Editor: vista previa dibujada en el lienzo ✅ (2026-11-10, sin commit)
+
+Con la casilla **«Vista previa del rótulo»** (barra de arriba, encendida al abrir) el lienzo
+dibuja en su sitio lo que escribirá `componer`, con las MISMAS posiciones y alturas. Sigue
+siendo una ayuda: `componer` vuelve a maquetar y validar todo.
+
+- **Datos nuevos** (aditivos): `rotulo.fuente.ascenso_em` / `descenso_em` (la caja de línea de
+  `Fuente.caja_vertical_mm`; propiedades nuevas `Fuente.ascender_em` / `descender_em`) y
+  `cuerpo_y` en cada tabla de la definición (para `firmas.caja_firma`).
+- **`editor_vista_previa.js`** (nuevo, lógica pura, Node y navegador): `piezasRotulo` recorre
+  los campos en el orden de `preparar_rotulo` (descripciones de convenciones, tablas, campos de
+  texto con ESCALA/REV. calculadas y «DEFINIR» por defecto, y al final las notas) y maqueta con
+  `editor_maquetacion.js`; copias de `colocar_simbolo`, `caja_firma` y `colocar_etiquetas` (con
+  sus avisos). A diferencia de Python, un campo con problema no detiene el resto: sale en
+  `problemas` con su celda y el mismo texto del error. `editor_notas.js`: la lista de notas en el
+  orden de `componer` pasó a una función exportada, `notasParaComponer` (`medirNotas` la usa;
+  mismo comportamiento).
+- **`editor_lienzo_rotulo.js`** (nuevo, solo pantalla): capas SVG con una sola transformación
+  mm → px; en el orden de `componer`: símbolos (PNG de 20 px/mm ya incrustados) debajo de los
+  detalles; textos, etiquetas, cajas de firma y marcas de problema encima. Texto: Arial, sin
+  kerning ni ligaduras, `textLength` = ancho calculado, y escrito **100 veces más grande** y
+  reducido con `scale`: a ~3 unidades de tamaño Chromium redondea el avance de cada letra
+  (diferencia de hasta 1,24 %); aumentado, la Arial del navegador mide como la tabla (0,010 %).
+  Campo con problema: celda en rojo (ámbar si no se puede medir), nada dibujado, el mensaje al
+  pasar el ratón; en vista limpia las marcas se ocultan y los textos quedan. Firma en imagen:
+  caja punteada con «firma: <persona>» (la imagen nunca está en el editor). Si la Arial del
+  navegador mide distinto (> 0,5 %), aviso al abrir.
+- **`editor_ui.js`**: el rótulo se vuelve a dibujar solo si cambian sus valores o las escalas
+  (clave JSON); al arrastrar solo se recalculan las etiquetas «ESC»; un dibujo por cuadro
+  (`requestAnimationFrame`). Los avisos de etiquetas que no caben van **en vivo** al final de
+  Advertencias, con el texto de `componer` (aunque la casilla esté apagada).
+- **Plantilla en vector**: `preparar-editor` escribe además `plantilla.svg` (la misma hoja base
+  sin detalles ni rosa, `get_svg_image(text_as_path=True)`); `imagen_plantilla.svg` en los
+  datos; el editor.html la incrusta (base64) en lugar del PNG, como capa fija creada una sola
+  vez. Datos sin `svg`: se usa el PNG.
+
+**Pruebas**: **822**, todas pasan (31 nuevas):
+- `test_editor_vista_previa_js.py` (26): plano completo (título reducido, revisiones A/B/0,
+  firmas en texto y en imagen, 2 convenciones, notas de 2 .txt del catálogo + adicionales con
+  viñetas) y 11 variaciones (por defecto, INDICADAS, sin detalles, líneas explícitas, saltos de
+  línea, vacíos, revisiones, descripción vacía, notas reducidas…) contra `preparar_rotulo`:
+  mismos textos en el mismo orden, bases, anchos, alturas y celdas, símbolos (casilla, escala,
+  página y dibujo) y cajas de firma, ±1e-6 mm; 20 notas reducidas; 8 campos con problema (no
+  cabe, salto de línea, tipo, carácter sin glifo, notas, descripción, firma): solo ese campo en
+  `problemas`, con el mismo texto que Python, y lo demás igual que Python sin ese campo; símbolo
+  fuera de la biblioteca; .txt fuera del catálogo (aviso); `colocarSimbolo` (400 casos al
+  azar), `cajaFirma` (todas las celdas de firmas × 5 altos × 3 rellenos) y `etiquetasEscala`
+  (254 planos, más de 10 avisos) contra Python.
+- `test_datos_rotulo_editor.py` (2): `ascenso_em`/`descenso_em` reproducen
+  `caja_vertical_mm`; `cuerpo_y` de cada tabla.
+- `test_datos_editor.py` (1): `plantilla.svg` es A1, sin rosa, sin `<text>`, sin cargar nada de
+  afuera y, rasterizada, igual que `plantilla.png`.
+- `test_editor_html.py` (2 nuevas, 2 ajustadas): plantilla SVG incrustada (y PNG si no hay
+  SVG), casilla y orden de los módulos; la lista de archivos incluye `plantilla.svg`.
+
+**Verificación en Edge** (`data/verificacion_editor/verificar_vista_previa.mjs` y
+`esperado_vista_previa.py`, fuera del repo; editor propio en `data/editor_vista_previa`,
+**sin `--firmas` ni `--proyecto`**): **todo OK, sin errores de JavaScript**.
+- Plano con título, n.º de plano, hoja, revisiones, firmas, 4 convenciones, notas (un .txt y
+  adicionales con viñetas) y tres perfiles K0010 apilados a 2 mm: las **47 líneas** del lienzo
+  están en el PDF de `componer` con el mismo texto y su base a **0,0000 mm** (tolerancia ±0,1
+  mm); el PDF escribe 614 caracteres en la columna del rótulo y el lienzo dibuja 614; 4
+  símbolos en el mismo rectángulo que Python (±1e-6 mm); 2 etiquetas «ESC: 1:50» (p2 debajo,
+  p3 encima) y el aviso de p1 en Advertencias **idéntico** al de `componer`.
+- Título que no cabe: celda en rojo, nada del título dibujado, el mensaje es el error de
+  `componer` (que se niega); lo demás igual que el PDF anterior; firma `{"imagen": "Persona
+  Ficticia"}`: caja punteada en el rectángulo de `caja_firma` (±1e-6 mm).
+- Casilla apagada: nada de la vista previa; vista limpia: textos sí, marcas no.
+- **Nitidez** (vista limpia, zona del logo y una línea del cajetín muy de cerca): con el SVG el
+  87 % de los píxeles de línea son tinta plena; con el PNG anterior, 42 % (borroso).
+- **Arrastre** (120 movimientos de un detalle, con su etiqueta): trabajo por movimiento
+  **3,95 ms sin vista previa y 3,86 ms con ella** (p95 5,5 / 5,4 ms); cuadro completo 16,7 /
+  16,6 ms (60 cuadros/s; en otra corrida un cuadro suelto de la vista previa subió la media a
+  23 ms, con p95 21,8 ms). Arrastre real con el ratón: la etiqueta sigue al detalle.
+- Capturas en `data/verificacion_editor/vista_previa/`: `01_plano_completo.png`,
+  `02_notas_y_convenciones.png`, `03_cajetin.png`, `04_etiquetas_esc.png`,
+  `05_no_cabe_y_firma.png`, `06_nitidez_svg.png` y `06_nitidez_png.png`.
+
+**Peso** (`editor data/input_ejemplo --notas data/notas_tipicas`, mismo comando antes y
+después): **772 232 → 921 559 bytes (754 → 900 KB, +146 KB)**: +116 KB por la plantilla en
+vector (SVG 120 KB, 160 KB en base64, en lugar del PNG de 42 KB en base64) y +30 KB de código
+(los dos módulos nuevos, 24,5 KB con comentarios, y los cambios en `editor_ui.js`).
+
+**Límites**: no se ve la imagen de las firmas (solo su caja); las posiciones de los detalles
+son las del editor antes de redondearlas a 0,01 mm al guardar (una etiqueta puede quedar
+≤ 0,005 mm corrida respecto del PDF).
+
 ### Pendiente en la Fase 4 (al 2026-11-10)
 
-- **4.3f — Vista previa dibujada en el lienzo**: textos del rótulo, notas numeradas, símbolos
-  de convenciones y etiquetas «ESC: 1:N» dibujados en su sitio sobre la hoja, para ver el plano
-  como saldrá antes de componer.
 - **4.4 — Contenido del área de dibujo y localización**: tablas de cantidades de movimiento de
   tierras, escala de colores (cortes y rellenos) e imagen de localización en su recuadro.
 

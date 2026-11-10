@@ -5,6 +5,8 @@
     plantilla, detalles aceptados (con su miniatura) y rechazados (con sus motivos);
   - plantilla.png: la hoja base con el rótulo, SIN detalles y SIN la rosa de los vientos
     (subfase 4.1: la rosa se mueve, así que el editor la dibuja aparte);
+  - plantilla.svg (4.3f): la misma hoja base en VECTOR (nítida a cualquier zoom); el editor.html
+    la incrusta en lugar del PNG;
   - rosa.png: la rosa sola, transparente (si el formato tiene plantilla y declara la rosa);
   - miniaturas/<id>.png: una por detalle aceptado (transparente si el PDF no trae fondo de
     página; opaca si es un paquete antiguo con fondo blanco).
@@ -45,6 +47,7 @@ VERSION = 1
 ZONA_EDITABLE = "area_dibujo"
 ARCHIVO_DATOS = "editor_datos.json"
 ARCHIVO_PLANTILLA = "plantilla.png"
+ARCHIVO_PLANTILLA_SVG = "plantilla.svg"
 ARCHIVO_ROSA = "rosa.png"
 CARPETA_MINIATURAS = "miniaturas"
 MAX_PX_HOJA = 1600
@@ -185,6 +188,7 @@ def preparar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
 
     datos["imagen_plantilla"].update(
         _png_plantilla(formato, carpeta_salida / ARCHIVO_PLANTILLA, max_px_hoja))
+    datos["imagen_plantilla"]["svg"] = _svg_plantilla(formato, carpeta_salida / ARCHIVO_PLANTILLA_SVG)
     vieja_rosa = carpeta_salida / ARCHIVO_ROSA
     if vieja_rosa.exists():
         vieja_rosa.unlink()
@@ -209,6 +213,17 @@ def _png_plantilla(formato: Formato, ruta: Path, max_px: int) -> dict:
         return _png(doc[0], ruta, max_px)
     finally:
         doc.close()
+
+
+def _svg_plantilla(formato: Formato, ruta: Path) -> dict:
+    """La misma hoja base que plantilla.png (sin detalles y sin la rosa), en SVG: trazos y
+    textos como curvas (no depende de las fuentes del equipo). Solo para mostrar en el editor."""
+    doc, _, _ = hoja_base_con_rosa(formato, rosa=None)
+    try:
+        ruta.write_text(doc[0].get_svg_image(text_as_path=True), encoding="utf-8", newline="\n")
+    finally:
+        doc.close()
+    return {"archivo": ruta.name}
 
 
 def _png_rosa(formato: Formato, ruta: Path, max_px: int) -> dict:

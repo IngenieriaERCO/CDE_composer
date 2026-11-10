@@ -24,6 +24,8 @@
   // null con datos anteriores o con un formato sin sección "rotulo".
   const R = window.EditorRotulo;
   const F = window.EditorFormularios; // formularios del rótulo (4.3b)
+  const V = window.EditorVistaPrevia; // vista previa del rótulo (4.3f): qué y dónde
+  const LR = window.EditorLienzoRotulo; // y su dibujo en el lienzo
   const DATOS_ROTULO = DATOS.rotulo || null;
   const DEFINICION_ROTULO = DATOS_ROTULO ? DATOS_ROTULO.definicion : null;
   // proyecto.json (editor --proyecto): valores que prellenan un plano NUEVO.
@@ -93,6 +95,7 @@
 
   function marcarCambios() {
     estado.cambios = true;
+    programarVistaPrevia(); // el rótulo pudo cambiar (los paneles llaman aquí)
   }
 
   // ---------------------------------------------------------------------------------------
@@ -135,7 +138,14 @@
     nodosElementos.set(el.nombre, marco);
   }
 
+  // Vista previa (4.3f), en el orden de componer: los símbolos de convenciones son parte de la
+  // hoja base (debajo de los detalles); textos, etiquetas «ESC» y firmas van encima.
+  const capasVistaPrevia = { simbolos: nodoSvg("g", { class: "vp-capa" }, svg) };
   const capaDetalles = nodoSvg("g", {}, svg);
+  capasVistaPrevia.textos = nodoSvg("g", { class: "vp-capa" }, svg);
+  capasVistaPrevia.etiquetas = nodoSvg("g", { class: "vp-capa" }, svg);
+  capasVistaPrevia.firmas = nodoSvg("g", { class: "vp-capa" }, svg);
+  capasVistaPrevia.problemas = nodoSvg("g", { class: "vp-capa vp-ayuda" }, svg);
 
   // ---------------------------------------------------------------------------------------
   // Vista: zoom y desplazamiento (viewBox en píxeles de la plantilla).
@@ -250,6 +260,9 @@
     // Mismos elementos que usa componer: la rosa en su posición actual (oculta: no cuenta).
     const elementos = L.elementosVisibles(DATOS.elementos_plantilla, rosaParaLogica());
     const lista = L.advertencias(colocadosParaAdvertencias(), elementos, DATOS.advertencias);
+    // Etiquetas «ESC: 1:N» (4.3f): las mismas que pondría componer, con sus avisos al final.
+    etiquetasActuales = calcularEtiquetas(elementos);
+    for (const aviso of etiquetasActuales.avisos) lista.push({ nivel: "aviso", texto: aviso, ids: [] });
     ultimasAdvertencias = lista;
     const niveles = new Map();
     const tapados = new Set();
@@ -268,6 +281,66 @@
     pintarListaPlano();
     pintarAdvertencias(lista);
     panelRotulo.refrescar(); // ESCALA depende de los detalles colocados
+    programarVistaPrevia();
+  }
+
+  // ---------------------------------------------------------------------------------------
+  // Vista previa del rótulo (4.3f): textos, notas, convenciones, firmas y etiquetas «ESC».
+  // El rótulo solo se vuelve a dibujar si cambian sus valores o las escalas; al arrastrar un
+  // detalle solo cambian las etiquetas. Un dibujo por cuadro (requestAnimationFrame).
+  // ---------------------------------------------------------------------------------------
+
+  const FUENTE_ROTULO = DATOS_ROTULO ? DATOS_ROTULO.fuente : null;
+  const CON_VISTA_PREVIA = !!(DATOS_ROTULO && FUENTE_ROTULO && FUENTE_ROTULO.anchos_em && V && LR);
+  const CON_ETIQUETAS = CON_VISTA_PREVIA && typeof FUENTE_ROTULO.ascenso_em === "number" && !!ZONA;
+  const casillaVistaPrevia = document.getElementById("vista-previa");
+  const lienzoRotulo = CON_VISTA_PREVIA ? LR.crear({ svg, capas: capasVistaPrevia, escala: ESCALA,
+    fuente: FUENTE_ROTULO, simbolos: DATOS_ROTULO.simbolos }) : null;
+  let etiquetasActuales = { textos: [], avisos: [] };
+  let claveRotulo = null;
+  let cuadroPendiente = false;
+
+  function calcularEtiquetas(elementos) {
+    if (!CON_ETIQUETAS) return { textos: [], avisos: [] };
+    return V.etiquetasEscala({
+      detalles: estado.colocaciones.map((c) => ({ id: c.id, dibujo_mm: L.dibujoEnPapel(c.detalle, c.pos),
+        denominador: c.detalle.escala, con_etiqueta: c.etiqueta_escala !== false })),
+      area_mm: ZONA, elementos: elementos.map((e) => [e.nombre, e.rect_mm]), fuente: FUENTE_ROTULO,
+    });
+  }
+
+  function programarVistaPrevia() {
+    if (!lienzoRotulo || cuadroPendiente) return;
+    cuadroPendiente = true;
+    requestAnimationFrame(dibujarVistaPrevia);
+  }
+
+  function dibujarVistaPrevia() {
+    cuadroPendiente = false;
+    if (!lienzoRotulo) return;
+    if (!casillaVistaPrevia.checked) {
+      if (claveRotulo !== null) lienzoRotulo.limpiar();
+      claveRotulo = null;
+      return;
+    }
+    const rotulo = R.serializar(estado.rotulo);
+    const escalas = estado.colocaciones.map((c) => c.detalle.escala);
+    const clave = JSON.stringify([rotulo === undefined ? null : rotulo, escalas]);
+    if (clave !== claveRotulo) {
+      claveRotulo = clave;
+      lienzoRotulo.dibujarRotulo(V.piezasRotulo({ rotulo, definicion: DEFINICION_ROTULO, fuente: FUENTE_ROTULO,
+        simbolos: DATOS_ROTULO.simbolos, catalogo: DATOS_ROTULO.notas, escalas }));
+    }
+    lienzoRotulo.dibujarEtiquetas(etiquetasActuales.textos);
+  }
+
+  if (casillaVistaPrevia) {
+    casillaVistaPrevia.disabled = !lienzoRotulo;
+    if (!lienzoRotulo) {
+      casillaVistaPrevia.checked = false;
+      casillaVistaPrevia.parentElement.title = "Este editor no tiene los datos del rótulo (formato sin rótulo o datos anteriores a la 4.3f).";
+    }
+    casillaVistaPrevia.addEventListener("change", programarVistaPrevia);
   }
 
   // ---------------------------------------------------------------------------------------
@@ -878,8 +951,33 @@
     texto: textoPlano, advertencias: () => ultimasAdvertencias,
     moverRosa, mostrarRosa, restaurarRosa, abrir,
     rotulo: () => R.serializar(estado.rotulo), validacionRotulo: () => panelRotulo.validacion(),
-    validacionNotas: () => panelNotas.validacion(), validacionConvenciones: () => panelConvenciones.validacion() };
+    validacionNotas: () => panelNotas.validacion(), validacionConvenciones: () => panelConvenciones.validacion(),
+    // 4.3f: dibuja la vista previa ya (sin esperar al cuadro) y devuelve lo que dibujó.
+    vistaPrevia: () => {
+      dibujarVistaPrevia();
+      return { etiquetas: etiquetasActuales, activa: !!(casillaVistaPrevia && casillaVistaPrevia.checked) };
+    },
+    // Encuadra un rectángulo de papel [x0, y0, x1, y1] (mm), como si se acercara con la rueda.
+    verPapel: (rect) => {
+      const r = L.rectPapelAPantalla(rect, ESCALA);
+      const caja = svg.getBoundingClientRect();
+      const proporcion = caja.width / caja.height;
+      let ancho = r.ancho;
+      let alto = r.alto;
+      if (ancho / alto > proporcion) alto = ancho / proporcion;
+      else ancho = alto * proporcion;
+      estado.vista = { x: r.x + r.ancho / 2 - ancho / 2, y: r.y + r.alto / 2 - alto / 2, ancho, alto };
+      aplicarVista();
+    },
+    ajustar: ajustarVista };
 
+  if (CON_VISTA_PREVIA) {
+    const diferencia = LR.diferenciaDeFuente(FUENTE_ROTULO);
+    if (diferencia !== null && diferencia > 0.005) {
+      mensaje("La vista previa del rótulo usa una «Arial» que mide distinto de la de componer (" +
+        (diferencia * 100).toFixed(1).replace(".", ",") + " %): las posiciones son las de componer, pero las letras pueden verse algo distintas.", "aviso");
+    }
+  }
   pintarCatalogo();
   pintarRotulo();
   pintarDondeGuardar();
