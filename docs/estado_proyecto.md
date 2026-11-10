@@ -1197,8 +1197,91 @@ Node (y la columna derecha también en Edge, con el símbolo desconocido).
 
 **Peso**: editor del ejemplo **681 KB** (697 523 bytes; era 662 KB).
 
-**Pendiente**: 4.3b2 (firma en imagen: pegar, recortar, limpiar), 4.3e/f (maquetación en
-JavaScript: si cabe y si se reduce; vista previa dibujada).
+**Pendiente** (al cerrar la 4.3d): 4.3b2 (firma en imagen: pegar, recortar, limpiar), 4.3e/f
+(maquetación en JavaScript: si cabe y si se reduce; vista previa dibujada).
+
+### Subfase 4.3b2 — Editor: cargar, recortar y limpiar una firma ✅ (2026-11-10, sin commit)
+
+(La 4.3d quedó en el commit d032e3b.)
+
+**Qué se hizo**
+- **`editor_firma.js`** (lógica pura, Node y navegador): recorte, limpieza con umbral suave por
+  luminosidad (Y = 0,299 R + 0,587 G + 0,114 B; transición de 40 niveles), tinta en su color
+  («despegada» del blanco) o en negro, recorte al trazo (alfa ≥ 16) con 2 px, reducción
+  proporcional por promedio de área con alfa premultiplicado a 600 × 200 px, codificador PNG
+  RGBA propio (filtro adaptativo; la compresión zlib la pone el navegador con
+  `CompressionStream("deflate")` o Node con `zlib`), y si pasa de 100 KB se achica un 15 % y
+  se repite. `revisarPng` y `avisoSinAlfa` con los textos de Python; `problemaNombre` con las
+  reglas de `firmas.NOMBRE_VALIDO`.
+- **`firmas.py`**: la revisión del PNG pasó a `revisar_png` y el aviso a `aviso_sin_alfa`
+  (públicas, mismo comportamiento y mismos textos; `pedir_firma` las usa).
+- **Diálogo «Cargar firma…»** (`editor_dialogo_firma.js`): elegir archivo o pegar con Ctrl+V,
+  recorte con el mouse, umbral con control deslizante, tinta, vista sobre fondo cuadriculado,
+  tamaño/peso/alfa y revisión en vivo, nombre de la persona, «Guardar en la carpeta de
+  firmas…» (`showDirectoryPicker`: escribe `<carpeta>/<persona>/firma.png`, pregunta antes de
+  reemplazar y avisa si la carpeta no se llama firmas), «Descargar firma.png» (y dice que va en
+  `firmas/<persona>/`) y «Solo usar el nombre». La fila queda con `{"imagen": "<persona>"}`.
+  Privacidad: todo en memoria; al cerrar se vacían los lienzos y se quita el diálogo.
+- **«Persona nueva…»** en la lista de personas de la firma (y en Persona sin lista): se escribe
+  el nombre, se valida con las reglas de firmas.py y queda `{"imagen": "<persona>"}`; las
+  personas nuevas se suman a la lista de la sesión.
+- Cosméticos: miniaturas de Convenciones sobre gris claro (#eef0f3) con borde; ✕ de quitar
+  siempre rojo en Notas, Convenciones y Revisiones (el «Quitar» de Revisiones pasó a ✕). Los
+  símbolos de línea muy fina (línea eléctrica, curvas de nivel) siguen tenues en la miniatura
+  de 60 × 22 px: en el PDF van en vector.
+
+**Pruebas**: **735**, todas pasan (21 nuevas, con Node y un garabato sintético con ruido):
+umbral suave; garabato con recorte manual (la línea gris del borde queda fuera), fondo con
+ruido todo transparente, recorte al trazo exacto con 2 px, reducción proporcional, PNG RGBA
+con alfa que pasa `firmas.revisar_png`; tinta en su color o en negro; sin trazo = error claro;
+peor caso de peso (más de 100 KB) achicado hasta caber; **mismos textos que
+`firmas.revisar_png`** en 5 casos (no PNG, más ancho, más de 100 KB, las dos cosas, sin alfa) y
+el aviso sin alfa; 14 nombres de persona = `firmas._partes_del_id`; **componer acepta la firma
+generada por JavaScript** (con alfa, sin advertencias). La prueba de la 4.3b sobre «firma.png»
+en el HTML se ajustó: el código del diálogo nombra «firma.png»; lo prohibido es el archivo de
+una persona.
+
+**Verificación en Edge** (`data/verificacion_editor/verificar_firma.mjs`, fuera del repo): 16
+comprobaciones OK, sin errores de JavaScript: 4 botones «Cargar firma…»; pegar una imagen
+sintética (Ctrl+V) y recortarla con el mouse (eventos reales); revisión «Cumple lo que pide
+componer»; nombre con punto rechazado; «Guardar en la carpeta de firmas…» disponible (el diálogo
+de carpeta no se puede automatizar); descarga de firma.png con el aviso de dónde va; al cerrar
+no queda diálogo, lienzo ni la imagen en la página; el plano.json solo lleva
+`{"imagen": "Ficticia Prueba Editor"}`; editor.html en disco sin cambios (SHA-256); la firma pasa
+`firmas.revisar_png` (600 × 146 px, alfa, 18 KB) y `componer` la pone en APROBÓ (4 firmas en
+imagen); «Persona nueva…» escrita a mano; 17 ✕ en rojo; miniaturas sobre gris. La firma de
+prueba se borra de data/firmas/ al terminar. Las verificaciones de convenciones, notas, notas
+desde archivos, formularios y rótulo (ajustadas: buscan el archivo de una persona, no el texto
+«firma.png») siguen OK.
+
+**Peso**: editor del ejemplo **718 KB** (735 509 bytes; era 681 KB).
+
+**Mejora (2026-11-10, sin commit): sombras e iluminación despareja.**
+- `editor_firma.js`: `estimarFondo` (máximo por bloques de ~1/40 del lado mayor, cierre
+  morfológico entre bloques vecinos —máximo y luego mínimo— y promedio 3 x 3, interpolación
+  bilineal) y `compensarFondo` (cada píxel dividido por su fondo, antes del umbral; opción
+  activada por defecto). `umbralOtsu` (si varios umbrales empatan —un hueco sin píxeles entre
+  tinta y papel— toma el centro, para no adelgazar los bordes suavizados) y `umbralAutomatico`
+  (sobre la imagen recortada y compensada; entre 40 y 250). `fraccionOpaca` y `avisoFondo`
+  (más del 25 % de la firma opaca).
+- Diálogo: casilla «Compensar sombras e iluminación despareja» (activada; al cambiarla se
+  recalcula el umbral automático), botón «Umbral automático», umbral inicial = Otsu, control
+  de 40 a 250 con la ayuda «Bajar el valor = más fondo transparente; si baja demasiado, se
+  pierde el trazo fino.» y el aviso de fondo.
+- Pruebas: **742**, todas pasan (7 nuevas, con Node y una «foto» sintética con degradado de
+  245 a 135, sombra ×0,6 y ruido): fondo estimado (mitad de los píxeles con error del orden del
+  ruido, 99 % bajo 25; el papel compensado más oscuro queda transparente con el umbral
+  automático); con compensación el papel queda transparente (< 0,1 % opaco) y el trazo se
+  conserva (> 97 %), sin compensación queda fondo opaco y salta el aviso; Otsu igual a una
+  referencia en Python en 3 casos; rango 40–250 y dirección (bajar = más transparente); textos
+  del aviso.
+- Verificación en Edge (`verificar_firma_fondo.mjs`): 11 comprobaciones OK, sin errores de
+  JavaScript; la de la firma y las demás siguen OK (la de formularios se ajustó: `data/firmas`
+  puede tener carpetas reales del usuario y subcarpetas).
+- Editor del ejemplo: **727 KB** (744 405 bytes).
+
+**Pendiente**: 4.3e/f (maquetación en JavaScript: si cabe y si se reduce; vista previa
+dibujada).
 
 ## Pendientes (después de las Fases 1 y 2)
 

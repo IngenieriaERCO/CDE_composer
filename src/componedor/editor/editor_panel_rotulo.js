@@ -22,6 +22,10 @@
     const DEF = DATOS ? DATOS.definicion : null;
     const FUENTE = DATOS ? DATOS.fuente : null;
     const PERSONAS = DATOS ? DATOS.personas_firmas : null;
+    // Lista de personas de esta sesión: las de --firmas más las nuevas (escritas o cargadas).
+    const sesion = (PERSONAS || []).slice();
+    const nuevas = new Set(); // filas de firmas con «Persona nueva…» abierta
+    const NUEVA = "\u0000nueva"; // valor de la opción «Persona nueva…» (no es un nombre válido)
     const FORMATO_FECHA = DEF ? DEF.formato_fecha : "dd/mm/aa";
     let marcables = []; // [{nodo, claves}] para marcar en rojo los que tienen error
     let calculados = {}; // campo -> input de solo lectura
@@ -181,7 +185,7 @@
         });
         marcables.push({ nodo: select, claves: ["rotulo.revisiones[" + i + "]." + tabla.columna_clave,
           "rotulo.revisiones[" + i + "]:"] });
-        const quitar = nodo("button", { type: "button", title: "Quitar esta revisión" }, "Quitar");
+        const quitar = nodo("button", { type: "button", title: "Quitar esta revisión", class: "quitar" }, "✕");
         quitar.addEventListener("click", () => {
           guardar(F.quitarRevision(fresca(), i));
           pintar();
@@ -235,7 +239,7 @@
         return s;
       }
       if (PERSONAS === null || PERSONAS === undefined) {
-        s.appendChild(nodo("div", { class: "medida" }, "Sin lista de personas (use --firmas <carpeta> al generar el editor): la firma se puede escribir como texto."));
+        s.appendChild(nodo("div", { class: "medida" }, "Sin lista de personas (use --firmas <carpeta> al generar el editor): la firma va como texto, como «Persona nueva…» o con «Cargar firma…»."));
       }
       for (const f of tabla.filas) {
         const item = (firmas && firmas[f.clave]) || {};
@@ -250,7 +254,7 @@
             "rotulo.firmas." + f.clave + ":"];
           const escribir = (v) => cambiar(F.TABLA_FIRMAS, F.cambiarCeldaFirma(valor(F.TABLA_FIRMAS), f.clave, col.clave, v));
           let entrada;
-          if (col.acepta_imagen) entrada = entradaFirma(item[col.clave], celda, claves, escribir);
+          if (col.acepta_imagen) entrada = entradaFirma(item[col.clave], celda, claves, escribir, f.clave);
           else if (col.clave === F.COLUMNA_FECHA) entrada = entradaFecha(item[col.clave], celda, claves, escribir);
           else entrada = entradaTexto(item[col.clave], celda, claves, escribir);
           cuadricula.appendChild(fila(F.etiquetaColumna(col.clave), entrada));
@@ -261,35 +265,81 @@
     }
 
     /** Firma: texto, o una persona de la lista de --firmas ({"imagen": "<persona>"}). */
-    function entradaFirma(actual, celda, claves, escribir) {
+    /**
+     * Firma: texto, o una persona ({"imagen": "<persona>"}): de la lista de --firmas, una
+     * «Persona nueva…» escrita a mano, o la que se guarde con «Cargar firma…» (4.3b2). La lista
+     * de la sesión suma las personas nuevas; las imágenes nunca pasan por aquí.
+     */
+    function entradaFirma(actual, celda, claves, escribir, fila) {
       const caja = nodo("div", { class: "firma" });
       const modo = nodo("select", { title: "Firma como texto o con la imagen de una persona" });
       modo.append(nodo("option", { value: "texto" }, "Texto"), nodo("option", { value: "persona" }, "Persona"));
       const imagen = F.esFirmaImagen(actual);
-      modo.value = imagen ? "persona" : "texto";
-      if (!imagen && !(PERSONAS && PERSONAS.length)) modo.disabled = true;
+      modo.value = imagen || nuevas.has(fila) ? "persona" : "texto";
       modo.addEventListener("change", () => {
-        if (modo.value === "persona") escribir(PERSONAS && PERSONAS.length ? { imagen: PERSONAS[0] } : undefined);
+        nuevas.delete(fila);
+        if (modo.value === "persona" && sesion.length) escribir({ imagen: sesion[0] });
+        else if (modo.value === "persona") nuevas.add(fila); // sin lista: se escribe el nombre
         else escribir(undefined);
         pintar();
       });
       caja.appendChild(modo);
-      if (!imagen) {
+      if (modo.value === "texto") {
         caja.appendChild(entradaTexto(actual, celda, claves, escribir));
-        return caja;
+      } else if (nuevas.has(fila)) {
+        caja.appendChild(entradaPersonaNueva(fila, claves, escribir));
+      } else {
+        const lista = nodo("select", { title: "Persona: su carpeta en firmas/ (la imagen no está en el editor)" });
+        const nombres = sesion.slice();
+        if (!nombres.includes(actual.imagen)) nombres.unshift(actual.imagen);
+        for (const p of nombres) {
+          lista.appendChild(nodo("option", { value: p }, sesion.includes(p) ? p : p + " (no está en la lista)"));
+        }
+        lista.appendChild(nodo("option", { value: NUEVA }, "Persona nueva…"));
+        lista.value = actual.imagen;
+        lista.addEventListener("change", () => {
+          if (lista.value === NUEVA) {
+            nuevas.add(fila);
+            pintar();
+          } else {
+            escribir({ imagen: lista.value });
+          }
+        });
+        marcables.push({ nodo: lista, claves });
+        caja.appendChild(lista);
       }
-      const lista = nodo("select", { title: "Persona: su carpeta en firmas/ (la imagen no está en el editor)" });
-      const nombres = (PERSONAS || []).slice();
-      if (!nombres.some((p) => p === actual.imagen)) nombres.unshift(actual.imagen);
-      for (const p of nombres) {
-        const enLista = (PERSONAS || []).includes(p);
-        lista.appendChild(nodo("option", { value: p }, enLista ? p : p + " (no está en la lista)"));
-      }
-      lista.value = actual.imagen;
-      lista.addEventListener("change", () => escribir({ imagen: lista.value }));
-      marcables.push({ nodo: lista, claves });
-      caja.appendChild(lista);
+      const cargar = nodo("button", { type: "button", class: "cargar-firma", title:
+        "Recortar y limpiar una imagen de la firma (se procesa solo en este navegador)" }, "Cargar firma…");
+      cargar.addEventListener("click", () => raiz.EditorDialogoFirma.abrir({
+        fila: F.etiquetaFilaFirma(fila),
+        persona: imagen ? actual.imagen.split("/")[0] : "",
+        alUsar: (persona) => {
+          if (!sesion.includes(persona)) sesion.push(persona);
+          nuevas.delete(fila);
+          escribir({ imagen: persona });
+          pintar();
+        },
+      }));
+      caja.appendChild(cargar);
       return caja;
+    }
+
+    /** «Persona nueva…»: el nombre de su carpeta en firmas/ (mismas reglas que firmas.py). */
+    function entradaPersonaNueva(fila, claves, escribir) {
+      const entrada = nodo("input", { type: "text", placeholder: "Nombre de la persona",
+        title: "Letras (con tildes y ñ), números, espacio, «_» y «-». Es el nombre de su carpeta en firmas/." });
+      entrada.addEventListener("change", () => {
+        const problema = raiz.EditorFirma.problemaNombre(entrada.value);
+        entrada.classList.toggle("invalido", !!problema);
+        entrada.title = problema || "Persona nueva: componer buscará firmas/" + entrada.value + "/firma.png";
+        if (problema) return;
+        if (!sesion.includes(entrada.value)) sesion.push(entrada.value);
+        nuevas.delete(fila);
+        escribir({ imagen: entrada.value });
+        pintar();
+      });
+      marcables.push({ nodo: entrada, claves });
+      return entrada;
     }
 
     function seccionInformacion() {

@@ -111,8 +111,46 @@ Panel **Rótulo** (a la derecha), por secciones que se pliegan:
   C, sin repetir), Fecha, Descripción, Dibujó, Diseñó, Revisó y Aprobó; botones **Quitar** y
   **Agregar revisión** (toma la primera letra libre; cámbiela en la lista).
 - **Firmas**: DIBUJÓ, DISEÑÓ, REVISÓ y APROBÓ con Nombre, Matrícula, Firma y Fecha. La firma es
-  **Texto** (p. ej. iniciales) o **Persona**: un nombre de la lista de `--firmas`; en el plano
-  queda `{"imagen": "<persona>"}` y `componer` busca su PNG.
+  **Texto** (p. ej. iniciales) o **Persona**: un nombre de la lista de `--firmas` o **«Persona
+  nueva…»** (se escribe el nombre de su carpeta: letras con tilde y ñ, números, espacio, «_» y
+  «-»); en el plano queda `{"imagen": "<persona>"}` y `componer` busca su PNG (y lo valida).
+- **Cargar firma…** (subfase 4.3b2), en cada fila de firmas: prepara el `firma.png` de una
+  persona a partir de una foto o un escaneo. Ver «2c-bis».
+
+### 2c-bis. Cargar, recortar y limpiar una firma
+
+En el diálogo **Cargar firma…**:
+
+1. **Imagen**: «Elegir imagen…» o **Ctrl+V** para pegar una imagen copiada (p. ej. un recorte de
+   pantalla). Luego **arrastre un rectángulo** sobre la firma para recortarla («Quitar recorte»
+   vuelve a la imagen entera).
+2. **Limpieza**: el fondo claro pasa a **transparente** con un umbral suave por luminosidad.
+   - **Compensar sombras e iluminación despareja** (activada): antes del umbral, el editor
+     estima el color del papel en cada zona (máximo por bloques de ~1/40 del lado mayor, cierre
+     entre bloques vecinos y suavizado) y divide la imagen por él; así una foto con sombra o con
+     luz de un lado queda con el papel blanco y se vuelve transparente.
+   - **Umbral automático** (método de Otsu, sobre la imagen ya compensada y recortada): es el
+     umbral inicial al cargar la imagen; el botón lo vuelve a calcular.
+   - **Control del umbral** de 40 a 250: **bajar el valor = más fondo transparente; si baja
+     demasiado, se pierde el trazo fino.**
+   - Si **más del 25 %** de los píxeles de la firma quedan opacos, aviso: «Parece que queda
+     fondo… Revise el umbral o repita la foto con más luz.»
+   - Tinta **en su color** o **en negro**. El resultado se ve sobre un **fondo cuadriculado** (lo cuadriculado
+   es lo transparente). Se recorta solo al trazo con 2 px de margen y se achica a un máximo de
+   **600 × 200 px** (proporcional); si el PNG pasara de **100 KB**, se achica un 15 % más hasta
+   que quepa. Debajo se ve tamaño, peso y transparencia, y la revisión con **los mismos textos
+   que `componer`** (firmas.py).
+3. **Guardar**: escriba el **nombre de la persona** (las mismas reglas que `componer`: sin
+   puntos ni rutas). **Guardar en la carpeta de firmas…** (Edge y Chrome) le pide elegir y
+   autorizar la carpeta `firmas/` y escribe `firmas/<persona>/firma.png` (pregunta antes de
+   reemplazar una que ya exista). Si el navegador no lo permite, **Descargar firma.png** la deja
+   en Descargas y el diálogo dice que debe moverla a `firmas/<persona>/firma.png`. En los dos
+   casos la fila queda con `{"imagen": "<persona>"}`. **Solo usar el nombre** pone la persona sin
+   guardar imagen (si ya tiene su firma.png).
+
+**Privacidad**: la imagen se procesa **solo en este navegador**, sin internet; **nunca** se
+guarda en el editor.html ni en el plano.json, y al **cerrar** el diálogo se descarta (no queda
+nada de ella en la página).
 - **Fechas**: se escriben a mano o con el **calendario** (ícono a la derecha), que las escribe en
   el `formato_fecha` del formato (A1 ERCO: `dd/mm/aa`, p. ej. 09/11/26).
 - **Problemas del rótulo**: validación en vivo con **los mismos textos que `componer`**: tipo

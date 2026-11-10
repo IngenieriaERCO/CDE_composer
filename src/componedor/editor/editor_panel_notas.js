@@ -174,7 +174,7 @@
           ["↓", "Bajar", () => cambiarLista(N.mover(estado.items, i, 1)), i === estado.items.length - 1],
           ["✕", "Quitar del plano", () => cambiarLista(N.quitar(estado.items, i)), false],
         ]) {
-          const b = nodo("button", { type: "button", title: titulo, class: "mini" }, texto);
+          const b = nodo("button", { type: "button", title: titulo, class: texto === "✕" ? "mini quitar" : "mini" }, texto);
           b.disabled = deshabilitado;
           b.addEventListener("click", accion);
           cabeza.appendChild(b);

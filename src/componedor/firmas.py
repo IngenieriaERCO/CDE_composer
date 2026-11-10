@@ -107,27 +107,13 @@ def pedir_firma(valor: dict, celda: Celda, donde: str, carpetas: tuple[Path, ...
     if archivo is None:
         return None
     datos = archivo.read_bytes()
-    if not datos.startswith(FIRMA_PNG):
-        problemas.append(f"{donde}.imagen: '{archivo}' no es un PNG")
-        return None
-    if len(datos) > MAX_BYTES:
-        problemas.append(f"{donde}.imagen: '{archivo}' pesa {len(datos) / 1024:.1f} KB y el "
-                         f"máximo es {MAX_BYTES // 1024} KB")
-    try:
-        pix = pymupdf.Pixmap(datos)
-    except Exception as e:  # PNG dañado
-        problemas.append(f"{donde}.imagen: '{archivo}' no se pudo leer como imagen: {e}")
-        return None
-    if pix.width > MAX_ANCHO_PX or pix.height > MAX_ALTO_PX:
-        problemas.append(f"{donde}.imagen: '{archivo}' mide {pix.width} x {pix.height} px y el "
-                         f"máximo es {MAX_ANCHO_PX} x {MAX_ALTO_PX} px")
-    if len(problemas) > n:
+    errores, pix = revisar_png(datos, archivo, f"{donde}.imagen")
+    problemas += errores
+    if pix is None or len(problemas) > n:
         return None
     alfa = bool(pix.alpha)
     if not alfa:
-        advertencias.append(f"Advertencia: la firma de '{persona}' ({archivo.name}) no tiene "
-                            f"canal alfa (transparencia): su fondo tapará las líneas de la celda "
-                            f"'{celda.ruta}'. Límpiela antes de emitir el plano.")
+        advertencias.append(aviso_sin_alfa(persona, archivo.name, celda.ruta))
     huella = (hashlib.md5(bytes(pix.samples[pix.n - 1::pix.n])).digest() if alfa
               else pix.digest)
     caja = caja_firma(celda, relleno_mm)
@@ -135,6 +121,33 @@ def pedir_firma(valor: dict, celda: Celda, donde: str, carpetas: tuple[Path, ...
     return FirmaPedida(celda.ruta, ident, archivo, datos, hashlib.sha256(datos).hexdigest(),
                        pix.width, pix.height, alfa, huella, celda.rect, destino, escala, caja,
                        celda.cuerpo_y)
+
+
+def revisar_png(datos: bytes, archivo, donde: str) -> tuple[list[str], pymupdf.Pixmap | None]:
+    """(problemas, imagen) de los bytes de una firma: que sea PNG, que pese hasta 100 KB y que
+    mida hasta 600 x 200 px. La imagen es None si hay algún problema. El editor (subfase 4.3b2,
+    editor_firma.js) revisa con estas mismas reglas y textos."""
+    if not datos.startswith(FIRMA_PNG):
+        return [f"{donde}: '{archivo}' no es un PNG"], None
+    problemas = []
+    if len(datos) > MAX_BYTES:
+        problemas.append(f"{donde}: '{archivo}' pesa {len(datos) / 1024:.1f} KB y el máximo es "
+                         f"{MAX_BYTES // 1024} KB")
+    try:
+        pix = pymupdf.Pixmap(datos)
+    except Exception as e:  # PNG dañado
+        problemas.append(f"{donde}: '{archivo}' no se pudo leer como imagen: {e}")
+        return problemas, None
+    if pix.width > MAX_ANCHO_PX or pix.height > MAX_ALTO_PX:
+        problemas.append(f"{donde}: '{archivo}' mide {pix.width} x {pix.height} px y el máximo "
+                         f"es {MAX_ANCHO_PX} x {MAX_ALTO_PX} px")
+    return problemas, (None if problemas else pix)
+
+
+def aviso_sin_alfa(persona: str, nombre_archivo: str, ruta_celda: str) -> str:
+    return (f"Advertencia: la firma de '{persona}' ({nombre_archivo}) no tiene canal alfa "
+            f"(transparencia): su fondo tapará las líneas de la celda '{ruta_celda}'. Límpiela "
+            f"antes de emitir el plano.")
 
 
 def _partes_del_id(ident) -> tuple[str, str | None] | None:

@@ -204,7 +204,9 @@ fondo blanco) las miniaturas son transparentes y se ve lo mismo que saldrá en e
 arrastra como un detalle, se oculta con una casilla y se devuelve a su sitio con «Restaurar
 posición». El panel **Rótulo** tiene formularios para los campos del rótulo (título, No. PLANO,
 HOJA/DE, coordenadas, diseñador, revisor…), las **revisiones** y las **firmas** (texto o una
-persona de la lista de `--firmas`), con calendario para las fechas (`dd/mm/aa`), ESCALA y REV.
+persona de la lista de `--firmas` o nueva; «Cargar firma…» recorta y limpia una imagen de la
+firma solo en el navegador y la guarda como `firmas/<persona>/firma.png`, sin incrustarla
+nunca), con calendario para las fechas (`dd/mm/aa`), ESCALA y REV.
 calculadas y validación en vivo con los mismos textos que `componer`. `--proyecto` prellena un
 plano nuevo con los datos que se repiten ([docs/formato_proyecto.md](docs/formato_proyecto.md)).
 El panel **Notas** muestra el catálogo de notas típicas por tema con casillas, la lista de

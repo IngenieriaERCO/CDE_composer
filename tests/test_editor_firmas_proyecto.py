@@ -69,7 +69,10 @@ def test_editor_firmas_incrusta_solo_los_nombres(entorno, capsys):
     # Ninguna imagen de firma (ni en base64 ni en sus nombres de archivo) ni la carpeta.
     for contenido in imagenes:
         assert base64.b64encode(contenido).decode("ascii") not in html
-    assert "firma.png" not in html and "roja.png" not in html
+    # (El código del diálogo «Cargar firma…» nombra «firma.png», el archivo que guarda; lo que no
+    # puede aparecer es ningún archivo de una persona.)
+    assert "Persona Uno/firma.png" not in html and "Persona Dos/firma.png" not in html
+    assert "roja.png" not in html and "roja" not in json.dumps(datos)
     assert str(tmp_path / "firmas") not in html and "carpeta_firmas" not in html
     assert not list((tmp_path / "editor").rglob("*firma*"))  # tampoco se copió nada al lado
     json_datos = json.loads((tmp_path / "editor" / "editor_datos.json").read_text(encoding="utf-8"))

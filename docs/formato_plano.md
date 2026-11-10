@@ -220,6 +220,13 @@ nombre de la persona (no la imagen) y conviene ponerlas **solo en los PDF emitid
 borradores), con la autorización de cada persona. Cada persona tiene su propia carpeta: es
 fácil ver qué firmas hay de quién y retirarlas.
 
+El editor puede **preparar** la firma (botón «Cargar firma…», subfase 4.3b2: recortar, pasar el
+fondo a transparente y achicar a 600 × 200 px / 100 KB). La imagen se procesa **solo en el
+navegador**, sin internet; **nunca** se guarda en el editor.html ni en el plano.json, y se
+descarta al cerrar el diálogo. Lo único que sale es el archivo `firma.png` que usted guarda
+(directo en `firmas/<persona>/` si el navegador lo permite, o descargado para moverlo ahí) y,
+en el plano, `{"imagen": "<persona>"}`.
+
 **Fechas**: `componer` escribe las fechas tal como vienen (texto). El formato define cómo las
 escribe el editor con su selector de fecha (calendario, subfase 4.3b): `rotulo.formato_fecha`, por defecto
 `"dd/mm/aa"` (A1 ERCO); se admiten día, mes y año una vez cada uno, con `aa` o `aaaa`,
