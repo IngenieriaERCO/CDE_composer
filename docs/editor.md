@@ -9,8 +9,34 @@ el Layout de AutoCAD. Guarda un `plano.json`; el PDF final lo genera `componer`.
 
 ## 1. Generar el editor
 
+> - `data/input`: los paquetes del Exportador Vectorial (PDF + manifiesto) que el editor ofrece
+>   para armar el plano. Hoy son de prueba; en un proyecto real se cambia la ruta en
+>   `componedor.json` (`editor.paquetes`).
+> - `resultados/`: ahí deja `Componer.bat` el PDF de cada plano (`resultados\<nombre del plano>.pdf`).
+> - `data/output` ya no se usa para los planos: lo reemplaza `resultados/`.
+
+**Lo normal: doble clic en `Abrir editor.bat`** (raíz de Componedor). Genera el editor con las
+rutas de `componedor.json` y lo abre en el navegador. Equivale a:
+
 ```powershell
-python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --salida data/editor
+python -m componedor.cli editor --config componedor.json --sobrescribir
+```
+
+Las rutas que usa, en `componedor.json` (relativas a la raíz; ver el README):
+
+| Clave | Valor | Qué es |
+|---|---|---|
+| `formato` | `formatos/A1_ERCO.json` | la hoja (también la usa `Componer.bat`) |
+| `editor.paquetes` | `data/input` | los paquetes del exportador que el editor ofrece |
+| `editor.salida` | `editor` | dónde queda `editor.html` |
+| `editor.notas` | `notas` | catálogo de notas típicas (opcional) |
+| `editor.firmas` | `firmas` | carpeta de firmas, una subcarpeta por persona (opcional) |
+| `editor.proyecto` | `null` | proyecto.json para prellenar (opcional) |
+
+Sin `componedor.json`, las mismas opciones van a mano (con `--config` no se pueden repetir):
+
+```powershell
+python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --salida editor
 ```
 
 - `data/input`: carpeta con los paquetes del exportador (PDF + manifiesto).
@@ -23,10 +49,11 @@ python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --sal
   editor y quedan en los datos.
 
   ```powershell
-  python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --salida data/editor --notas "C:\...\notas_tipicas"
+  python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --salida editor --notas notas
   ```
-- `data/editor`: carpeta del editor. Queda ahí `editor.html` (más `editor_datos.json`,
-  `plantilla.png` y `miniaturas/`, que son los mismos datos de `preparar-editor`).
+- `editor`: carpeta del editor. Queda ahí **solo `editor.html`**: datos, plantilla, rosa,
+  miniaturas y símbolos van incrustados dentro. Si quiere ver esos archivos por separado, use
+  `preparar-editor`. `componer` no lee ninguno.
 - Si la carpeta ya tiene contenido, agregue `--sobrescribir`: se reemplaza solo lo que genera
   el editor (un `plano.json` guardado por usted no se toca).
 
@@ -85,8 +112,8 @@ La rosa de la plantilla se puede mover o quitar, como en el Layout se mueve un b
 Generar el editor con todo lo del rótulo:
 
 ```
-python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --salida data/editor ^
-    --notas "C:\...\notas_tipicas" --firmas firmas --proyecto "C:\...\proyecto.json"
+python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --salida editor ^
+    --notas notas --firmas firmas --proyecto proyecto.json
 ```
 
 - `--notas`: catálogo de notas típicas (subcarpetas = grupos).
@@ -418,10 +445,18 @@ fondo que está debajo no tapa al de encima.
   navegador no lo ofrece o falla (permisos, archivo abierto desde el disco), el plano se
   **descarga** a la carpeta de descargas: **muévalo** a la carpeta de `editor.html` antes de
   componer. Si usted cancela el diálogo, no pasa nada.
-- **Dónde guardarlo**: en la **misma carpeta que `editor.html`**. Las rutas del plano
-  (`formato`, `manifiesto`) son relativas a esa carpeta. La pantalla muestra la carpeta en la
-  que se generó el editor; es un dato informativo (desde una página no se puede saber la
-  ruta real del disco): si movió el editor, use la carpeta donde está ahora.
+- **Dónde guardarlo**: en la **misma carpeta que `editor.html`** (`editor\`) o en `planos\`.
+  Las rutas del plano (`formato`, `manifiesto`, notas) son relativas a la carpeta del editor, y
+  `planos\` está al mismo nivel, así que el plano sirve igual en las dos. La pantalla muestra la
+  carpeta en la que se generó el editor; es un dato informativo (desde una página no se puede
+  saber la ruta real del disco): si movió el editor, use la carpeta donde está ahora.
+- **Componer**: arrastre el `plano.json` sobre **`Componer.bat`** (o doble clic y arrastre la
+  ruta a la ventana). Usa el formato de `componedor.json`, deja el PDF en
+  `resultados\<nombre del plano>.pdf` y lo abre; si hay errores o advertencias, los muestra y
+  espera una tecla. Desde la consola:
+  `python -m componedor.cli componer planos\plano.json --config componedor.json --sobrescribir`.
+- **Firmas**: «Cargar firma…» pide una carpeta; elija **`Componedor\firmas`**. `componer` solo
+  busca ahí (si elige otra, la firma queda donde `componer` no la encuentra).
 - **Abrir plano.json** carga un plano guardado. Debe ser versión 1 o 2 y cada manifiesto debe
   estar en el catálogo del editor; si no, un mensaje explica qué falla y no se carga nada. Un
   detalle con `centrar: true` se coloca centrado (igual que `componer`); uno que se sale del

@@ -1,14 +1,16 @@
 # Datos del editor de planos (`editor_datos.json`, versión 1)
 
 El comando `preparar-editor` deja en una carpeta todo lo que necesita el editor HTML de
-planos (subfase 3.3) para mostrar la hoja A1 completa y dejar arrastrar los detalles:
+planos (subfase 3.3) para mostrar la hoja A1 completa y dejar arrastrar los detalles. El
+comando `editor` arma lo mismo en una carpeta temporal, lo incrusta en `editor.html` y no deja
+nada de esto al lado: `preparar-editor` sirve para revisar estos archivos por separado.
 
 ```powershell
-python -m componedor.cli preparar-editor data/input --formato formatos/A1_ERCO.json --salida data/editor [--sobrescribir]
+python -m componedor.cli preparar-editor data/input --formato formatos/A1_ERCO.json --salida resultados/datos_editor [--sobrescribir]
 ```
 
 ```
-data/editor/
+resultados/datos_editor/
   editor_datos.json      estructura de abajo
   plantilla.png          la hoja con el rótulo, SIN detalles y SIN la rosa de los vientos
                          (lado mayor: 1600 px)

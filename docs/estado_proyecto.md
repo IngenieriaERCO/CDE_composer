@@ -601,7 +601,7 @@ con que se generó; los paquetes antiguos con fondo siguen tapando lo que queda 
 
 ## Fase 4 — Rótulo con datos (rama `fase-4`, en curso)
 
-### Subfase 4.1 — Rótulo en blanco v2, campos de texto y rosa movible ✅ (2026-11-06, sin commit)
+### Subfase 4.1 — Rótulo en blanco v2, campos de texto y rosa movible ✅ (2026-11-06, commit 067cad0)
 
 **Qué se hizo**
 - **Plantilla v2**: `A1_ERCO.json` apunta a `plantillas/rotulo_A1_ERCO_v2.pdf` (reemplaza a
@@ -704,7 +704,7 @@ PDF).
 - La ruta de Arial es la de Windows (`C:/Windows/Fonts/arial.ttf`); en otro equipo se
   cambia en el formato.
 
-### Subfase 4.2a — Notas del rótulo y HOJA / DE alineados ✅ (2026-11-09, sin commit)
+### Subfase 4.2a — Notas del rótulo y HOJA / DE alineados ✅ (2026-11-09, commit 64c27f0)
 
 **Qué se hizo**
 - **Esquema** (`rotulo_formato.py`, cambio aditivo, la sección sigue en versión 1): tipo de
@@ -750,7 +750,7 @@ líneas a 1,8 mm, sin advertencias.
 
 **Pendiente**: 4.2b, convenciones (símbolos). El editor todavía no edita las notas.
 
-### Subfase 4.2b — Convenciones (biblioteca de símbolos vectoriales) ✅ (2026-11-09, sin commit)
+### Subfase 4.2b — Convenciones (biblioteca de símbolos vectoriales) ✅ (2026-11-09, commit 955cf08)
 
 **Qué se hizo**
 - **Esquema** (`rotulo_formato.py`, aditivo): tipo `"convenciones"` con la rejilla
@@ -813,7 +813,7 @@ reducido, sin advertencias; la hoja sigue con 1 sola imagen (el logo).
   leyenda: otro `extraer-simbolos` con su índice).
 - El editor todavía no edita notas ni convenciones.
 
-### Subfase 4.2c — Viñetas en las notas y opacidad por símbolo ✅ (2026-11-09, sin commit)
+### Subfase 4.2c — Viñetas en las notas y opacidad por símbolo ✅ (2026-11-09, commit 1b31025)
 
 **Qué se hizo**
 - **Viñetas** (`notas.py`): en los .txt, una línea que empieza con `- ` es una viñeta de la
@@ -848,7 +848,7 @@ es un dato del resultado, no se recalcula).
 con el mismo naranja (1,0; 0,498; 0) y opacidad 0,5, vector; la hoja sigue con una sola
 imagen (el logo).
 
-### Subfase 4.2d — Firma con imagen en `componer` ✅ (2026-11-09, sin commit)
+### Subfase 4.2d — Firma con imagen en `componer` ✅ (2026-11-09, commit a21ab27)
 
 Sin editor todavía: pegar, recortar y limpiar la firma irá en la 4.3b.
 
@@ -891,7 +891,7 @@ con máscara; la hoja tiene 3 imágenes (logo + 2 firmas).
 **Pendiente**: el editor (pegar, recortar y limpiar el fondo: 4.3b); `proyecto.json` con el
 registro de personas; con Alan: en qué emisiones va la firma y la autorización de cada persona.
 
-### Subfase 4.2e — Firma con imagen más grande (caja ampliada) ✅ (2026-11-09, sin commit)
+### Subfase 4.2e — Firma con imagen más grande (caja ampliada) ✅ (2026-11-09, commit 7a73381)
 
 **Qué se hizo** (sin tocar la plantilla)
 - **Formato** (aditivo): `"alto_max_mm"` en la columna `firma` (A1 ERCO: 5,0 tras el ajuste;
@@ -928,7 +928,7 @@ resumen.
 
 **Pendiente**: decidir con Alan si el cruce de 1,35 mm entre DIBUJÓ y DISEÑÓ es aceptable.
 
-### Subfase 4.2f — Firmas por persona ✅ (2026-11-09, sin commit)
+### Subfase 4.2f — Firmas por persona ✅ (2026-11-09, commit 3d325b3)
 
 **Qué se hizo**
 - **Una carpeta por persona** (`firmas.py`): `{"imagen": "<persona>"}` → `<carpeta>/<persona>/
@@ -1158,7 +1158,7 @@ y los ajustes).
 **Pendiente** (al cerrar la 4.3c): 4.3b2 (firma en imagen: pegar, recortar, limpiar), 4.3d
 (convenciones), 4.3e/f (maquetación en JavaScript y vista previa).
 
-### Subfase 4.3d — Editor: convenciones ✅ (2026-11-10, sin commit)
+### Subfase 4.3d — Editor: convenciones ✅ (2026-11-10, commit d032e3b)
 
 **Qué se hizo**
 - **Panel «Convenciones»** (`editor_panel_convenciones.js`, solo pantalla; reglas en
@@ -1282,7 +1282,7 @@ desde archivos, formularios y rótulo (ajustadas: buscan el archivo de una perso
 
 **Cierre de la 4.3b2**: commit **5beb494** en `fase-4`; **742 pruebas**, todas pasan.
 
-### Subfase 4.3e — Editor: avisos «no cabe / se reducirá» ✅ (2026-11-10, sin commit)
+### Subfase 4.3e — Editor: avisos «no cabe / se reducirá» ✅ (2026-11-10, commit f64977a)
 
 El editor **mide** cada texto del rótulo como `componer` y avisa en vivo, junto al campo, con
 los mismos textos. Sigue siendo una ayuda: `componer` vuelve a maquetar y validar todo.
@@ -1365,7 +1365,7 @@ cambian.
 4.3c, y `carpeta_editor`), que incluyen la carpeta de usuario de Windows. No es de esta
 subfase; queda anotado por si se comparte un editor fuera del equipo.
 
-### Subfase 4.3f — Editor: vista previa dibujada en el lienzo ✅ (2026-11-10, sin commit)
+### Subfase 4.3f — Editor: vista previa dibujada en el lienzo ✅ (2026-11-10, commit e597ebc)
 
 Con la casilla **«Vista previa del rótulo»** (barra de arriba, encendida al abrir) el lienzo
 dibuja en su sitio lo que escribirá `componer`, con las MISMAS posiciones y alturas. Sigue
@@ -1452,10 +1452,66 @@ vector (SVG 120 KB, 160 KB en base64, en lugar del PNG de 42 KB en base64) y +30
 son las del editor antes de redondearlas a 0,01 mm al guardar (una etiqueta puede quedar
 ≤ 0,005 mm corrida respecto del PDF).
 
-### Pendiente en la Fase 4 (al 2026-11-10)
+### Orden del proyecto ✅ (2026-11-11, commit a99216d)
 
-- **4.4 — Contenido del área de dibujo y localización**: tablas de cantidades de movimiento de
-  tierras, escala de colores (cortes y rellenos) e imagen de localización en su recuadro.
+No es una subfase: ordena carpetas y accesos directos para el uso diario.
+
+**Qué se hizo**
+- **Carpetas en la raíz**: `planos/` (los plano.json del usuario), `editor/` (solo
+  `editor.html`), `resultados/` (los PDF), `firmas/<persona>/` y `notas/<grupo>/`. Todas fuera de
+  git (`.gitignore` con «/» al inicio, para no ignorar `src/componedor/editor/`). `data/` queda
+  con `input/` (paquetes de prueba del exportador), `pruebas/` (input_ejemplo, input_sinfondo,
+  input_reales y 3 planos de prueba), `verificacion/` (antes `verificacion_editor/`; scripts y
+  capturas, sin los perfiles de Edge) y `proyecto_ejemplo.json`. Se borraron los 7 editores
+  viejos `data/editor*`, `data/output` (lo reemplaza `resultados/`), `data/notas` y
+  `data/notas_tipicas` (ahora `notas/`), las 12 carpetas `perfil_edge` (~1,25 GB) y una firma
+  duplicada; `data/` pasó de 1,47 GB a 13 MB.
+- **`componedor.json`** (nuevo, versionado) y `configuracion.py`: `formato` general, sección
+  `editor` (paquetes, salida, notas, firmas, proyecto) y sección `componer` (resultados). Rutas
+  relativas al archivo; clave desconocida o ruta inexistente es error, con todos los problemas
+  juntos.
+- **`editor --config componedor.json`**: todas las rutas del archivo (no se mezclan con las de la
+  línea de comandos). **`componer --config`**: usa el formato de la configuración (avisa si el
+  plano indicaba otro) y deja el PDF en `resultados/<nombre del plano>.pdf`.
+  **`componer --codigo-avisos`**: código 3 si el PDF salió con advertencias.
+- **`Abrir editor.bat`** y **`Componer.bat`** (CRLF; `*.bat text eol=crlf` en `.gitattributes`):
+  generan y abren el editor / componen el plano arrastrado (o el que se pide con doble clic), lo
+  abren y, con errores o advertencias, esperan una tecla. Usan `.venv\Scripts\python.exe` o, si
+  no está, el `python` del sistema (con `PYTHONPATH=src`).
+- **Firmas solo en `firmas/`**: `A1_ERCO.json` → `"carpeta_firmas": ["../firmas"]` (se quitó
+  `../data/firmas`); textos del diálogo «Cargar firma…» al día.
+- **`editor/` sin subproductos**: `generar_editor` arma datos, plantilla (PNG y SVG), rosa,
+  miniaturas y símbolos en una carpeta temporal, los incrusta y deja solo `editor.html`; al
+  regenerar quita los subproductos de versiones anteriores por su nombre exacto (nunca un
+  plano.json). `preparar-editor` los sigue dejando para revisarlos. `componer` no lee ninguno.
+- Los planos del usuario (`PRUEBAFROTULO`, `plano_FIRMA2`, `plano_firma`) pasaron a `planos/` con
+  las rutas corregidas; en `plano_firma`, APROBÓ usa ahora «Ficticia Gómez» (la persona
+  «Ficticia Prueba Editor» la había creado y borrado `verificar_firma.mjs`).
+
+**Verificación**
+- Cada plano movido se compuso antes y después del cambio: textos con posición, trazos,
+  imágenes (SHA-256) y página a 150 ppp píxel a píxel, **iguales** (también los 3 planos de
+  `data/pruebas/planos`; `ejemplo_rotulo_v2_no_cabe` da el mismo error de siempre). Los 3 planos
+  de `planos/` se componen con `Componer.bat` (`plano_firma` con 1 advertencia: firmas de DIBUJÓ
+  y DISEÑÓ montadas 1,4 mm).
+- `editor.html` generado sin subproductos: **idéntico byte a byte** al anterior; abierto en Edge.
+
+**Pruebas**: **849**, todas pasan (27 nuevas desde la 4.3f): `test_configuracion.py`
+(configuración, `editor --config`, `componer --config` y `--codigo-avisos`, los dos `.bat`) y
+`test_editor_html.py` (solo queda editor.html, rutas relativas a la carpeta del editor, limpieza
+de subproductos viejos, `preparar_editor` en otra carpeta).
+
+**Rutas en las secciones anteriores**: los textos de las subfases citan rutas de entonces
+(`data/editor_rotulo`, `data/output/...`, `data/verificacion_editor/...`, `data/notas`). Hoy:
+los scripts y capturas están en `data/verificacion/`, los paquetes de prueba en `data/pruebas/` y
+lo demás se borró (se regenera con los comandos). Los scripts `.mjs` conservan sus rutas viejas
+(son registro; para volver a correrlos hay que actualizarlas).
+
+### Pendiente en la Fase 4 (al 2026-11-11)
+
+- **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de
+  movimiento de tierras, escala de colores de cortes y rellenos, imagen de localización en su
+  recuadro) queda como referencia hasta la nueva definición.
 
 ### Preguntas abiertas para Alan
 
@@ -1465,20 +1521,24 @@ son las del editor antes de redondearlas a 0,01 mm al guardar (una etiqueta pued
    eso.
 2. **Firma montada sobre la fila de abajo.** Con `alto_max_mm` = 5,0 la firma de DIBUJÓ (fila de
    4,5 mm, Y 39,0–43,5) baja **1,1 mm** sobre la fila DISEÑÓ (medido en
-   `plano_prueba_firma_luis.pdf`; no hay aviso porque esa fila no tiene firma). ¿Es aceptable,
+   `plano_prueba_firma_luis.pdf`, ya borrado con `data/output`; no hay aviso porque esa fila no
+   tiene firma). Cuando las dos filas tienen firma sí hay aviso: `planos/plano_firma.json`
+   (se regenera con `Componer.bat`) da «firmas de 'dibujo' y 'diseno' montadas, 15,0 × 1,4 mm».
+   ¿Es aceptable,
    o se alargan las filas de la tabla de firmas en la plantilla (~7 mm cada una)? Alternativa
    sin tocar la plantilla: bajar `alto_max_mm` a ~3,3 mm (la firma cabe en su fila, más chica).
 3. **¿Cuándo se monta el remoto de GitHub?** El repositorio no tiene remoto; `main` está en la
-   Fase 2 y las ramas `fase-3` (4 commits) y `fase-4` (16 commits, incluye los de la Fase 3)
-   no están integradas en `main`. Falta decidir el remoto, quién revisa y cómo se integran.
+   Fase 2 y las ramas `fase-3` (4 commits) y `fase-4` (21 commits al 2026-11-11, incluye los de
+   la Fase 3) no están integradas en `main`. Falta decidir el remoto, quién revisa y cómo se integran.
 4. **Firma: ¿nombre completo o iniciales?** Qué va en la columna FIRMA cuando no hay imagen
    (iniciales, rúbrica escrita) y cómo se escribe el NOMBRE en las firmas (completo, con
    segundo apellido, con cargo en segunda línea como REVISÓ).
 5. **Versionado al subir el repositorio**: qué entra y qué no. Hoy están **fuera de git**
    (`.gitignore`): `plantillas/*.pdf` (rótulo de ERCO), la biblioteca de símbolos
    `simbolos/*.pdf` (`simbolos/indice.json` sí está versionado), las firmas (`firmas/`, datos
-   personales) y todo `data/`, donde están las notas típicas de ejemplo (.txt). ¿Cuáles deben
-   entrar, y dónde viven los que no (¿SharePoint?, ¿carpeta compartida?)?
+   personales), las notas típicas (`notas/`; vuelven a git si se decide), los planos
+   (`planos/`), el editor generado (`editor/`), los PDF (`resultados/`) y todo `data/`. ¿Cuáles
+   deben entrar, y dónde viven los que no (¿SharePoint?, ¿carpeta compartida?)?
 
 ## Pendientes (después de las Fases 1 y 2)
 

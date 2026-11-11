@@ -12,6 +12,57 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
+## Uso diario: dos accesos directos (doble clic)
+
+1. **`Abrir editor.bat`**: genera el editor con las rutas de `componedor.json` y lo abre en el
+   navegador. Arme el plano y guarde el `plano.json` en `editor\` (al lado de `editor.html`) o en
+   `planos\`: las dos carpetas están al mismo nivel, así que el plano funciona en cualquiera.
+2. **`Componer.bat`**: arrastre un `plano.json` sobre él (o haga doble clic y arrastre la ruta a
+   la ventana). Compone con el formato de `componedor.json`, deja el PDF en
+   `resultados\<nombre del plano>.pdf` y lo abre. Si hay errores o advertencias, los muestra y
+   espera una tecla (con error no hay PDF).
+
+Los dos usan `.venv\Scripts\python.exe` si existe; si no, el `python` del sistema. Regenerar el
+editor nunca borra los `plano.json` que usted guardó.
+
+## Carpetas de trabajo
+
+| Carpeta | Qué guarda | ¿Va a git? |
+|---|---|---|
+| `planos/` | sus `plano.json` | no (datos de ERCO) |
+| `editor/` | `editor.html`, el único archivo que genera el editor (todo va incrustado dentro) | no (se regenera) |
+| `resultados/` | los PDF que deja `Componer.bat` | no |
+| `firmas/<persona>/firma.png` | las firmas en imagen, una carpeta por persona | no (datos personales) |
+| `notas/<grupo>/*.txt` | el catálogo de notas típicas (cada subcarpeta es un grupo) | no, hasta que se decida |
+| `data/input` | paquetes del Exportador Vectorial (PDF + manifiesto) | no |
+| `data/pruebas` | paquetes y planos de prueba que se conservan (una prueba lee `planos/ejemplo_rotulo_v2.json`) | no |
+| `data/verificacion` | scripts y capturas de las verificaciones del editor en Edge | no |
+
+- `data/input`: los paquetes del Exportador Vectorial (PDF + manifiesto) que el editor ofrece
+  para armar el plano. Hoy son de prueba; en un proyecto real se cambia la ruta en
+  `componedor.json` (`editor.paquetes`).
+- `resultados/`: ahí deja `Componer.bat` el PDF de cada plano (`resultados\<nombre del plano>.pdf`).
+- `data/output` ya no se usa para los planos: lo reemplaza `resultados/`.
+
+## Configuración (`componedor.json`)
+
+Un solo archivo en la raíz con todas las rutas, para generar siempre el mismo editor y
+componer siempre con el mismo formato. Las rutas son relativas a la carpeta del archivo:
+
+```json
+{
+  "version": 1,
+  "formato": "formatos/A1_ERCO.json",
+  "editor": {"paquetes": "data/input", "salida": "editor", "notas": "notas",
+             "firmas": "firmas", "proyecto": null},
+  "componer": {"resultados": "resultados"}
+}
+```
+
+`formato`, `editor.paquetes`, `editor.salida` y `componer.resultados` son obligatorios;
+`notas`, `firmas` y `proyecto` son opcionales (`null` = no se usa). Una clave mal escrita o una
+ruta que no existe es error, y se listan todos los problemas juntos.
+
 ## Comandos
 
 Todos se ejecutan como `python -m componedor.cli <comando> ...`. Las medidas van en mm de
@@ -27,27 +78,29 @@ papel (origen en la esquina inferior izquierda de la hoja, Y hacia arriba).
 | `paquetes` | Localiza los paquetes del exportador en una carpeta y dice si están completos; con `--verificar`, agrega integridad (bytes, SHA-256, que abra, una página) y coherencia (geometría del manifiesto contra el PDF, escala física garantizada). |
 | `verificar-paquete` | Muestra todas las comprobaciones de integridad y coherencia de un paquete y «RESULTADO: PASA / FALLA». |
 | `inventario` | Lista los detalles de una carpeta: aceptados o rechazados (con motivos), tamaños, si caben en la zona y escala sugerida. |
-| `componer` | Compone un plano con varios detalles a partir de un `plano.json`: detalles, textos del rótulo, etiquetas «ESC: 1:N» y rosa de los vientos (ver [docs/formato_plano.md](docs/formato_plano.md)). |
-| `editor` | Genera `editor.html`, un editor visual de planos de un solo archivo (arrastrar detalles y la rosa, y guardar el plano.json). Ver [docs/editor.md](docs/editor.md). |
-| `preparar-editor` | Prepara `editor_datos.json`, `plantilla.png`, `plantilla.svg`, `rosa.png` y miniaturas para el editor de planos (ver [docs/formato_editor_datos.md](docs/formato_editor_datos.md)). |
+| `componer` | Compone un plano con varios detalles a partir de un `plano.json`: detalles, textos del rótulo, etiquetas «ESC: 1:N» y rosa de los vientos (ver [docs/formato_plano.md](docs/formato_plano.md)). Con `--config componedor.json`, usa ese formato y deja el PDF en `resultados/`; con `--codigo-avisos`, termina con código 3 si hubo advertencias. |
+| `editor` | Genera `editor.html`, un editor visual de planos de un solo archivo (arrastrar detalles y la rosa, y guardar el plano.json). Con `--config componedor.json` toma todas las rutas del archivo. Ver [docs/editor.md](docs/editor.md). |
+| `preparar-editor` | Deja por separado los datos e imágenes que el editor lleva incrustados (`editor_datos.json`, `plantilla.png`, `plantilla.svg`, `rosa.png`, miniaturas y símbolos), para revisarlos (ver [docs/formato_editor_datos.md](docs/formato_editor_datos.md)). |
 | `detectar-elementos` | Mide los elementos fijos de la plantilla dentro del área de dibujo (la rosa de los vientos) y genera un PDF de verificación. |
 | `extraer-simbolos` | Arma la biblioteca de símbolos de CONVENCIONES (vector) desde la leyenda de un plano real: `simbolos/convenciones_erco.pdf` (no se versiona) e `indice.json`. |
 
 Ejemplos rápidos (uno por comando):
 
 ```powershell
-python -m componedor.cli hoja-vacia --orientacion horizontal --salida data/output/a1_horizontal.pdf
-python -m componedor.cli hoja-formato --formato formatos/A1_ERCO.json --salida data/output/a1_erco.pdf --guias
-python -m componedor.cli colocar --formato formatos/A1_ERCO.json --detalle data/input/detalle.pdf --salida data/output/a1_detalle.pdf --centrar
-python -m componedor.cli referencia --formato formatos/A1_ERCO.json --salida data/output/referencia_A1.pdf
+python -m componedor.cli hoja-vacia --orientacion horizontal --salida resultados/a1_horizontal.pdf
+python -m componedor.cli hoja-formato --formato formatos/A1_ERCO.json --salida resultados/a1_erco.pdf --guias
+python -m componedor.cli colocar --formato formatos/A1_ERCO.json --detalle data/input/detalle.pdf --salida resultados/a1_detalle.pdf --centrar
+python -m componedor.cli referencia --formato formatos/A1_ERCO.json --salida resultados/referencia_A1.pdf
 python -m componedor.cli leer-manifiesto data/input/detalle.manifest.json
 python -m componedor.cli paquetes data/input --recursivo --verificar
 python -m componedor.cli verificar-paquete data/input/detalle.manifest.json
 python -m componedor.cli inventario data/input --formato formatos/A1_ERCO.json
-python -m componedor.cli componer data/planos/mi_plano.json --salida data/output/mi_plano.pdf
-python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --salida data/editor
-python -m componedor.cli preparar-editor data/input --formato formatos/A1_ERCO.json --salida data/editor
-python -m componedor.cli detectar-elementos --formato formatos/A1_ERCO.json --salida data/output/elementos_plantilla.pdf
+python -m componedor.cli componer planos/mi_plano.json --config componedor.json --sobrescribir
+python -m componedor.cli componer planos/mi_plano.json --salida resultados/mi_plano.pdf
+python -m componedor.cli editor --config componedor.json --sobrescribir
+python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --salida editor
+python -m componedor.cli preparar-editor data/input --formato formatos/A1_ERCO.json --salida resultados/datos_editor
+python -m componedor.cli detectar-elementos --formato formatos/A1_ERCO.json --salida resultados/elementos_plantilla.pdf
 python -m componedor.cli extraer-simbolos "C:\...\plano_con_leyenda.pdf" --formato formatos/A1_ERCO.json
 ```
 
@@ -59,14 +112,14 @@ El contrato del paquete del exportador (PDF + TXT + manifiesto) está en
 Crear una hoja A1 vacía (horizontal 841 x 594 mm o vertical 594 x 841 mm):
 
 ```powershell
-python -m componedor.cli hoja-vacia --orientacion horizontal --salida data/output/a1_horizontal.pdf
+python -m componedor.cli hoja-vacia --orientacion horizontal --salida resultados/a1_horizontal.pdf
 ```
 
 Crear una hoja con el marco del formato A1 ERCO (y, con `--guias`, las zonas como
 líneas discontinuas con su nombre). Al final imprime una tabla con cada zona y su tamaño en mm:
 
 ```powershell
-python -m componedor.cli hoja-formato --formato formatos/A1_ERCO.json --salida data/output/a1_erco.pdf --guias
+python -m componedor.cli hoja-formato --formato formatos/A1_ERCO.json --salida resultados/a1_erco.pdf --guias
 ```
 
 Colocar un detalle PDF del exportador (ya viene a escala física, se coloca **sin escalar**:
@@ -74,8 +127,8 @@ Colocar un detalle PDF del exportador (ya viene a escala física, se coloca **si
 izquierda del detalle, en mm de papel) o centrado:
 
 ```powershell
-python -m componedor.cli colocar --formato formatos/A1_ERCO.json --detalle data/input/detalle.pdf --salida data/output/a1_detalle.pdf --posicion 100 200
-python -m componedor.cli colocar --formato formatos/A1_ERCO.json --detalle data/input/detalle.pdf --salida data/output/a1_detalle.pdf --centrar --zona area_dibujo --guias
+python -m componedor.cli colocar --formato formatos/A1_ERCO.json --detalle data/input/detalle.pdf --salida resultados/a1_detalle.pdf --posicion 100 200
+python -m componedor.cli colocar --formato formatos/A1_ERCO.json --detalle data/input/detalle.pdf --salida resultados/a1_detalle.pdf --centrar --zona area_dibujo --guias
 ```
 
 El detalle entra como vector (Form XObject). Se usa su tamaño visible (CropBox y /Rotate).
@@ -85,7 +138,7 @@ Con el manifiesto del exportador se puede anclar un punto CAD a un punto del pap
 ejemplo, que una esquina o un eje del dibujo caiga en una coordenada exacta de la hoja):
 
 ```powershell
-python -m componedor.cli colocar --formato formatos/A1_ERCO.json --detalle data/input/perfil_k0010.pdf --manifiesto data/input/perfil_k0010.manifest.json --salida data/output/a1_ancla.pdf --ancla-cad 1000000.00 2000000.00 --ancla-papel 40 300
+python -m componedor.cli colocar --formato formatos/A1_ERCO.json --detalle data/input/perfil_k0010.pdf --manifiesto data/input/perfil_k0010.manifest.json --salida resultados/a1_ancla.pdf --ancla-cad 1000000.00 2000000.00 --ancla-papel 40 300
 ```
 
 `--ancla-cad X Y` (unidades del dibujo) y `--ancla-papel X Y` (mm de papel) van juntos,
@@ -120,9 +173,9 @@ texto. Escribe un TXT con el mismo nombre del PDF y termina con código 0 si tod
 si algo falla.
 
 ```powershell
-python -m componedor.cli referencia --formato formatos/A1_ERCO.json --salida data/output/referencia_A1.pdf
-python -m componedor.cli referencia --formato formatos/A1_ERCO.json --salida data/output/referencia_A1.pdf --sin-plantilla --sobrescribir
-python -m componedor.cli referencia --formato formatos/A1_ERCO.json --salida data/output/referencia_A1.pdf --detalle data/input/detalle.pdf --manifiesto data/input/detalle.manifest.json --sobrescribir
+python -m componedor.cli referencia --formato formatos/A1_ERCO.json --salida resultados/referencia_A1.pdf
+python -m componedor.cli referencia --formato formatos/A1_ERCO.json --salida resultados/referencia_A1.pdf --sin-plantilla --sobrescribir
+python -m componedor.cli referencia --formato formatos/A1_ERCO.json --salida resultados/referencia_A1.pdf --detalle data/input/detalle.pdf --manifiesto data/input/detalle.manifest.json --sobrescribir
 ```
 
 Si el PDF de la plantilla no existe, avisa y sigue sin ella. Con `--detalle` y
@@ -164,8 +217,14 @@ rutas son relativas a la carpeta del plano.json. Formato completo y reglas en
 [docs/formato_plano.md](docs/formato_plano.md).
 
 ```powershell
-python -m componedor.cli componer data/planos/mi_plano.json --salida data/output/mi_plano.pdf --sobrescribir
+python -m componedor.cli componer planos/mi_plano.json --config componedor.json --sobrescribir
+python -m componedor.cli componer planos/mi_plano.json --salida resultados/mi_plano.pdf --sobrescribir
 ```
+
+Con `--config` se usa el formato de `componedor.json` aunque el plano indique otro (lo avisa) y el
+PDF va a `<resultados>/<nombre del plano>.pdf`; no se combina con `--salida`. Las demás rutas del
+plano (paquetes, notas) siguen siendo relativas al plano.json, esté donde esté. Es lo que hace
+`Componer.bat`.
 
 Cada detalle pasa por el importador; si alguno se rechaza, no se genera el PDF. Cada
 página debe quedar dentro del área de dibujo (el rótulo es inamovible). Los traslapes entre
@@ -187,15 +246,19 @@ rosa de los vientos se puede mover u ocultar con `rosa_vientos`. La versión 1 s
 
 ### Editor visual de planos (`editor`)
 
-La forma recomendada de armar un plano: genere el editor, ábralo con doble clic, arrastre
-los detalles dentro del área de dibujo (el rótulo está bloqueado), guarde el `plano.json` en
-la misma carpeta que `editor.html` y componga el PDF con el comando que el editor le muestra.
+La forma recomendada de armar un plano: doble clic en `Abrir editor.bat`, arrastre los
+detalles dentro del área de dibujo (el rótulo está bloqueado), guarde el `plano.json` en
+`editor\` o `planos\` y arrástrelo sobre `Componer.bat`. Lo mismo desde la consola:
 
 ```powershell
-python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --salida data/editor --notas "C:\...\notas_tipicas" --firmas firmas --proyecto "C:\...\proyecto.json"
-# ... abrir data/editor/editor.html, armar el plano y guardar data/editor/plano.json ...
-python -m componedor.cli componer data/editor/plano.json --salida data/editor/plano.pdf
+python -m componedor.cli editor --config componedor.json --sobrescribir
+# ... abrir editor/editor.html, armar el plano y guardar editor/plano.json ...
+python -m componedor.cli componer editor/plano.json --config componedor.json --sobrescribir
 ```
+
+Sin `componedor.json`, las rutas se dan a mano (no se mezclan con `--config`):
+`editor data/input --formato formatos/A1_ERCO.json --salida editor --notas notas --firmas firmas
+--proyecto proyecto.json`.
 
 `editor.html` es un solo archivo (sin servidor, sin internet, sin librerías externas). Muestra
 en vivo las mismas advertencias que `componer`. Con los paquetes nuevos del exportador (sin
@@ -237,8 +300,8 @@ en `elementos_plantilla` del formato (rectángulo en mm de papel, medido con
 página (ADVERTENCIA FUERTE) o si su dibujo se monta encima (ADVERTENCIA MUY FUERTE), con la
 rosa en su posición final. No es error.
 
-`preparar-editor` deja en una carpeta los datos y las imágenes que usará el editor HTML
-de planos: zonas (solo el área de dibujo es editable), elementos fijos, detalles aceptados
+`preparar-editor` deja en una carpeta los datos y las imágenes que el editor HTML lleva
+incrustados (el comando `editor` ya no los deja junto a `editor.html`): zonas (solo el área de dibujo es editable), elementos fijos, detalles aceptados
 con miniatura y rechazados con sus motivos. Estructura en
 [docs/formato_editor_datos.md](docs/formato_editor_datos.md).
 

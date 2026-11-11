@@ -5,8 +5,13 @@ se escribe en el rótulo** y **dónde va la rosa de los vientos**. Lo lee el com
 `componer`:
 
 ```powershell
-python -m componedor.cli componer data/planos/mi_plano.json --salida data/output/mi_plano.pdf [--sobrescribir] [--guias]
+python -m componedor.cli componer planos/mi_plano.json --salida resultados/mi_plano.pdf [--sobrescribir] [--guias]
+python -m componedor.cli componer planos/mi_plano.json --config componedor.json [--sobrescribir] [--codigo-avisos]
 ```
+
+Con `--config`, el formato es el de `componedor.json` (aunque el plano indique otro; se avisa)
+y el PDF va a `resultados/<nombre del plano>.pdf`; es lo que hace `Componer.bat`. Las demás rutas
+siguen siendo relativas a la carpeta del plano.json.
 
 El editor HTML (`editor.html`) lo escribe arrastrando y soltando, pero el componedor
 **siempre** lo revalida todo: el editor nunca es la fuente de la verdad.
@@ -17,7 +22,7 @@ El editor HTML (`editor.html`) lo escribe arrastrando y soltando, pero el compon
 
 ## Ejemplo (versión 2)
 
-Archivo `data/planos/mi_plano.json`:
+Archivo `planos/mi_plano.json`:
 
 ```json
 {
@@ -158,7 +163,7 @@ son angostas (unos 10 mm útiles): use iniciales.
 ```
 
 - **Una carpeta por persona** (subfase 4.2f) dentro de alguna de las carpetas de
-  `rotulo.carpeta_firmas` del formato (A1 ERCO: `firmas/` y `data/firmas/`, las dos **fuera de
+  `rotulo.carpeta_firmas` del formato (A1 ERCO: solo `firmas/` en la raíz de Componedor, **fuera de
   git**):
 
   ```text
