@@ -100,14 +100,45 @@ localización automática (QGIS), estilos de impresión CTB, Microsoft Graph/Sha
 
 ```
 Componedor/   (carpeta raíz, en Documents)
-  src/componedor/        # paquete
-  tests/                 # pruebas pytest
-  formatos/              # definiciones de hoja (A1_ERCO.json) — desde la subfase 1.2
-  plantillas/            # PDF del rótulo limpio — cuando se incorpore
-  data/input/            # paquetes del exportador (no se versiona)
-  data/output/           # resultados (no se versiona)
-  docs/estado_proyecto.md
-  CLAUDE.md  README.md  pyproject.toml  .gitignore
+  componedor.json        # configuración única: formato, sección editor y sección componer   [git]
+  Abrir editor.bat       # doble clic: genera editor/ con componedor.json y lo abre (CRLF)  [git]
+  Componer.bat           # arrastrar un plano.json: PDF en resultados\<plano>.pdf (CRLF)     [git]
+  src/componedor/        # paquete (src/componedor/editor/: HTML, CSS y JS del editor)        [git]
+  tests/                 # pruebas pytest                                                     [git]
+  formatos/              # definiciones de hoja (A1_ERCO.json)                                [git]
+  simbolos/              # indice.json [git]; convenciones_erco.pdf (de ERCO)                 [no]
+  plantillas/            # PDF del rótulo de ERCO                                             [no]
+  docs/                  # guías, contrato del paquete y estado_proyecto.md                   [git]
+  firmas/<persona>/      # firma.png por persona (datos personales)                           [no]
+  notas/<grupo>/*.txt    # catálogo de notas típicas (vuelve a git si Alan lo decide)         [no]
+  planos/                # plano.json del usuario                                             [no]
+  editor/                # SOLO editor.html (todo incrustado; se regenera) + planos guardados [no]
+  resultados/            # PDF que deja Componer.bat / componer --config                      [no]
+  data/input/            # paquetes del exportador (hoy de prueba; ruta en componedor.json)   [no]
+  data/pruebas/          # paquetes y planos de prueba (una prueba lee planos/ejemplo_rotulo_v2.json) [no]
+  data/verificacion/     # scripts .mjs y capturas de las verificaciones en Edge              [no]
+  _para_borrar/          # lo que se va a eliminar espera aquí la confirmación del usuario    [no]
+  CLAUDE.md  README.md  pyproject.toml  .gitignore  .gitattributes                            [git]
 ```
 
-Ejecución: `python -m componedor.cli <subcomando> ...`
+- `[no]` = en `.gitignore`. Las carpetas de la raíz van con «/» al inicio (`/editor/`, no
+  `editor/`), para no ignorar `src/componedor/editor/`.
+- `data/output/` ya no existe: los PDF van a `resultados/`.
+- Los `.bat` van con CRLF (`*.bat text eol=crlf` en `.gitattributes`); el resto, LF.
+- `editor/` y `planos/` están al mismo nivel: un plano.json sirve igual en cualquiera de las dos
+  (sus rutas son relativas al plano).
+
+Reglas de esta estructura:
+
+- **Commits**: ninguno hasta que el usuario lo diga. Antes de cada commit, revisar con
+  `git status` (también los ignorados) que no entre nada de `data/`, `firmas/`, `notas/`,
+  `planos/`, `editor/`, `resultados/` ni `_para_borrar/`.
+- **Firmas**: las imágenes de `firmas/` **nunca** se incrustan en `editor.html` ni se copian
+  al plano.json. El editor solo recibe los NOMBRES de las personas, y el plano.json solo guarda
+  `{"imagen": "<persona>"}`. La imagen la lee `componer` desde `firmas/` y solo va al PDF.
+  `formatos/A1_ERCO.json` busca firmas únicamente en `../firmas`.
+- **Borrar**: lo que se elimine pasa primero por `_para_borrar/`, y solo se borra de verdad
+  cuando el usuario lo confirma.
+
+Ejecución: `python -m componedor.cli <subcomando> ...`; el uso diario es con los dos `.bat`
+(con `--config componedor.json`).
