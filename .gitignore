@@ -9,3 +9,12 @@ firmas/
 __pycache__/
 *.egg-info/
 .pytest_cache/
+# Notas típicas: fuera de git hasta que Alan decida (pregunta 5 de estado_proyecto.md).
+/notas/
+# Planos del usuario (plano.json y PDF) y editor generado: datos de ERCO, no se versionan.
+/planos/
+/editor/
+# Archivos en espera de borrado definitivo.
+/_para_borrar/
+# PDF que deja Componer.bat (planos de ERCO): no se versionan.
+/resultados/

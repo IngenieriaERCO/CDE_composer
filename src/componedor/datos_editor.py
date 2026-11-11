@@ -159,13 +159,20 @@ def preparar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
                     max_px_miniatura: int = MAX_PX_MINIATURA,
                     carpeta_notas: Path | str | None = None,
                     carpeta_firmas: Path | str | None = None,
-                    ruta_proyecto: Path | str | None = None) -> dict:
-    """Escribe editor_datos.json, plantilla.png y miniaturas/<id>.png en `carpeta_salida`.
+                    ruta_proyecto: Path | str | None = None,
+                    carpeta_archivos: Path | str | None = None) -> dict:
+    """Escribe editor_datos.json, plantilla.png, plantilla.svg, rosa.png, miniaturas/<id>.png y
+    simbolos/<id>.png en `carpeta_archivos` (por defecto, `carpeta_salida`).
 
-    No pisa una carpeta con contenido salvo con `sobrescribir`; en ese caso reemplaza solo
-    lo que genera este comando (y borra las miniaturas viejas). Devuelve los datos escritos.
+    Las rutas de los datos (formato, manifiestos, notas) van siempre relativas a
+    `carpeta_salida`, donde se guardará el plano.json. `generar_editor` pasa una carpeta
+    temporal como `carpeta_archivos`: todo queda incrustado en editor.html y en la carpeta del
+    editor no queda ningún subproducto.
+    No pisa una carpeta de salida con contenido salvo con `sobrescribir`; en ese caso reemplaza
+    solo lo que genera este comando (y borra las miniaturas viejas). Devuelve los datos escritos.
     """
     carpeta_salida = Path(carpeta_salida)
+    archivos = Path(carpeta_archivos) if carpeta_archivos is not None else carpeta_salida
     if carpeta_salida.exists() and not carpeta_salida.is_dir():
         raise FileExistsError(f"'{carpeta_salida}' existe y no es una carpeta.")
     if carpeta_salida.is_dir() and any(carpeta_salida.iterdir()) and not sobrescribir:
@@ -177,19 +184,19 @@ def preparar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
                                              carpeta_notas, carpeta_firmas, ruta_proyecto)
     formato = cargar_formato(ruta_formato)
     if datos["rotulo"] is not None:
-        simbolos, avisos = simbolos_editor(formato.rotulo, carpeta_salida)
+        simbolos, avisos = simbolos_editor(formato.rotulo, archivos)
         datos["rotulo"]["simbolos"] = simbolos
         datos["rotulo"]["avisos"] += avisos
 
-    miniaturas = carpeta_salida / CARPETA_MINIATURAS
+    miniaturas = archivos / CARPETA_MINIATURAS
     miniaturas.mkdir(parents=True, exist_ok=True)
     for vieja in miniaturas.glob("*.png"):
         vieja.unlink()
 
     datos["imagen_plantilla"].update(
-        _png_plantilla(formato, carpeta_salida / ARCHIVO_PLANTILLA, max_px_hoja))
-    datos["imagen_plantilla"]["svg"] = _svg_plantilla(formato, carpeta_salida / ARCHIVO_PLANTILLA_SVG)
-    vieja_rosa = carpeta_salida / ARCHIVO_ROSA
+        _png_plantilla(formato, archivos / ARCHIVO_PLANTILLA, max_px_hoja))
+    datos["imagen_plantilla"]["svg"] = _svg_plantilla(formato, archivos / ARCHIVO_PLANTILLA_SVG)
+    vieja_rosa = archivos / ARCHIVO_ROSA
     if vieja_rosa.exists():
         vieja_rosa.unlink()
     if datos["rosa_vientos"] is not None and datos["rosa_vientos"]["imagen"] is not None:
@@ -197,10 +204,10 @@ def preparar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
     aceptadas = [e for e in entradas if e.estado == ACEPTADO]
     for detalle, entrada in zip(datos["detalles"], aceptadas):
         detalle["miniatura"].update(_png_detalle(
-            entrada.ruta_pdf, carpeta_salida / detalle["miniatura"]["archivo"], max_px_miniatura,
+            entrada.ruta_pdf, archivos / detalle["miniatura"]["archivo"], max_px_miniatura,
             transparente=not detalle["tiene_fondo"]))
 
-    (carpeta_salida / ARCHIVO_DATOS).write_text(
+    (archivos / ARCHIVO_DATOS).write_text(
         json.dumps(datos, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
     return datos
 

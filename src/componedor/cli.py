@@ -3,7 +3,7 @@
 import argparse
 import json
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pymupdf
@@ -16,7 +16,8 @@ from componedor.colocar import DetalleInvalido, abrir_pdf, colocar_detalle, tama
 from componedor.comando_referencia import ejecutar_referencia
 from componedor.componer import ResultadoComposicion, componer_plano
 from componedor.composicion import hoja_base
-from componedor.editor_html import generar_editor
+from componedor.configuracion import ConfigEditor, leer_config_componer, leer_config_editor
+from componedor.editor_html import datos_incrustados, generar_editor
 from componedor.datos_editor import (
     ARCHIVO_DATOS,
     ARCHIVO_PLANTILLA,
@@ -25,7 +26,7 @@ from componedor.datos_editor import (
     preparar_editor,
 )
 from componedor.elementos_plantilla import Candidato, detectar_elementos, pdf_verificacion
-from componedor.plano import leer_plano
+from componedor.plano import Plano, leer_plano
 from componedor.formato import Formato, RectMM, cargar_formato
 from componedor.hoja import ORIENTACIONES, crear_hoja
 from componedor.manifiesto import Manifiesto, leer_manifiesto
@@ -131,6 +132,47 @@ def hoja_con_detalle(ruta_formato: Path, ruta_detalle: Path, salida: Path,
     dibujo = (limites_dibujo_en_papel(manifiesto.pdf.dibujo.limites_pagina_mm, alto, ocupado[:2])
               if manifiesto else None)
     return ResultadoColocar(ocupado, informe, dibujo, coherencia)
+
+
+def opciones_editor(args) -> tuple[ConfigEditor | None, str | None]:
+    """Rutas del subcomando `editor`: del archivo --config o de la línea de comandos, nunca
+    mezcladas. Devuelve (opciones, None) o (None, mensaje de error de uso)."""
+    a_mano = {"carpeta": args.carpeta, "--formato": args.formato, "--salida": args.salida,
+              "--notas": args.notas, "--firmas": args.firmas, "--proyecto": args.proyecto}
+    if args.config is not None:
+        repetidas = [nombre for nombre, valor in a_mano.items() if valor is not None]
+        if repetidas:
+            return None, (f"con --config las rutas salen del archivo; quite {', '.join(repetidas)} "
+                          f"o no use --config.")
+        return leer_config_editor(args.config), None  # ConfigInvalida es ValueError
+    faltan = [n for n in ("carpeta", "--formato", "--salida") if a_mano[n] is None]
+    if faltan:
+        return None, (f"falta {', '.join(faltan)} (o use --config componedor.json).")
+    return ConfigEditor(args.carpeta, args.formato, args.salida, args.notas, args.firmas,
+                        args.proyecto), None
+
+
+CODIGO_AVISOS = 3  # componer --codigo-avisos: PDF generado, con advertencias
+
+
+def opciones_componer(args, plano: Plano) -> tuple[Plano, Path | None, str | None]:
+    """Plano y salida de `componer`. Con --config: el formato del archivo (avisa si el plano
+    indicaba otro) y el PDF en <resultados>/<nombre del plano>.pdf. Sin --config: --salida."""
+    if args.config is None:
+        if args.salida is None:
+            return plano, None, "falta --salida (o use --config componedor.json)."
+        return plano, args.salida, None
+    if args.salida is not None:
+        return plano, None, ("con --config el PDF va a la carpeta de resultados del archivo; "
+                             "quite --salida o no use --config.")
+    config = leer_config_componer(args.config)  # ConfigInvalida es ValueError
+    print(f"Configuración: {args.config.resolve()}")
+    if plano.formato.resolve() != config.formato.resolve():
+        print(f"Aviso: el plano indica el formato '{plano.formato}'; se usa el de la "
+              f"configuración, '{config.formato}'.")
+    config.resultados.mkdir(parents=True, exist_ok=True)
+    return (replace(plano, formato=config.formato),
+            config.resultados / f"{args.plano.stem}.pdf", None)
 
 
 def _validar_opciones_colocar(args) -> str | None:
@@ -622,10 +664,14 @@ def main(argv: list[str] | None = None) -> int:
 
     p_html = sub.add_parser("editor",
                             help="Genera el editor HTML de planos (un solo archivo, sin servidor).")
-    p_html.add_argument("carpeta", type=Path, help="Carpeta con los paquetes del exportador.")
-    p_html.add_argument("--formato", type=Path, required=True,
+    p_html.add_argument("carpeta", type=Path, nargs="?",
+                        help="Carpeta con los paquetes del exportador (sin --config).")
+    p_html.add_argument("--config", type=Path,
+                        help="componedor.json con todas las rutas del editor (paquetes, formato, "
+                             "salida, notas, firmas, proyecto); no se combina con ellas.")
+    p_html.add_argument("--formato", type=Path,
                         help="Formato de hoja (p. ej. formatos/A1_ERCO.json).")
-    p_html.add_argument("--salida", type=Path, required=True,
+    p_html.add_argument("--salida", type=Path,
                         help="Carpeta del editor: editor.html, datos e imágenes (y ahí va el "
                              "plano.json).")
     p_html.add_argument("--notas", type=Path,
@@ -680,11 +726,19 @@ def main(argv: list[str] | None = None) -> int:
     p_comp = sub.add_parser("componer",
                             help="Compone un plano con varios detalles a partir de un plano.json.")
     p_comp.add_argument("plano", type=Path, help="Archivo plano.json (ver docs/formato_plano.md).")
-    p_comp.add_argument("--salida", type=Path, required=True, help="Ruta del PDF a crear.")
+    p_comp.add_argument("--salida", type=Path,
+                        help="Ruta del PDF a crear (sin --config, obligatoria).")
+    p_comp.add_argument("--config", type=Path,
+                        help="componedor.json: compone con SU formato (aunque el plano diga otro) "
+                             "y deja el PDF en <resultados>/<nombre del plano>.pdf; no se combina "
+                             "con --salida.")
     p_comp.add_argument("--sobrescribir", action="store_true",
                         help="Reemplaza el archivo de salida si ya existe.")
     p_comp.add_argument("--guias", action="store_true",
                         help="Dibuja las zonas como guías discontinuas con su nombre.")
+    p_comp.add_argument("--codigo-avisos", action="store_true",
+                        help=f"Termina con código {CODIGO_AVISOS} si el PDF se generó pero con "
+                             f"advertencias (para los accesos directos).")
 
     p_inv = sub.add_parser("inventario",
                            help="Inventario de detalles: aceptados, rechazados y si caben.")
@@ -756,13 +810,20 @@ def main(argv: list[str] | None = None) -> int:
                              for v in verificaciones or [] for r in v)
             return 0 if todos_completos and sin_fallas else 1
         elif args.subcomando == "editor":
-            ruta_html = generar_editor(args.carpeta, args.formato, args.salida, args.sobrescribir,
-                                       carpeta_notas=args.notas, carpeta_firmas=args.firmas,
-                                       ruta_proyecto=args.proyecto)
+            opciones, error = opciones_editor(args)
+            if error:
+                print(f"Error: {error}", file=sys.stderr)
+                return 2
+            if args.config is not None:
+                print(f"Configuración: {args.config.resolve()}")
+            ruta_html = generar_editor(opciones.paquetes, opciones.formato, opciones.salida,
+                                       args.sobrescribir, carpeta_notas=opciones.notas,
+                                       carpeta_firmas=opciones.firmas,
+                                       ruta_proyecto=opciones.proyecto)
             carpeta = ruta_html.parent.resolve()
             print(f"Editor generado: {ruta_html.resolve()} "
                   f"({ruta_html.stat().st_size / 1024:.0f} KB)")
-            datos_html = json.loads((ruta_html.parent / ARCHIVO_DATOS).read_text(encoding="utf-8"))
+            datos_html = datos_incrustados(ruta_html.read_text(encoding="utf-8"))
             for linea in texto_rotulo_editor(datos_html)[1:]:
                 print(linea)
             print("Ábralo con doble clic (Edge o Chrome); no necesita servidor ni internet.")
@@ -787,8 +848,14 @@ def main(argv: list[str] | None = None) -> int:
             print(texto_extraccion(informe))
         elif args.subcomando == "componer":
             plano = leer_plano(args.plano)
-            resultado = componer_plano(plano, args.salida, args.sobrescribir, args.guias)
+            plano, salida, error = opciones_componer(args, plano)
+            if error:
+                print(f"Error: {error}", file=sys.stderr)
+                return 2
+            resultado = componer_plano(plano, salida, args.sobrescribir, args.guias)
             print(texto_composicion(args.plano, resultado))
+            if args.codigo_avisos and resultado.advertencias:
+                return CODIGO_AVISOS
         elif args.subcomando == "inventario":
             formato = (cargar_formato(args.formato, usar_plantilla=False)
                        if args.formato else None)

@@ -288,8 +288,8 @@
       const problema = E.problemaNombre(persona.value);
       errorNombre.textContent = problema;
       persona.classList.toggle("invalido", !!problema && persona.value !== "");
-      donde.textContent = "Se guarda como " + rutaFirma() + " (la carpeta de firmas del formato; A1 ERCO: firmas/ o " +
-        "data/firmas/, fuera de git).";
+      donde.textContent = "Se guarda como " + rutaFirma() + " (la carpeta de firmas del formato; A1 ERCO: " +
+        "Componedor\\firmas\\, fuera de git).";
     }
 
     function nombreValido() {
@@ -336,7 +336,7 @@
         await escritor.close();
         opciones.alUsar(persona.value);
         const nota = carpeta.name.toLowerCase() === "firmas" ? "" : " Ojo: la carpeta elegida se llama «" + carpeta.name +
-          "»; componer busca en la carpeta de firmas del formato (firmas/ o data/firmas/).";
+          "»; componer busca en la carpeta de firmas del formato (Componedor\\firmas\\).";
         decir("Guardada en " + carpeta.name + "/" + persona.value + "/firma.png y puesta en la fila " + opciones.fila + "." + nota, "ok");
       } catch (e) {
         decir("No se pudo guardar: " + e.message + ". Use «Descargar firma.png».", "error");

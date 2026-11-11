@@ -62,7 +62,7 @@ def datos(tmp_path_factory):
 D_A = "../input/a.manifest.json"
 D_B = "../input/b.manifest.json"
 
-ROTULO_EJEMPLO = {  # misma estructura que data/planos/ejemplo_rotulo_v2.json (datos ficticios)
+ROTULO_EJEMPLO = {  # misma estructura que data/pruebas/planos/ejemplo_rotulo_v2.json (datos ficticios)
     "localizacion_escala": "1:25.000",
     "este": "4.876.543,21",
     "norte": "2.012.345,67",
@@ -161,7 +161,7 @@ def test_ida_y_vuelta_sin_tocar_nada_deja_el_json_identico(datos):
 def test_ida_y_vuelta_del_ejemplo_real_si_esta_disponible(datos):
     """El plano de ejemplo real (data/, no versionado) con sus manifiestos cambiados al
     catálogo sintético: el rótulo y todo lo demás salen idénticos."""
-    ruta = Path(__file__).parent.parent / "data" / "planos" / "ejemplo_rotulo_v2.json"
+    ruta = Path(__file__).parent.parent / "data" / "pruebas" / "planos" / "ejemplo_rotulo_v2.json"
     if not ruta.is_file():
         pytest.skip("no está el ejemplo real (data/ no se versiona)")
     plano = json.loads(ruta.read_text(encoding="utf-8"))

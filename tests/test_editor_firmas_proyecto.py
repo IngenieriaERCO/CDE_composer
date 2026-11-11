@@ -75,8 +75,9 @@ def test_editor_firmas_incrusta_solo_los_nombres(entorno, capsys):
     assert "roja.png" not in html and "roja" not in json.dumps(datos)
     assert str(tmp_path / "firmas") not in html and "carpeta_firmas" not in html
     assert not list((tmp_path / "editor").rglob("*firma*"))  # tampoco se copió nada al lado
-    json_datos = json.loads((tmp_path / "editor" / "editor_datos.json").read_text(encoding="utf-8"))
-    assert "firma.png" not in json.dumps(json_datos)
+    # Los datos (los mismos que preparar-editor escribe en editor_datos.json) no nombran la firma.
+    assert "firma.png" not in json.dumps(datos)
+    assert [p.name for p in (tmp_path / "editor").iterdir()] == ["editor.html"]
 
 
 @requiere_arial

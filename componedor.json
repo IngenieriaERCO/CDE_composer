@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "formato": "formatos/A1_ERCO.json",
+  "editor": {
+    "paquetes": "data/input",
+    "salida": "editor",
+    "notas": "notas",
+    "firmas": "firmas",
+    "proyecto": null
+  },
+  "componer": {
+    "resultados": "resultados"
+  }
+}

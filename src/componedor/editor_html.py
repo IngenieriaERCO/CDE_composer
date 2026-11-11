@@ -1,8 +1,11 @@
 """Editor HTML de planos: un solo archivo autocontenido (subfase 3.3).
 
-`generar_editor` reutiliza `datos_editor.preparar_editor` (editor_datos.json, plantilla.png,
-miniaturas) y escribe además `editor.html`: HTML + CSS + JS + datos + imágenes en base64,
-para abrirlo con doble clic (file://), sin servidor, sin internet y sin ninguna URL externa.
+`generar_editor` reutiliza `datos_editor.preparar_editor` (editor_datos.json, plantilla.png y
+.svg, rosa.png, miniaturas, símbolos) y escribe `editor.html`: HTML + CSS + JS + datos +
+imágenes en base64, para abrirlo con doble clic (file://), sin servidor, sin internet y sin
+ninguna URL externa. Esos subproductos se arman en una carpeta temporal y se descartan: en la
+carpeta del editor queda SOLO editor.html (más los plano.json que guarde el usuario). Quien
+quiera verlos usa el comando `preparar-editor`. `componer` no lee ninguno.
 
 Los recursos (editor.html, editor.css, editor_logica.js, editor_ui.js) están en
 `componedor/editor/`. Las plantillas de texto de las advertencias se incrustan desde
@@ -12,11 +15,20 @@ Los recursos (editor.html, editor.css, editor_logica.js, editor_ui.js) están en
 import base64
 import copy
 import json
+import tempfile
 from importlib import resources
 from pathlib import Path
 
 from componedor.advertencias import PLANTILLAS
-from componedor.datos_editor import preparar_editor
+from componedor.datos_editor import (
+    ARCHIVO_DATOS,
+    ARCHIVO_PLANTILLA,
+    ARCHIVO_PLANTILLA_SVG,
+    ARCHIVO_ROSA,
+    CARPETA_MINIATURAS,
+    preparar_editor,
+)
+from componedor.datos_rotulo_editor import CARPETA_SIMBOLOS
 
 ARCHIVO_HTML = "editor.html"
 MARCADORES = {
@@ -37,6 +49,9 @@ MARCADORES = {
     "/*@@JS_UI@@*/": "editor_ui.js",
 }
 MARCADOR_DATOS = "@@DATOS_EDITOR@@"
+# Lo que dejaban versiones anteriores junto a editor.html; se quita al regenerar.
+SUBPRODUCTOS = (ARCHIVO_DATOS, ARCHIVO_PLANTILLA, ARCHIVO_PLANTILLA_SVG, ARCHIVO_ROSA)
+CARPETAS_SUBPRODUCTOS = (CARPETA_MINIATURAS, CARPETA_SIMBOLOS)
 
 
 def generar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
@@ -44,37 +59,59 @@ def generar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
                    carpeta_notas: Path | str | None = None,
                    carpeta_firmas: Path | str | None = None,
                    ruta_proyecto: Path | str | None = None) -> Path:
-    """Escribe en `carpeta_salida` los datos del editor y `editor.html`. Devuelve su ruta.
+    """Escribe `editor.html` en `carpeta_salida` (nada más). Devuelve su ruta.
 
     Mismas reglas que `preparar-editor`: no pisa una carpeta con contenido salvo con
-    `sobrescribir`, y en ese caso reemplaza solo lo que genera. `carpeta_notas`: notas típicas
-    para el catálogo del rótulo (se incrustan). `carpeta_firmas`: solo los NOMBRES de las
-    personas (las imágenes nunca). `ruta_proyecto`: proyecto.json para prellenar (4.3b).
+    `sobrescribir`, y en ese caso reemplaza solo lo que genera y quita los subproductos que
+    dejaban versiones anteriores (SUBPRODUCTOS y los PNG de CARPETAS_SUBPRODUCTOS, por su nombre
+    exacto; un plano.json u otro archivo del usuario nunca se toca). `carpeta_notas`: notas
+    típicas para el catálogo del rótulo (se incrustan). `carpeta_firmas`: solo los NOMBRES de
+    las personas (las imágenes nunca). `ruta_proyecto`: proyecto.json para prellenar (4.3b).
     """
     carpeta_salida = Path(carpeta_salida)
-    datos = preparar_editor(carpeta_paquetes, ruta_formato, carpeta_salida, sobrescribir,
-                            carpeta_notas=carpeta_notas, carpeta_firmas=carpeta_firmas,
-                            ruta_proyecto=ruta_proyecto)
+    with tempfile.TemporaryDirectory(prefix="componedor_editor_") as temporal:
+        datos = preparar_editor(carpeta_paquetes, ruta_formato, carpeta_salida, sobrescribir,
+                                carpeta_notas=carpeta_notas, carpeta_firmas=carpeta_firmas,
+                                ruta_proyecto=ruta_proyecto, carpeta_archivos=temporal)
+        html = construir_html(datos, Path(temporal), carpeta_salida)
+    carpeta_salida.mkdir(parents=True, exist_ok=True)
     ruta = carpeta_salida / ARCHIVO_HTML
-    ruta.write_text(construir_html(datos, carpeta_salida), encoding="utf-8", newline="\n")
+    ruta.write_text(html, encoding="utf-8", newline="\n")
+    _quitar_subproductos(carpeta_salida)
     return ruta
 
 
-def construir_html(datos: dict, carpeta_salida: Path) -> str:
-    """El HTML completo con todo incrustado. Las imágenes se leen de `carpeta_salida`."""
+def _quitar_subproductos(carpeta: Path) -> None:
+    """Quita lo que dejaban versiones anteriores del editor, solo por su nombre exacto."""
+    for nombre in SUBPRODUCTOS:
+        (carpeta / nombre).unlink(missing_ok=True)
+    for nombre in CARPETAS_SUBPRODUCTOS:
+        sub = carpeta / nombre
+        if sub.is_dir():
+            for png in sub.glob("*.png"):
+                png.unlink()
+            if not any(sub.iterdir()):
+                sub.rmdir()
+
+
+def construir_html(datos: dict, carpeta_archivos: Path,
+                   carpeta_salida: Path | None = None) -> str:
+    """El HTML completo con todo incrustado. Las imágenes se leen de `carpeta_archivos`;
+    `carpeta_salida` (por defecto la misma) es la carpeta del editor, solo informativa."""
+    carpeta_salida = carpeta_archivos if carpeta_salida is None else carpeta_salida
     incrustados = copy.deepcopy(datos)
     # La plantilla en vector (4.3f) si está; si no, el PNG (datos anteriores).
     svg = datos["imagen_plantilla"].get("svg")
     incrustados["imagen_plantilla"]["data_url"] = (
-        _data_url(carpeta_salida / svg["archivo"], "image/svg+xml") if svg
-        else _data_url(carpeta_salida / datos["imagen_plantilla"]["archivo"]))
+        _data_url(carpeta_archivos / svg["archivo"], "image/svg+xml") if svg
+        else _data_url(carpeta_archivos / datos["imagen_plantilla"]["archivo"]))
     for detalle in incrustados["detalles"]:
-        detalle["miniatura"]["data_url"] = _data_url(carpeta_salida / detalle["miniatura"]["archivo"])
+        detalle["miniatura"]["data_url"] = _data_url(carpeta_archivos / detalle["miniatura"]["archivo"])
     rosa = incrustados.get("rosa_vientos")
     if rosa and rosa.get("imagen"):
-        rosa["imagen"]["data_url"] = _data_url(carpeta_salida / rosa["imagen"]["archivo"])
+        rosa["imagen"]["data_url"] = _data_url(carpeta_archivos / rosa["imagen"]["archivo"])
     for simbolo in (incrustados.get("rotulo") or {}).get("simbolos", []):
-        simbolo["imagen"]["data_url"] = _data_url(carpeta_salida / simbolo["imagen"]["archivo"])
+        simbolo["imagen"]["data_url"] = _data_url(carpeta_archivos / simbolo["imagen"]["archivo"])
     incrustados["advertencias"] = PLANTILLAS
     # Solo informativa: dentro de un HTML no se conoce la ruta real del disco.
     incrustados["carpeta_editor"] = str(Path(carpeta_salida).resolve())

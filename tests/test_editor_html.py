@@ -55,7 +55,11 @@ def test_datos_incrustados(entorno):
     # Imágenes incrustadas en base64: la plantilla en SVG (4.3f), las miniaturas en PNG.
     url = datos["imagen_plantilla"]["data_url"]
     assert url.startswith("data:image/svg+xml;base64,")
-    assert base64.b64decode(url.split(",", 1)[1]) == (entorno / "editor" / "plantilla.svg").read_bytes()
+    # La misma plantilla.svg que deja preparar-editor (generar_editor ya no la deja al lado).
+    preparar_editor(entorno / "input", entorno / "formato.json", entorno / "editor",
+                    sobrescribir=True, carpeta_archivos=entorno / "subproductos")
+    svg = (entorno / "subproductos" / "plantilla.svg").read_bytes()
+    assert base64.b64decode(url.split(",", 1)[1]) == svg
     url = datos["detalles"][0]["miniatura"]["data_url"]
     assert url.startswith("data:image/png;base64,")
     assert base64.b64decode(url.split(",", 1)[1])[:8] == b"\x89PNG\r\n\x1a\n"
@@ -80,14 +84,44 @@ def test_vista_previa_del_rotulo_incrustada(entorno):
     assert posiciones == sorted(posiciones)
 
 
-def test_tambien_deja_los_datos_del_editor(entorno):
+def test_en_la_carpeta_solo_queda_editor_html(entorno):
+    """Todo va incrustado: datos, plantilla, rosa y miniaturas no quedan al lado."""
     _generar(entorno)
+    assert [p.name for p in (entorno / "editor").iterdir()] == ["editor.html"]
+
+
+def test_las_rutas_siguen_relativas_a_la_carpeta_del_editor(entorno):
+    """Los subproductos se arman en otra carpeta, pero el plano.json se guarda junto a
+    editor.html: formato y manifiestos van relativos a la carpeta del editor."""
+    datos = datos_incrustados(_generar(entorno).read_text(encoding="utf-8"))
+    assert datos["formato"] == "../formato.json"
+    assert datos["detalles"][0]["manifiesto"] == "../input/a.manifest.json"
+
+
+def test_quita_los_subproductos_de_versiones_anteriores(entorno):
+    """Una carpeta generada antes (con editor_datos.json, PNG, SVG, miniaturas/ y simbolos/)
+    queda solo con editor.html y lo que es del usuario."""
+    preparar_editor(entorno / "input", entorno / "formato.json", entorno / "editor")
     carpeta = entorno / "editor"
-    # rosa.png: la rosa de los vientos aparte, para moverla (subfase 4.1).
-    assert {p.name for p in carpeta.iterdir()} == {"editor.html", "editor_datos.json",
-                                                   "plantilla.png", "plantilla.svg", "rosa.png",
-                                                   "miniaturas"}
-    assert (carpeta / "miniaturas" / "a.png").is_file()
+    (carpeta / "simbolos").mkdir()
+    (carpeta / "simbolos" / "corte.png").write_bytes(b"png")
+    (carpeta / "plano.json").write_text("{}", encoding="utf-8")
+    (carpeta / "miniaturas" / "mio.txt").write_text("del usuario", encoding="utf-8")
+    assert {"editor_datos.json", "plantilla.png", "plantilla.svg", "rosa.png"} <= {
+        p.name for p in carpeta.iterdir()}
+    _generar(entorno, sobrescribir=True)
+    assert sorted(p.name for p in carpeta.iterdir()) == ["editor.html", "miniaturas", "plano.json"]
+    assert [p.name for p in (carpeta / "miniaturas").iterdir()] == ["mio.txt"]  # solo los PNG
+
+
+def test_preparar_editor_en_otra_carpeta(entorno):
+    """`carpeta_archivos`: los archivos van ahí y las rutas, relativas a `carpeta_salida`."""
+    datos = preparar_editor(entorno / "input", entorno / "formato.json", entorno / "editor",
+                            carpeta_archivos=entorno / "tmp")
+    assert not (entorno / "editor").exists()
+    assert (entorno / "tmp" / "editor_datos.json").is_file()
+    assert (entorno / "tmp" / "miniaturas" / "a.png").is_file()
+    assert datos["formato"] == "../formato.json"
 
 
 def test_carpeta_existente(entorno):

@@ -76,7 +76,7 @@ def _imagenes(ruta):
 def test_a1_erco_acepta_imagen_solo_en_la_columna_firma():
     r = cargar_formato(RUTA_A1, usar_plantilla=False).rotulo
     raiz = RUTA_A1.parent.parent
-    assert r.carpetas_firmas == (raiz / "firmas", raiz / "data" / "firmas")
+    assert r.carpetas_firmas == (raiz / "firmas",)
     firmas = r.campos["firmas"]
     assert all(c.acepta_imagen == (col == "firma") for (_, col), c in firmas.celdas.items())
     assert not any(c.acepta_imagen for c in r.campos["revisiones"].celdas.values())

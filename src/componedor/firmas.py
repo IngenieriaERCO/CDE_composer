@@ -2,8 +2,8 @@
 
 En el plano.json (versión 2), una celda cuya columna tiene "acepta_imagen": true en el formato
 admite, en vez de texto, una imagen guardada en una CARPETA POR PERSONA dentro de alguna de
-las carpetas de `rotulo.carpeta_firmas` del formato (A1 ERCO: firmas/ y data/firmas/, las dos
-fuera de git):
+las carpetas de `rotulo.carpeta_firmas` del formato (A1 ERCO: solo firmas/ en la raíz de
+Componedor, fuera de git):
   - {"imagen": "<persona>"} usa <carpeta>/<persona>/firma.png; si no hay firma.png y la carpeta
     tiene un solo PNG, usa ese; si tiene varios, error (nombre uno firma.png o elija una
     variante);
