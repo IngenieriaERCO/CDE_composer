@@ -7,7 +7,13 @@ from pathlib import Path
 import pytest
 
 from componedor.cli import CODIGO_AVISOS, main
-from componedor.configuracion import ConfigInvalida, leer_config_componer, leer_config_editor
+from componedor.configuracion import (
+    ConfigExportador,
+    ConfigInvalida,
+    leer_config_componer,
+    leer_config_editor,
+    leer_config_exportador,
+)
 from conftest import crear_paquete_real, crear_plantilla_sintetica, escribir_formato
 
 RAIZ = Path(__file__).parent.parent
@@ -138,6 +144,39 @@ def test_componedor_json_del_repositorio():
     assert c.proyecto is None
     k = leer_config_componer(RAIZ / "componedor.json", verificar_rutas=False)
     assert (k.formato, k.resultados) == (c.formato, RAIZ / "resultados")
+    x = leer_config_exportador(RAIZ / "componedor.json")
+    assert x == ConfigExportador(("cde-exporter",), RAIZ / "data" / "cache_exportador", 5.0)
+
+
+# --- sección exportador («Cargar DXF») ----------------------------------------------------------
+
+def test_exportador_ausente_es_none(entorno):
+    assert leer_config_exportador(_config(entorno, EDITOR, COMPONER)) is None
+
+
+def test_exportador_completo_y_por_defecto(entorno):
+    ruta = _config(entorno, EDITOR, COMPONER,
+                   exportador={"comando": ["py", "-m", "cde"], "trabajo": "w", "margen_mm": 7.5})
+    assert leer_config_exportador(ruta) == ConfigExportador(("py", "-m", "cde"), entorno / "w", 7.5)
+    ruta = _config(entorno, EDITOR, COMPONER, exportador={"comando": "cde-exporter",
+                                                          "trabajo": "w"})
+    assert leer_config_exportador(ruta).margen_mm == 5.0
+    # Las otras secciones siguen leyéndose con la sección nueva presente.
+    assert leer_config_editor(ruta).paquetes == entorno / "input"
+
+
+@pytest.mark.parametrize("seccion, mensaje", [
+    ("x", '"exportador" debe ser un objeto'),
+    ({"comando": "", "trabajo": "w"}, "exportador.comando: se esperaba el comando"),
+    ({"comando": ["a", 3], "trabajo": "w"}, "exportador.comando: se esperaba el comando"),
+    ({"comando": "c"}, "exportador.trabajo: es obligatorio"),
+    ({"comando": "c", "trabajo": "w", "margen_mm": -1}, "exportador.margen_mm: se esperaba"),
+    ({"comando": "c", "trabajo": "w", "margen_mm": True}, "exportador.margen_mm: se esperaba"),
+    ({"comando": "c", "trabajo": "w", "puerto": 1}, "exportador.puerto: clave desconocida"),
+])
+def test_exportador_invalido(entorno, seccion, mensaje):
+    with pytest.raises(ConfigInvalida, match=mensaje):
+        leer_config_exportador(_config(entorno, EDITOR, COMPONER, exportador=seccion))
 
 
 # --- editor --config ----------------------------------------------------------------------------
@@ -259,7 +298,13 @@ def test_acceso_directo_editor():
     assert 'if exist ".venv\\Scripts\\python.exe"' in texto
     assert 'set "PY=python"' in texto
     assert "-m componedor.cli editor --config componedor.json --sobrescribir" in texto
-    assert 'start "" "editor\\editor.html"' in texto
+    # Después del editor, el servidor local; si no arranca, el editor sin servidor, como antes.
+    lineas = texto.splitlines()
+    i_servidor = lineas.index('"%PY%" -m componedor.cli servidor --config componedor.json')
+    assert lineas[i_servidor + 1] == "if errorlevel 1 goto :sin_servidor"
+    i_sin = lineas.index(":sin_servidor")
+    assert i_sin > i_servidor and 'start "" "editor\\editor.html"' in lineas[i_sin:]
+    assert "pause" in lineas[i_sin:]
 
 
 def test_acceso_directo_componer():

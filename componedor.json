@@ -10,5 +10,10 @@
   },
   "componer": {
     "resultados": "resultados"
+  },
+  "exportador": {
+    "comando": "cde-exporter",
+    "trabajo": "data/cache_exportador",
+    "margen_mm": 5
   }
 }

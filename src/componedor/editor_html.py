@@ -47,6 +47,9 @@ MARCADORES = {
     "/*@@JS_LIENZO_ROTULO@@*/": "editor_lienzo_rotulo.js",
     "/*@@JS_PANEL_CONVENCIONES@@*/": "editor_panel_convenciones.js",
     "/*@@JS_UI@@*/": "editor_ui.js",
+    "/*@@JS_SERVIDOR@@*/": "editor_servidor.js",
+    "/*@@JS_DXF@@*/": "editor_dxf.js",
+    "/*@@JS_PANEL_DXF@@*/": "editor_panel_dxf.js",
 }
 MARCADOR_DATOS = "@@DATOS_EDITOR@@"
 # Lo que dejaban versiones anteriores junto a editor.html; se quita al regenerar.

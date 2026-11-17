@@ -3,11 +3,13 @@
 import argparse
 import json
 import sys
+import webbrowser
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pymupdf
 
+from componedor.aplicacion_editor import AplicacionEditor
 from componedor.cad_a_papel import limites_dibujo_en_papel, origen_para_ancla
 from componedor.coherencia import verificar_paquete
 from componedor.importador import importar_paquete
@@ -16,8 +18,13 @@ from componedor.colocar import DetalleInvalido, abrir_pdf, colocar_detalle, tama
 from componedor.comando_referencia import ejecutar_referencia
 from componedor.componer import ResultadoComposicion, componer_plano
 from componedor.composicion import hoja_base
-from componedor.configuracion import ConfigEditor, leer_config_componer, leer_config_editor
-from componedor.editor_html import datos_incrustados, generar_editor
+from componedor.configuracion import (
+    ConfigEditor,
+    leer_config_componer,
+    leer_config_editor,
+    leer_config_exportador,
+)
+from componedor.editor_html import ARCHIVO_HTML, datos_incrustados, generar_editor
 from componedor.datos_editor import (
     ARCHIVO_DATOS,
     ARCHIVO_PLANTILLA,
@@ -47,6 +54,7 @@ from componedor.plantilla_v3 import DESTINO as PLANTILLA_V3
 from componedor.plantilla_v3 import crear_plantilla_v3
 from componedor.plantilla_v3 import texto_informe as texto_informe_v3
 from componedor.rotulo_formato import CampoConvenciones
+from componedor.servidor import ServidorEditor
 from componedor.simbolos import InformeExtraccion, extraer_simbolos
 from componedor.transformaciones import PuntoMM
 from componedor.unidades import pt_a_mm
@@ -584,6 +592,48 @@ def tabla_zonas(formato: Formato) -> str:
     return "\n".join(lineas)
 
 
+INACTIVIDAD_MIN = 30.0
+
+
+def preparar_servidor(args) -> ServidorEditor:
+    """El servidor del editor según componedor.json (sin arrancarlo todavía)."""
+    config = leer_config_editor(args.config)
+    ruta_html = config.salida / ARCHIVO_HTML
+    if not ruta_html.is_file():
+        raise ValueError(f"No existe {ruta_html}: genere primero el editor "
+                         f"(«Abrir editor.bat» lo hace, o el subcomando editor --config).")
+    formato = cargar_formato(config.formato, usar_plantilla=False)
+    exportador = leer_config_exportador(args.config)
+    app = AplicacionEditor(ruta_html, formato.zonas[ZONA_EDITABLE], exportador)
+    registro = exportador.trabajo / "servidor.log" if exportador else None
+    return ServidorEditor(app, args.puerto, registro=registro)
+
+
+def correr_servidor(args) -> int:
+    servidor = preparar_servidor(args)
+    servidor.iniciar()
+    motivo = servidor.app.motivo_sin_exportador()
+    print(f"Editor con servidor local: {servidor.url}")
+    print("«Cargar DXF»: " + ("disponible." if motivo is None else f"no disponible. {motivo}"))
+    print("No cierre esta ventana mientras use el editor: al cerrarla se apaga el servidor "
+          "(y el trabajador del exportador). Ctrl+C también lo apaga.")
+    if not args.no_abrir:
+        webbrowser.open(servidor.url)
+    inactividad = args.inactividad_min * 60 if args.inactividad_min > 0 else None
+    try:
+        motivo_fin = servidor.esperar(inactividad)
+    except KeyboardInterrupt:
+        motivo_fin = "detenido"
+    finally:
+        servidor.detener()
+        servidor.app.cerrar()
+    if motivo_fin == "inactividad":
+        print(f"Servidor apagado: {args.inactividad_min:g} min sin señal del editor.")
+    else:
+        print("Servidor apagado.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="componedor", description="Componedor de planos PDF.")
     sub = parser.add_subparsers(dest="subcomando", required=True)
@@ -689,6 +739,20 @@ def main(argv: list[str] | None = None) -> int:
                              "firmas, prefijo del No. PLANO) para prellenar un plano nuevo.")
     p_html.add_argument("--sobrescribir", action="store_true",
                         help="Reemplaza lo que genera el editor si la carpeta ya tiene contenido.")
+
+    p_srv = sub.add_parser("servidor",
+                           help="Abre el editor con un servidor local (solo 127.0.0.1) para "
+                                "«Cargar DXF» con el trabajador del exportador.")
+    p_srv.add_argument("--config", type=Path, required=True,
+                       help="componedor.json (editor.html de editor.salida, formato y sección "
+                            "exportador).")
+    p_srv.add_argument("--puerto", type=int, default=0,
+                       help="Puerto local (0: el que elija el sistema).")
+    p_srv.add_argument("--no-abrir", action="store_true",
+                       help="No abre el navegador (solo muestra la dirección).")
+    p_srv.add_argument("--inactividad-min", type=float, default=INACTIVIDAD_MIN,
+                       help=f"Se apaga solo tras estos minutos sin señal del editor "
+                            f"(por defecto {INACTIVIDAD_MIN:g}; 0: nunca).")
 
     p_ed = sub.add_parser("preparar-editor",
                           help="Prepara los datos e imágenes del editor de planos.")
@@ -844,6 +908,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Guarde el plano.json en la MISMA carpeta que editor.html: {carpeta}")
             print(f"Luego: python -m componedor.cli componer \"{carpeta / 'plano.json'}\" "
                   f"--salida \"{carpeta / 'plano.pdf'}\"")
+        elif args.subcomando == "servidor":
+            return correr_servidor(args)
         elif args.subcomando == "preparar-editor":
             datos = preparar_editor(args.carpeta, args.formato, args.salida, args.sobrescribir,
                                     carpeta_notas=args.notas, carpeta_firmas=args.firmas,

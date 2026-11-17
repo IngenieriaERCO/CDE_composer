@@ -15,10 +15,16 @@ Esquema (versión 1):
       },
       "componer": {
         "resultados": "resultados"             (obligatorio: carpeta de los PDF; se crea)
+      },
+      "exportador": {                          (opcional: «Cargar DXF» del editor con servidor)
+        "comando": "cde-exporter",             (obligatorio: comando, o lista [programa, args…])
+        "trabajo": "data/cache_exportador",    (obligatorio: carpeta del trabajador; se crea)
+        "margen_mm": 5                         (opcional: margen de página al exportar; 5)
       }
     }
 
-Cada comando lee solo su sección (`leer_config_editor`, `leer_config_componer`) y el formato.
+Cada comando lee solo su sección (`leer_config_editor`, `leer_config_componer`,
+`leer_config_exportador`) y el formato.
 Las rutas relativas se toman desde la carpeta donde está el archivo de configuración (no desde
 donde se ejecuta el comando), así los accesos directos funcionan desde cualquier lado. Una
 opción opcional en null (o ausente) no se usa. A diferencia del manifiesto del exportador, aquí
@@ -31,7 +37,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 VERSION = 1
-CLAVES_GENERALES = ("version", "formato", "editor", "componer")
+CLAVES_GENERALES = ("version", "formato", "editor", "componer", "exportador")
 # Por sección: (obligatorias, opcionales, {clave: "carpeta" | "archivo"} de las que deben existir).
 SECCIONES = {
     "editor": (("paquetes", "salida"), ("notas", "firmas", "proyecto"),
@@ -61,6 +67,18 @@ class ConfigComponer:
     resultados: Path
 
 
+@dataclass(frozen=True)
+class ConfigExportador:
+    """Cómo lanzar el trabajador del Exportador Vectorial (`cde-exporter worker`)."""
+    comando: tuple[str, ...]  # programa y argumentos previos a "worker"
+    trabajo: Path  # carpeta del trabajador (--work-dir) y de los registros
+    margen_mm: float = 5.0
+
+
+CLAVES_EXPORTADOR = ("comando", "trabajo", "margen_mm")
+MARGEN_MM_POR_DEFECTO = 5.0
+
+
 def leer_config_editor(ruta: Path | str, verificar_rutas: bool = True) -> ConfigEditor:
     """Formato y sección "editor", con las rutas resueltas. Con `verificar_rutas`, comprueba
     que formato y proyecto sean archivos y paquetes, notas y firmas, carpetas."""
@@ -70,6 +88,42 @@ def leer_config_editor(ruta: Path | str, verificar_rutas: bool = True) -> Config
 def leer_config_componer(ruta: Path | str, verificar_rutas: bool = True) -> ConfigComponer:
     """Formato y sección "componer" (la carpeta de resultados se crea si falta)."""
     return ConfigComponer(**_leer_seccion(ruta, "componer", verificar_rutas))
+
+
+def leer_config_exportador(ruta: Path | str) -> ConfigExportador | None:
+    """La sección "exportador", o None si el archivo no la tiene (el editor funciona igual,
+    sin «Cargar DXF»). La carpeta de trabajo no tiene que existir: se crea al usarla."""
+    ruta = Path(ruta)
+    datos = _leer_json(ruta)
+    seccion = datos.get("exportador")
+    if seccion is None:
+        return None
+    problemas = []
+    if not isinstance(seccion, dict):
+        raise ConfigInvalida(f"'{ruta}': \"exportador\" debe ser un objeto con "
+                             f"{', '.join(CLAVES_EXPORTADOR)}.")
+    for clave in sorted(set(seccion) - set(CLAVES_EXPORTADOR)):
+        problemas.append(f"exportador.{clave}: clave desconocida (se admiten "
+                         f"{', '.join(CLAVES_EXPORTADOR)}).")
+    comando = seccion.get("comando")
+    if isinstance(comando, str) and comando.strip():
+        comando = (comando,)
+    elif (isinstance(comando, list) and comando
+          and all(isinstance(c, str) and c.strip() for c in comando)):
+        comando = tuple(comando)
+    else:
+        problemas.append("exportador.comando: se esperaba el comando (texto, p. ej. "
+                         "\"cde-exporter\") o una lista de textos no vacíos.")
+        comando = None
+    trabajo = _ruta(seccion.get("trabajo"), "exportador.trabajo", True, ruta.parent, problemas)
+    margen = seccion.get("margen_mm", MARGEN_MM_POR_DEFECTO)
+    if isinstance(margen, bool) or not isinstance(margen, (int, float)) or not margen >= 0:
+        problemas.append("exportador.margen_mm: se esperaba un número ≥ 0 (mm).")
+    if problemas:
+        raise ConfigInvalida(f"El archivo de configuración '{ruta}' tiene "
+                             f"{len(problemas)} problema(s):\n"
+                             + "\n".join(f"- {p}" for p in problemas))
+    return ConfigExportador(comando, trabajo, float(margen))
 
 
 def _leer_seccion(ruta: Path | str, nombre: str, verificar_rutas: bool) -> dict[str, Path | None]:

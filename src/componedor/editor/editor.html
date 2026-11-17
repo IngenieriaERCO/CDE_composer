@@ -14,6 +14,7 @@
   <button id="btn-abrir" type="button" title="Cargar un plano.json guardado">Abrir plano.json</button>
   <input id="archivo-plano" type="file" accept=".json,application/json" hidden>
   <button id="btn-guardar" type="button" class="principal" title="Guardar el plano (Ctrl+S)">Guardar plano</button>
+  <button id="btn-cargar-dxf" type="button" disabled>Cargar DXF</button>
   <span class="separador"></span>
   <button id="btn-alejar" type="button" title="Alejar">−</button>
   <button id="btn-acercar" type="button" title="Acercar">+</button>
@@ -37,6 +38,7 @@
 <main>
   <aside class="panel izquierda">
     <h2>Detalles disponibles</h2>
+    <div id="panel-dxf" class="panel-dxf" hidden></div>
     <div id="catalogo" class="lista-detalles"></div>
     <h2>No caben en el área de dibujo</h2>
     <div id="no-caben" class="lista-detalles"></div>
@@ -120,6 +122,15 @@
 </script>
 <script>
 /*@@JS_UI@@*/
+</script>
+<script>
+/*@@JS_SERVIDOR@@*/
+</script>
+<script>
+/*@@JS_DXF@@*/
+</script>
+<script>
+/*@@JS_PANEL_DXF@@*/
 </script>
 </body>
 </html>

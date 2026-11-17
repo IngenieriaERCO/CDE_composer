@@ -342,3 +342,25 @@ def escribir_json(ruta: Path, datos: dict) -> Path:
 def detalle(tmp_path):
     """Detalle sintético estándar de 120 x 80 mm sin rotación."""
     return crear_detalle_sintetico(tmp_path / "detalle.pdf")
+
+
+# --- Trabajador falso del exportador («Cargar DXF», etapa 1) -------------------------------------
+
+TRABAJADOR_FALSO = Path(__file__).parent / "trabajador_falso.py"
+ZONA_A1 = (22.7, 22.7, 662.4, 571.3)  # área de dibujo del A1 ERCO (639,7 x 548,6 mm)
+
+
+def comando_falso(*opciones: str) -> tuple[str, ...]:
+    """Comando que lanza el trabajador falso como si fuera `cde-exporter`."""
+    import sys
+
+    return (sys.executable, str(TRABAJADOR_FALSO), *opciones)
+
+
+def dxf_falso(ruta: Path, **spec) -> Path:
+    """Un «DXF» para el trabajador falso: JSON con lo que debe responder `load`
+    (ver tests/trabajador_falso.py)."""
+    spec.setdefault("blocks", [{"name": "B1", "size_cad": [10.0, 4.0], "handle": "1A"}])
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    ruta.write_text(json.dumps(spec, ensure_ascii=False), encoding="utf-8")
+    return ruta

@@ -15,7 +15,10 @@ python -m pip install -e ".[dev]"
 ## Uso diario: dos accesos directos (doble clic)
 
 1. **`Abrir editor.bat`**: genera el editor con las rutas de `componedor.json` y lo abre en el
-   navegador. Arme el plano y guarde el `plano.json` en `editor\` (al lado de `editor.html`) o en
+   navegador con un **servidor local** (solo en esta computadora, `127.0.0.1`) que habilita
+   **«Cargar DXF»**. Deje abierta esa ventana negra mientras usa el editor: al cerrarla se apaga
+   el servidor. Si el servidor no puede arrancar, el `.bat` abre el editor sin servidor, como
+   antes. Arme el plano y guarde el `plano.json` en `editor\` (al lado de `editor.html`) o en
    `planos\`: las dos carpetas están al mismo nivel, así que el plano funciona en cualquiera.
 2. **`Componer.bat`**: arrastre un `plano.json` sobre él (o haga doble clic y arrastre la ruta a
    la ventana). Compone con el formato de `componedor.json`, deja el PDF en
@@ -37,6 +40,7 @@ editor nunca borra los `plano.json` que usted guardó.
 | `data/input` | paquetes del Exportador Vectorial (PDF + manifiesto) | no |
 | `data/pruebas` | paquetes y planos de prueba que se conservan (una prueba lee `planos/ejemplo_rotulo_v2.json`) | no |
 | `data/verificacion` | scripts y capturas de las verificaciones del editor en Edge | no |
+| `data/cache_exportador` | carpeta del trabajador del exportador («Cargar DXF») y los registros `trabajador.log`, `componedor.log` y `servidor.log` | no |
 
 - `data/input`: los paquetes del Exportador Vectorial (PDF + manifiesto) que el editor ofrece
   para armar el plano. Hoy son de prueba; en un proyecto real se cambia la ruta en
@@ -55,13 +59,19 @@ componer siempre con el mismo formato. Las rutas son relativas a la carpeta del 
   "formato": "formatos/A1_ERCO.json",
   "editor": {"paquetes": "data/input", "salida": "editor", "notas": "notas",
              "firmas": "firmas", "proyecto": null},
-  "componer": {"resultados": "resultados"}
+  "componer": {"resultados": "resultados"},
+  "exportador": {"comando": "cde-exporter", "trabajo": "data/cache_exportador", "margen_mm": 5}
 }
 ```
 
 `formato`, `editor.paquetes`, `editor.salida` y `componer.resultados` son obligatorios;
 `notas`, `firmas` y `proyecto` son opcionales (`null` = no se usa). Una clave mal escrita o una
 ruta que no existe es error, y se listan todos los problemas juntos.
+
+La sección `exportador` es opcional: sin ella el editor funciona igual, pero sin «Cargar DXF».
+`comando` es el comando del Exportador Vectorial (o una lista `[programa, argumentos…]`);
+`trabajo`, la carpeta del trabajador (se crea); `margen_mm`, el margen de página con que se
+exportará (por defecto 5 mm). Ver [docs/servidor_editor.md](docs/servidor_editor.md).
 
 ## Comandos
 
@@ -80,6 +90,7 @@ papel (origen en la esquina inferior izquierda de la hoja, Y hacia arriba).
 | `inventario` | Lista los detalles de una carpeta: aceptados o rechazados (con motivos), tamaños, si caben en la zona y escala sugerida. |
 | `componer` | Compone un plano con varios detalles a partir de un `plano.json`: detalles, textos del rótulo, etiquetas «ESC: 1:N» y rosa de los vientos (ver [docs/formato_plano.md](docs/formato_plano.md)). Con `--config componedor.json`, usa ese formato y deja el PDF en `resultados/`; con `--codigo-avisos`, termina con código 3 si hubo advertencias. |
 | `editor` | Genera `editor.html`, un editor visual de planos de un solo archivo (arrastrar detalles y la rosa, y guardar el plano.json). Con `--config componedor.json` toma todas las rutas del archivo. Ver [docs/editor.md](docs/editor.md). |
+| `servidor` | Abre ese `editor.html` desde un servidor local (solo `127.0.0.1`, con token) que habilita «Cargar DXF» con el trabajador del exportador (`cde-exporter worker`). Solo `--config componedor.json`; `--no-abrir`, `--puerto`, `--inactividad-min`. Lo usa `Abrir editor.bat`. Ver [docs/servidor_editor.md](docs/servidor_editor.md). |
 | `preparar-editor` | Deja por separado los datos e imágenes que el editor lleva incrustados (`editor_datos.json`, `plantilla.png`, `plantilla.svg`, `rosa.png`, miniaturas y símbolos), para revisarlos (ver [docs/formato_editor_datos.md](docs/formato_editor_datos.md)). |
 | `crear-plantilla-v3` | Crea `plantillas/rotulo_A1_ERCO_v3.pdf` desde la v2 (que no se toca): sin la fila DISEÑADOR \| REVISOR y con el logo centrado. Ver «Rótulo (plantilla)». |
 | `detectar-elementos` | Mide los elementos fijos de la plantilla dentro del área de dibujo (la rosa de los vientos) y genera un PDF de verificación. |
@@ -308,6 +319,14 @@ dibuja y su celda queda en rojo; una etiqueta «ESC» que no cabe se avisa en vi
 de fondo va en vector (nítida al acercar).
 Guía completa en [docs/editor.md](docs/editor.md).
 Si Node está instalado, `pytest` prueba también la lógica del editor (JavaScript).
+
+**«Cargar DXF»** (etapa 1, con `Abrir editor.bat`): el servidor abre el cuadro de Windows para
+elegir un DXF, el trabajador del Exportador Vectorial lo lee una sola vez y el editor muestra
+una **carpeta** con sus bloques: tamaño real en m, unidades, **escala sugerida** (la primera de
+la lista estándar con la que la página cabe en el área de dibujo) y notas (caja aproximada,
+sólidos 3D, capas ocultas, unidades sin verificar). Todavía no se arrastran al plano ni se
+exportan. Requiere un `cde-exporter` con la orden `worker`; si el instalado no la tiene, el
+editor lo dice. Detalles y seguridad en [docs/servidor_editor.md](docs/servidor_editor.md).
 
 ### Elementos fijos de la plantilla y datos del editor
 

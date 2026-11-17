@@ -16,11 +16,17 @@ el Layout de AutoCAD. Guarda un `plano.json`; el PDF final lo genera `componer`.
 > - `data/output` ya no se usa para los planos: lo reemplaza `resultados/`.
 
 **Lo normal: doble clic en `Abrir editor.bat`** (raíz de Componedor). Genera el editor con las
-rutas de `componedor.json` y lo abre en el navegador. Equivale a:
+rutas de `componedor.json` y lo abre en el navegador **con el servidor local** que habilita
+«Cargar DXF» (ver [2f](#2f-cargar-dxf-con-servidor-local) y
+[servidor_editor.md](servidor_editor.md)). Equivale a:
 
 ```powershell
 python -m componedor.cli editor --config componedor.json --sobrescribir
+python -m componedor.cli servidor --config componedor.json
 ```
+
+Deje abierta la ventana negra mientras usa el editor. Con doble clic en `editor\editor.html` el
+editor se abre sin servidor: funciona todo igual, salvo «Cargar DXF».
 
 Las rutas que usa, en `componedor.json` (relativas a la raíz; ver el README):
 
@@ -293,6 +299,26 @@ Panel **Convenciones** (a la derecha, debajo de Notas):
   (2 líneas, 1,8 -> 1,5 mm): «no cabe» en rojo y «se escribió a X mm» en ámbar, debajo de la
   descripción y en Problemas, con los textos de `componer`.
 
+## 2f. Cargar DXF (con servidor local)
+
+Solo con `Abrir editor.bat` (o `componedor servidor`). **Cargar DXF**, en la barra de arriba,
+abre el cuadro de Windows para elegir el dibujo. El trabajador del Exportador Vectorial lo lee
+una vez, con barra de avance y **Cancelar**, y arriba de «Detalles disponibles» aparece una
+**carpeta** con cada bloque del Model Space:
+
+- su nombre (y «ocurrencia 2 de 3» si se repite) y su capa;
+- el tamaño real en m y las unidades (verificadas o no);
+- la **escala sugerida** (la primera de 1:50, 1:100, … 1:10000 con la que la página cabe en el
+  área de dibujo) y el tamaño de esa página;
+- notas: caja aproximada («página ≤ …»), sólidos 3D que la vista previa no mostrará, capas
+  apagadas o congeladas, unidades sin verificar o que no cabe ni a 1:10000.
+
+Al final, «No exportables» (bloques anónimos, XREF…). Recargar la página no pierde la carpeta.
+
+En esta etapa la carpeta es **solo para mirar**: los bloques todavía no se arrastran al plano ni
+se exportan. Sin servidor, el botón aparece desactivado y explica cómo abrirlo. Si el
+`cde-exporter` instalado no tiene la orden `worker`, el editor lo dice.
+
 ## 3. Qué se ve en la hoja
 
 | Elemento | Aspecto |
@@ -472,6 +498,9 @@ fondo que está debajo no tapa al de encima.
 - Si cierra o recarga la página con cambios sin guardar, el navegador pide confirmación.
 
 ## 7. Limitaciones
+
+- «Cargar DXF» (etapa 1) solo lista los bloques: todavía no se arrastran, no se cambia su
+  escala ni se exportan.
 
 - No hay deshacer (Ctrl+Z): use **Quitar** y vuelva a agregar, o abra el plano guardado.
 - Solo posición: no gira ni escala detalles (vienen a escala 1:N del exportador), ni usa

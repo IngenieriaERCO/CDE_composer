@@ -250,3 +250,20 @@ main { flex: 1; display: flex; min-height: 0; }
 .vp-problema { fill: rgba(220,38,38,.18); stroke: #dc2626; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .vp-problema.aviso { fill: rgba(217,119,6,.15); stroke: #d97706; stroke-dasharray: 5 3; }
 #hoja.vista-limpia .vp-ayuda { display: none; }
+
+/* Carpeta del DXF («Cargar DXF», con servidor local) */
+.panel-dxf { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.carpeta-dxf { border: 1px solid var(--borde); border-radius: 4px; background: var(--panel); padding: 6px; }
+.carpeta-dxf > summary { cursor: pointer; }
+.carpeta-dxf .nombre { font-weight: 600; word-break: break-word; }
+.carpeta-dxf .dato { color: var(--suave); font-size: 12px; }
+.bloques-dxf { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.bloque-dxf { border: 1px solid #e5e7eb; border-radius: 4px; padding: 4px 6px; }
+.notas-bloque, .avisos-dxf, .problemas-dxf, .omitidos { margin: 2px 0 0; padding-left: 16px; font-size: 12px; }
+.notas-bloque, .problemas-dxf { color: var(--fuerte); }
+.omitidos-dxf { margin-top: 6px; font-size: 12px; }
+.progreso-dxf { display: flex; flex-direction: column; gap: 4px; }
+.progreso-dxf progress { width: 100%; }
+.aviso-dxf { border: 1px solid #fde68a; background: #fffbeb; border-radius: 4px; padding: 6px; font-size: 12px; }
+.error-dxf { border: 1px solid #fecaca; background: #fef2f2; border-radius: 4px; padding: 6px; font-size: 12px; }
+.error-dxf button { display: block; margin-top: 4px; }

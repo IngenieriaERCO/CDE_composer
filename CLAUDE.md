@@ -100,8 +100,8 @@ localización automática (QGIS), estilos de impresión CTB, Microsoft Graph/Sha
 
 ```
 Componedor/   (carpeta raíz, en Documents)
-  componedor.json        # configuración única: formato, sección editor y sección componer   [git]
-  Abrir editor.bat       # doble clic: genera editor/ con componedor.json y lo abre (CRLF)  [git]
+  componedor.json        # configuración única: formato y secciones editor, componer, exportador [git]
+  Abrir editor.bat       # doble clic: genera editor/ y lo abre con el servidor local (CRLF) [git]
   Componer.bat           # arrastrar un plano.json: PDF en resultados\<plano>.pdf (CRLF)     [git]
   src/componedor/        # paquete (src/componedor/editor/: HTML, CSS y JS del editor)        [git]
   tests/                 # pruebas pytest                                                     [git]
@@ -117,6 +117,7 @@ Componedor/   (carpeta raíz, en Documents)
   data/input/            # paquetes del exportador (hoy de prueba; ruta en componedor.json)   [no]
   data/pruebas/          # paquetes y planos de prueba (una prueba lee planos/ejemplo_rotulo_v2.json) [no]
   data/verificacion/     # scripts .mjs y capturas de las verificaciones en Edge              [no]
+  data/cache_exportador/ # trabajador del exportador («Cargar DXF») y sus registros          [no]
   _para_borrar/          # lo que se va a eliminar espera aquí la confirmación del usuario    [no]
   CLAUDE.md  README.md  pyproject.toml  .gitignore  .gitattributes                            [git]
 ```

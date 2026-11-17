@@ -1507,7 +1507,7 @@ los scripts y capturas están en `data/verificacion/`, los paquetes de prueba en
 lo demás se borró (se regenera con los comandos). Los scripts `.mjs` conservan sus rutas viejas
 (son registro; para volver a correrlos hay que actualizarlas).
 
-### Rótulo: franja del logo sin DISEÑADOR ni REVISOR ✅ (2026-11-17, sin commit)
+### Rótulo: franja del logo sin DISEÑADOR ni REVISOR ✅ (2026-11-17, commit ec654d1)
 
 **Qué se hizo**
 - Se averiguó cómo estaba hecha la franja: los títulos «DISEÑADOR | REVISOR» y la línea vertical
@@ -1547,6 +1547,103 @@ hallazgos que había en `HEAD` (ninguno nuevo; los 173 previos son de todo el pr
 
 **Nota**: el aviso es una advertencia de `componer`, así que `Componer.bat` se detiene a
 mostrarla con un plano viejo que todavía no se volvió a guardar en el editor.
+
+### Integración con el exportador — Etapa 1: servidor local y «Cargar DXF» ✅ (2026-11-17)
+
+Plan aprobado (2026-11-17) en etapas:
+- 0: el trabajador del exportador, que hace el agente del Exportador;
+- 1: esta;
+- 2: arrastrar las cajas exactas, la escala con el centro fijo y la vista previa PNG del
+  trabajador;
+- 3: «Exportar»;
+- 4: componer desde el editor y el caso del DXF cambiado.
+
+Decisiones:
+- el trabajador persistente `cde-exporter worker` se lanza como comando externo;
+- la vista previa es el PNG que da el trabajador;
+- los paquetes van en `data/input/dxf/<dxf>/`;
+- `plano.json` pasa a la versión 3 solo si el plano usa un DXF.
+
+La especificación usada son los puntos 1–11 de la revisión del contrato. Ya se comparó con el
+contrato final (`docs/protocolo_trabajador.md` del exportador, aprobado el 2026-11-17): coincide
+en todo lo de fondo. Lo nuevo del contrato se agregó al trabajador falso: esquema 1.3 en `ready`,
+`stage` en `status`, handles en hexadecimal y mayúsculas, `file_stem` saneado (§5.1),
+`bounds_with_hidden` e `include_layers`. El Componedor ahora pide `load` con
+`include_layers: false`.
+
+**Qué se hizo**
+- **`Abrir editor.bat`**: genera el editor y arranca `componedor servidor --config
+  componedor.json`. Si el servidor no arranca, abre `editor.html` sin servidor, como antes.
+- **Servidor** (`servidor.py`, `aplicacion_editor.py`):
+  - solo escucha en 127.0.0.1, con el puerto que elija el sistema;
+  - un token al azar en `?t=` para la página y en la cabecera `X-Componedor-Token` para la API;
+  - `Host` exacto, `Origin` propio (obligatorio en POST), `Sec-Fetch-Site`, POST JSON de hasta
+    64 KB;
+  - no entrega otro archivo que `editor.html` y no recibe rutas;
+  - el registro no guarda el token;
+  - se apaga tras 30 min sin señal del editor.
+- **Cuadro nativo** (`dialogo_dxf.py`): `tkinter` en un proceso aparte, delante del navegador. La
+  ruta se valida (existe y es `.dxf`).
+- **Trabajador** (`trabajador.py`, `proceso_windows.py`):
+  - se lanza al primer «Cargar DXF», creado suspendido dentro de un **Job Object** con «matar al
+    cerrar»; si el servidor muere, mueren el lanzador `cde-exporter.exe` y su `python.exe`;
+  - stderr va a `data/cache_exportador/trabajador.log`;
+  - espera `ready` hasta 30 s y comprueba la versión mayor 1;
+  - mensajes claros si no está instalado, si no tiene la orden `worker` (el caso de hoy), si
+    no responde o si se cae.
+- **Canal** (`canal_trabajador.py`):
+  - cola propia y un pedido a la vez (nunca provoca `BUSY`; si llega igual, se reintenta una
+    vez);
+  - cancelar en cola, en curso, o a la fuerza si no se nota en 60 s;
+  - tras 2 caídas seguidas queda detenido, con el botón «Reiniciar trabajador»;
+  - cada trabajador nuevo es una sesión nueva.
+- **Carpeta de bloques** (`bloques_dxf.py`):
+  - tamaño real en m, unidades y **escala sugerida** (la primera de `ESCALAS_ESTANDAR` con la
+    que `página = tamaño × 1000 ÷ N + 2 × margen` cabe en el área de dibujo, con la regla de
+    `colocar`);
+  - notas: caja aproximada, sólidos 3D, proxies, regiones, imágenes, capas ocultas, unidades
+    sin verificar, no cabe;
+  - un bloque mal descrito se descarta con su motivo.
+- **Editor**:
+  - `editor_servidor.js` detecta el servidor y le habla;
+  - `editor_dxf.js` arma los textos;
+  - `editor_panel_dxf.js` pone el botón «Cargar DXF», la barra de avance con «Cancelar» y la
+    carpeta encima de «Detalles disponibles»; los nombres siempre van como texto, nunca como
+    HTML.
+- Sin servidor el editor es el de siempre: el botón está desactivado con su explicación y el
+  panel no se muestra.
+- `componedor.json`: sección nueva y opcional `exportador` (`comando`, `trabajo`, `margen_mm`).
+- Documentación: [servidor_editor.md](servidor_editor.md), `editor.md` §2f, README.
+
+**Pruebas**: **977**, todas pasan (110 nuevas). Usan un **trabajador falso**
+(`tests/trabajador_falso.py`) que habla el protocolo 1.0, y una prueba usa el `cde-exporter`
+real si está instalado. Cubren:
+- el Job Object, incluido que el trabajador y su nieto mueran si muere el servidor;
+- el cliente del protocolo;
+- la cola, con cancelación normal y a la fuerza, caídas y reinicio;
+- la carpeta;
+- el cuadro, con `tkinter` falso;
+- el servidor: Host, token, Origin, límites y registro;
+- el comando `servidor`, la configuración y el `.bat`;
+- el JS en Node.
+
+ruff: los mismos 173 hallazgos de `HEAD`.
+
+**Verificación en Edge** (`data/verificacion/verificar_servidor_dxf.mjs`, fuera de git): todo
+OK.
+- Sin servidor: el botón está desactivado.
+- Desde `file://` la API queda bloqueada, y el POST con `Origin: null` recibe 403.
+- Con el trabajador falso:
+  - avance, carpeta con 6 bloques (tildes, «Ø», ocurrencias 1 y 2 de 2, un nombre con
+    `<b>` que se muestra como texto), notas, «No exportables», aviso;
+  - recargar la página conserva la carpeta;
+  - cancelar avisa «Carga cancelada.» y deja la carpeta anterior;
+  - el resto del editor funciona igual.
+- Con el `cde-exporter` real de hoy aparece el aviso «no tiene la orden «worker»».
+- Sin errores de JavaScript.
+
+**Pendiente de esta etapa**
+- Probar el cuadro nativo a mano: en Edge sin ventana no se puede hacer clic.
 
 ### Pendiente en la Fase 4 (al 2026-11-11)
 

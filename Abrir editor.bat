@@ -1,6 +1,7 @@
 @echo off
-rem Genera el editor de planos con componedor.json y lo abre en el navegador.
-rem Doble clic desde el Explorador; no hace falta abrir una consola.
+rem Genera el editor de planos con componedor.json y lo abre en el navegador con un servidor
+rem local (solo 127.0.0.1) para «Cargar DXF». Doble clic desde el Explorador.
+rem Esta ventana queda abierta mientras se usa el editor: al cerrarla se apaga el servidor.
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
@@ -20,5 +21,14 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+"%PY%" -m componedor.cli servidor --config componedor.json
+if errorlevel 1 goto :sin_servidor
+endlocal
+exit /b 0
+
+:sin_servidor
+echo.
+echo No se pudo abrir el servidor local: se abre el editor sin servidor, sin «Cargar DXF».
 start "" "editor\editor.html"
+pause
 endlocal
