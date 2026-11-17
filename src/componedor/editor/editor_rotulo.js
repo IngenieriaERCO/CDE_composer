@@ -92,6 +92,21 @@
     return Object.keys(salida).length ? salida : undefined;
   }
 
+  /**
+   * El rótulo tal como se GUARDA en el plano.json: el de `serializar` sin los campos que el
+   * rótulo ya no tiene (definicion.campos_retirados: disenador, revisor). Así un plano viejo,
+   * al guardarlo, deja de traerlos y componer no vuelve a avisar. `serializar` los conserva:
+   * la validación los necesita para avisar una vez al abrir el plano.
+   */
+  function paraGuardar(modelo) {
+    const r = serializar(modelo);
+    const retirados = (modelo.definicion && modelo.definicion.campos_retirados) || [];
+    if (!r || !retirados.some((c) => c in r)) return r;
+    const salida = {};
+    for (const [clave, v] of Object.entries(r)) if (!retirados.includes(clave)) salida[clave] = v;
+    return Object.keys(salida).length ? salida : undefined;
+  }
+
   // ---------------------------------------------------------------------------------------
   // Notas: vista normalizada y escritura en "adicionales".
   // ---------------------------------------------------------------------------------------
@@ -161,8 +176,12 @@
     if (!r) return [];
     const lista = [];
     const campos = (modelo.definicion && modelo.definicion.campos) || null;
+    // Los campos retirados (disenador, revisor) ya tienen su aviso único en validarRotulo.
+    const retirados = (modelo.definicion && modelo.definicion.campos_retirados) || [];
     for (const [clave, v] of Object.entries(r)) {
-      if (campos && !campos[clave]) lista.push("rotulo." + clave + " (el formato no tiene ese campo)");
+      if (campos && !campos[clave]) {
+        if (!retirados.includes(clave)) lista.push("rotulo." + clave + " (el formato no tiene ese campo)");
+      }
       else if (clave === "notas" && esObjeto(v) && Array.isArray(v.archivos) && v.archivos.length) {
         lista.push("notas.archivos (" + v.archivos.length + " archivo(s) .txt referidos)");
       } else if (campos && campos[clave] && campos[clave].tipo === "texto" && !campos[clave].calculado &&
@@ -198,6 +217,7 @@
     cambiar,
     hayCambios,
     serializar,
+    paraGuardar,
     normalizarNota,
     notaParaGuardar,
     notas,

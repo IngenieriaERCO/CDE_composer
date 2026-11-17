@@ -81,6 +81,7 @@ papel (origen en la esquina inferior izquierda de la hoja, Y hacia arriba).
 | `componer` | Compone un plano con varios detalles a partir de un `plano.json`: detalles, textos del rótulo, etiquetas «ESC: 1:N» y rosa de los vientos (ver [docs/formato_plano.md](docs/formato_plano.md)). Con `--config componedor.json`, usa ese formato y deja el PDF en `resultados/`; con `--codigo-avisos`, termina con código 3 si hubo advertencias. |
 | `editor` | Genera `editor.html`, un editor visual de planos de un solo archivo (arrastrar detalles y la rosa, y guardar el plano.json). Con `--config componedor.json` toma todas las rutas del archivo. Ver [docs/editor.md](docs/editor.md). |
 | `preparar-editor` | Deja por separado los datos e imágenes que el editor lleva incrustados (`editor_datos.json`, `plantilla.png`, `plantilla.svg`, `rosa.png`, miniaturas y símbolos), para revisarlos (ver [docs/formato_editor_datos.md](docs/formato_editor_datos.md)). |
+| `crear-plantilla-v3` | Crea `plantillas/rotulo_A1_ERCO_v3.pdf` desde la v2 (que no se toca): sin la fila DISEÑADOR \| REVISOR y con el logo centrado. Ver «Rótulo (plantilla)». |
 | `detectar-elementos` | Mide los elementos fijos de la plantilla dentro del área de dibujo (la rosa de los vientos) y genera un PDF de verificación. |
 | `extraer-simbolos` | Arma la biblioteca de símbolos de CONVENCIONES (vector) desde la leyenda de un plano real: `simbolos/convenciones_erco.pdf` (no se versiona) e `indice.json`. |
 
@@ -161,6 +162,22 @@ a puntos enteros) y se comprueba que el marco del rótulo coincide con el marco 
 Para generar la hoja sin rótulo agregue `--sin-plantilla`.
 
 El PDF del rótulo (`plantillas/*.pdf`) es material de ERCO y no se versiona.
+
+**Plantilla v3** (la que usa hoy `formatos/A1_ERCO.json`): es la v2 sin la fila
+«DISEÑADOR | REVISOR» (encima del logo; queda vacía) y con el logo de ERCO centrado en la
+columna del rótulo. Como `plantillas/` no va a git, se genera en cada equipo desde la v2, que
+**no se modifica**:
+
+```powershell
+python -m componedor.cli crear-plantilla-v3
+# = --origen plantillas/rotulo_A1_ERCO_v2.pdf --salida plantillas/rotulo_A1_ERCO_v3.pdf
+```
+
+Borra (no tapa con blanco) los trazos que caen completos dentro de esa fila (las letras y la
+línea vertical) y sus dos anotaciones invisibles, y reinserta la misma imagen del logo (sin
+recomprimirla) corrida en X. Se verifica sola: la v2 conserva su MD5, fuera de la fila y del
+logo la hoja se ve igual píxel a píxel y el logo queda centrado ±0,1 mm; si algo falla, no
+escribe nada. Para reemplazar una v3 existente, `--sobrescribir`.
 
 ### Validación con geometría de referencia
 
@@ -266,7 +283,7 @@ fondo blanco) las miniaturas son transparentes y se ve lo mismo que saldrá en e
 **Vista limpia** (botón o tecla V) oculta las ayudas de edición. La rosa de los vientos se
 arrastra como un detalle, se oculta con una casilla y se devuelve a su sitio con «Restaurar
 posición». El panel **Rótulo** tiene formularios para los campos del rótulo (título, No. PLANO,
-HOJA/DE, coordenadas, diseñador, revisor…), las **revisiones** y las **firmas** (texto o una
+HOJA/DE, coordenadas…), las **revisiones** y las **firmas** (texto o una
 persona de la lista de `--firmas` o nueva; «Cargar firma…» recorta y limpia una imagen de la
 firma solo en el navegador y la guarda como `firmas/<persona>/firma.png`, sin incrustarla
 nunca), con calendario para las fechas (`dd/mm/aa`), ESCALA y REV.
@@ -313,11 +330,13 @@ origen en la esquina inferior izquierda de la hoja horizontal, además de los gr
 línea (marco 0,5 mm, guías 0,13 mm) y, opcionalmente:
 
 - `"plantilla"`: ruta del PDF del rótulo, relativa a la carpeta del JSON
-  (`"../plantillas/rotulo_A1_ERCO_v2.pdf"`);
+  (`"../plantillas/rotulo_A1_ERCO_v3.pdf"`, generada con `crear-plantilla-v3`);
 - `"elementos_plantilla"`: elementos fijos medidos dentro del área de dibujo (la rosa);
 - `"rotulo"`: los campos de texto del rótulo (celda en mm, alineación, altura de texto,
   líneas, valor por defecto o calculado), las notas, la rejilla de convenciones con la ruta de
-  la biblioteca de símbolos (`../simbolos/indice.json`) y la fuente
+  la biblioteca de símbolos (`../simbolos/indice.json`), los `campos_retirados` (campos que
+  el rótulo ya no tiene, hoy `disenador` y `revisor`: un plano viejo que los traiga se compone
+  igual, se ignoran con un solo aviso) y la fuente
   (`C:/Windows/Fonts/arial.ttf`). Esquema versionado y validado: campos desconocidos, celdas
   fuera del rótulo o traslapadas son error.
 

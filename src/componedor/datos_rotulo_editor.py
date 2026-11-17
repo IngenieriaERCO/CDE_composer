@@ -25,6 +25,7 @@ import pymupdf
 from componedor.fuente import Fuente
 from componedor.notas import leer_archivo_notas
 from componedor.rotulo_formato import (
+    AVISO_CAMPOS_RETIRADOS,
     CampoConvenciones,
     CampoNotas,
     CampoTabla,
@@ -165,7 +166,10 @@ def definicion_editor(definicion: DefinicionRotulo) -> dict:
                               "descripciones": [_celda(c) for c in campo.descripciones]}
     return {"version": definicion.version, "relleno_mm": definicion.relleno_mm,
             "interlineado": definicion.interlineado, "formato_fecha": definicion.formato_fecha,
-            "campos": campos}
+            "campos": campos,
+            # Campos que el rótulo ya no tiene: el editor los ignora con el MISMO aviso que componer.
+            "campos_retirados": list(definicion.campos_retirados),
+            "aviso_campos_retirados": AVISO_CAMPOS_RETIRADOS}
 
 
 def _celda(c) -> dict:

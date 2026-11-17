@@ -16,7 +16,8 @@ Valores del plano (todos opcionales; un campo que falta queda vacío, salvo su `
     revisión va en la fila de SU letra (no por orden de llegada); letras repetidas: error.
   - tabla sin columna_clave (firmas): {"<fila>": {"<columna>": ...}}.
 Campos desconocidos, calculados escritos a mano y textos que no caben: error, con TODOS los
-problemas juntos.
+problemas juntos. Los campos retirados del formato ("campos_retirados", p. ej. disenador y
+revisor) no son error: se ignoran con una sola advertencia.
 """
 
 from dataclasses import dataclass, field
@@ -32,6 +33,7 @@ from componedor.rotulo_formato import (
     CampoTabla,
     CampoTexto,
     DefinicionRotulo,
+    aviso_campos_retirados,
 )
 from componedor.simbolos import (
     Biblioteca,
@@ -74,10 +76,13 @@ def preparar_rotulo(definicion: DefinicionRotulo, valores: dict | None,
     valores = {} if valores is None else valores
     problemas: list[str] = []
     contenidos: list[tuple] = []  # (celda, contenido)
-    for clave in sorted(set(valores) - set(definicion.campos)):
+    for clave in sorted(set(valores) - set(definicion.campos) - set(definicion.campos_retirados)):
         problemas.append(f"rotulo.{clave}: campo no reconocido (campos válidos: "
                          f"{', '.join(definicion.campos)})")
     textos, advertencias = [], []
+    aviso = aviso_campos_retirados(valores, definicion)  # planos viejos: se ignoran, un aviso
+    if aviso:
+        advertencias.append(aviso)
     notas = None
     simbolos, biblioteca = [], None
     for campo in definicion.campos.values():

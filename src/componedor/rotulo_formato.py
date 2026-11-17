@@ -43,6 +43,11 @@ formato (todo en mm de papel, Y hacia arriba). Esquema (versión 1):
   pase a las vecinas, siempre dentro del cuerpo de la tabla (sin el encabezado); una fila más
   alta usa su propia altura útil.
 
+- Campos retirados (aditivo): "campos_retirados": ["disenador", "revisor"] lista campos que el
+  rótulo YA NO tiene. Un plano.json o proyecto.json viejo que los traiga sigue valiendo: se
+  ignoran y se avisa UNA vez (`aviso_campos_retirados`, el mismo texto en Python y en el editor).
+  No pueden ser a la vez un campo vigente.
+
 Campos desconocidos se rechazan. Todos los problemas se juntan en un solo error.
 """
 
@@ -61,7 +66,10 @@ CALCULADOS = ("escala_comun", "ultima_revision")
 TABLA_REVISIONES = "revisiones"  # la que usa "ultima_revision"
 
 CLAVES_ROTULO = {"version", "fuente", "relleno_mm", "interlineado", "campos", "carpeta_firmas",
-                 "formato_fecha"}
+                 "formato_fecha", "campos_retirados"}
+# Mismo texto en `componer`, `editor --proyecto` y el editor (se incrusta en editor.html).
+AVISO_CAMPOS_RETIRADOS = ("Aviso: {campos}: campo(s) que el rótulo ya no tiene (se quitaron "
+                          "del formato); se ignoran.")
 FORMATO_FECHA_POR_DEFECTO = "dd/mm/aa"
 # Día, mes y año, una vez cada uno, separados por el mismo «/», «-» o «.» (aa o aaaa).
 FORMATO_FECHA = re.compile(r"^(dd|mm|aa|aaaa)([/.-])(dd|mm|aa|aaaa)\2(dd|mm|aa|aaaa)$")
@@ -143,6 +151,7 @@ class DefinicionRotulo:
     campos: dict[str, CampoTexto | CampoTabla | CampoNotas | CampoConvenciones]
     carpetas_firmas: tuple[Path, ...] = ()  # dónde se buscan las firmas en imagen (rutas resueltas)
     formato_fecha: str = FORMATO_FECHA_POR_DEFECTO  # cómo escribe las fechas el editor (4.3)
+    campos_retirados: tuple[str, ...] = ()  # se ignoran con un aviso (no son error)
 
     def celdas(self) -> list[Celda]:
         """Todas las celdas, en el orden del formato."""
@@ -201,6 +210,7 @@ def leer_definicion_rotulo(datos, zona_rotulo: RectMM, base: Path | None = None)
                        f"separados por «/», «-» o «.» (p. ej. \"dd/mm/aa\" o \"aaaa-mm-dd\"); "
                        f"tiene {formato_fecha!r}")
         formato_fecha = FORMATO_FECHA_POR_DEFECTO
+    retirados = _campos_retirados(datos.get("campos_retirados", []), campos, errores)
     if not carpetas and "carpeta_firmas" not in datos and any(
             c.acepta_imagen for campo in campos.values() for c in _celdas(campo)):
         errores.append("rotulo.carpeta_firmas: hay celdas que aceptan imagen (\"acepta_imagen\": "
@@ -212,7 +222,29 @@ def leer_definicion_rotulo(datos, zona_rotulo: RectMM, base: Path | None = None)
             f"La sección 'rotulo' del formato no es válida ({n} "
             f"{'problema' if n == 1 else 'problemas'}):\n" + "\n".join(f"- {e}" for e in errores))
     return DefinicionRotulo(version, fuente, relleno, interlineado, campos, carpetas,
-                            formato_fecha)
+                            formato_fecha, retirados)
+
+
+def _campos_retirados(valor, campos: dict, errores: list[str]) -> tuple[str, ...]:
+    if not isinstance(valor, list) or not all(isinstance(v, str) and v.strip() for v in valor):
+        errores.append(f"rotulo.campos_retirados: se esperaba una lista de nombres de campo; "
+                       f"tiene {valor!r}")
+        return ()
+    for nombre in sorted(set(valor) & set(campos)):
+        errores.append(f"rotulo.campos_retirados: '{nombre}' sigue en rotulo.campos; un campo "
+                       f"no puede estar vigente y retirado a la vez")
+    return tuple(dict.fromkeys(valor))
+
+
+def aviso_campos_retirados(valores, definicion: DefinicionRotulo | None,
+                           prefijo: str = "rotulo") -> str | None:
+    """El aviso (uno solo, para todos) si `valores` trae campos retirados; si no, None."""
+    if definicion is None or not isinstance(valores, dict):
+        return None
+    presentes = [c for c in definicion.campos_retirados if c in valores]
+    if not presentes:
+        return None
+    return AVISO_CAMPOS_RETIRADOS.format(campos=", ".join(f"{prefijo}.{c}" for c in presentes))
 
 
 def _carpetas_firmas(valor, base: Path | None, errores: list[str]) -> tuple[Path, ...]:

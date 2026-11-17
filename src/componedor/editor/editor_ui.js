@@ -860,10 +860,11 @@
     guardado("plano.json", true);
   }
 
-  /** plano.json con los detalles, la rosa y (si se abrió un plano que lo traía) el rótulo. */
+  /** plano.json con los detalles, la rosa y (si se abrió un plano que lo traía) el rótulo.
+   *  Sin los campos retirados del rótulo (disenador, revisor): R.paraGuardar los quita. */
   function textoPlano() {
     return L.serializarPlano(estado.colocaciones, DATOS, {
-      rosa: estado.rosa, rotulo: R.serializar(estado.rotulo), original: estado.original });
+      rosa: estado.rosa, rotulo: R.paraGuardar(estado.rotulo), original: estado.original });
   }
 
   function guardado(nombre, descargado) {

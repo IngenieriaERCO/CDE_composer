@@ -40,10 +40,9 @@
   const ETIQUETAS = {
     titulo: "Título", no_plano: "No. PLANO", hoja: "HOJA", de: "DE",
     este: "Coordenada ESTE", norte: "Coordenada NORTE", localizacion_escala: "ESC. de localización",
-    disenador: "Diseñador", revisor: "Revisor", escala: "ESCALA", rev: "REV.",
+    escala: "ESCALA", rev: "REV.",
   };
-  const ORDEN_CAMPOS = ["titulo", "no_plano", "hoja", "de", "este", "norte", "localizacion_escala",
-    "disenador", "revisor"];
+  const ORDEN_CAMPOS = ["titulo", "no_plano", "hoja", "de", "este", "norte", "localizacion_escala"];
   const ETIQUETAS_COLUMNAS = {
     ver: "VER.", fecha: "Fecha", descripcion: "Descripción", dibujo: "Dibujó", diseno: "Diseñó",
     reviso: "Revisó", aprobo: "Aprobó", nombre: "Nombre", matricula: "Matrícula", firma: "Firma",
@@ -599,9 +598,14 @@
     const valores = esObjeto(rotulo) ? rotulo : {};
     const valorDe = (campo) => valores[campo];
     const nombres = Object.keys(definicion.campos);
-    for (const clave of Object.keys(valores).filter((k) => !nombres.includes(k)).sort()) {
+    // Campos que el rótulo ya no tiene (p. ej. disenador y revisor): no son error; un solo aviso,
+    // con el mismo texto que componer (rotulo_formato.AVISO_CAMPOS_RETIRADOS).
+    const retirados = definicion.campos_retirados || [];
+    for (const clave of Object.keys(valores).filter((k) => !nombres.includes(k) && !retirados.includes(k)).sort()) {
       errores.push("rotulo." + clave + ": campo no reconocido (campos válidos: " + nombres.join(", ") + ")");
     }
+    const aviso = avisoCamposRetirados(valores, definicion, "rotulo");
+    if (aviso) avisos.push(aviso);
     for (const [nombre, campo] of Object.entries(definicion.campos)) {
       if (campo.tipo !== "texto") continue;
       const v = valorDe(nombre);
@@ -624,6 +628,14 @@
       avisos.push(...r.avisos);
     }
     return { errores, avisos };
+  }
+
+  /** El aviso de campos retirados presentes en `valores` (uno para todos), o null. */
+  function avisoCamposRetirados(valores, definicion, prefijo) {
+    if (!esObjeto(valores) || !definicion || !definicion.aviso_campos_retirados) return null;
+    const presentes = (definicion.campos_retirados || []).filter((c) => Object.prototype.hasOwnProperty.call(valores, c));
+    if (!presentes.length) return null;
+    return definicion.aviso_campos_retirados.replace("{campos}", presentes.map((c) => prefijo + "." + c).join(", "));
   }
 
   /**
@@ -699,6 +711,7 @@
     validarFirmaImagen,
     mismaPersona,
     validarRotulo,
+    avisoCamposRetirados,
     valoresProyecto,
   };
 });

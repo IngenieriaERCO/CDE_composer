@@ -42,6 +42,10 @@ from componedor.paquete import (
 from componedor.informe import resultado_final
 from componedor.validacion import Comprobacion, ResultadoVerificacion
 from componedor.plantilla import TOLERANCIA_MARCO_MM, TOLERANCIA_TAMANO_MM, InformePlantilla
+from componedor.plantilla_v3 import ORIGEN as PLANTILLA_V2
+from componedor.plantilla_v3 import DESTINO as PLANTILLA_V3
+from componedor.plantilla_v3 import crear_plantilla_v3
+from componedor.plantilla_v3 import texto_informe as texto_informe_v3
 from componedor.rotulo_formato import CampoConvenciones
 from componedor.simbolos import InformeExtraccion, extraer_simbolos
 from componedor.transformaciones import PuntoMM
@@ -701,6 +705,16 @@ def main(argv: list[str] | None = None) -> int:
     p_ed.add_argument("--sobrescribir", action="store_true",
                       help="Reemplaza los datos del editor si la carpeta ya tiene contenido.")
 
+    p_v3 = sub.add_parser("crear-plantilla-v3",
+                          help="Crea plantillas/rotulo_A1_ERCO_v3.pdf desde la v2 (sin tocarla): "
+                               "quita la fila DISEÑADOR | REVISOR y centra el logo.")
+    p_v3.add_argument("--origen", type=Path, default=PLANTILLA_V2,
+                      help=f"Plantilla v2 (por defecto {PLANTILLA_V2.as_posix()}).")
+    p_v3.add_argument("--salida", type=Path, default=PLANTILLA_V3,
+                      help=f"Plantilla v3 a crear (por defecto {PLANTILLA_V3.as_posix()}).")
+    p_v3.add_argument("--sobrescribir", action="store_true",
+                      help="Reemplaza la salida si ya existe.")
+
     p_det = sub.add_parser("detectar-elementos",
                            help="Mide los elementos fijos de la plantilla dentro del área de "
                                 "dibujo y genera un PDF de verificación.")
@@ -835,6 +849,9 @@ def main(argv: list[str] | None = None) -> int:
                                     carpeta_notas=args.notas, carpeta_firmas=args.firmas,
                                     ruta_proyecto=args.proyecto)
             print(texto_preparar_editor(datos, args.salida))
+        elif args.subcomando == "crear-plantilla-v3":
+            informe = crear_plantilla_v3(args.origen, args.salida, args.sobrescribir)
+            print(texto_informe_v3(informe, args.origen))
         elif args.subcomando == "detectar-elementos":
             _exigir_que_no_exista(args.salida, args.sobrescribir)
             formato = cargar_formato(args.formato)

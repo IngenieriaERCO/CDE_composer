@@ -14,8 +14,6 @@ editor no se genera y se listan **todos** los problemas juntos.
 {
   "version": 1,
   "nombre": "PARQUE SOLAR FOTOVOLTAICO",
-  "disenador": "INGENIERÍA DE DISEÑO S.A.S.",
-  "revisor": ["INTERVENTORÍA", "ÑANDÚ LTDA."],
   "prefijo_no_plano": "ERCO-PSF-CIV-PL-",
   "firmas": {
     "dibujo": {"nombre": "LUIS Á. NÚÑEZ P.", "matricula": "PRACTICANTE"},
@@ -32,8 +30,7 @@ editor no se genera y se listan **todos** los problemas juntos.
 |---|---|---|---|
 | `version` | sí | Siempre `1`. | — |
 | `nombre` | no | Nombre del proyecto. **Informativo**: el editor lo muestra; no va al rótulo. | — |
-| `disenador` | no | Celda «DISEÑADOR». | `rotulo.disenador` |
-| `revisor` | no | Celda «REVISOR». | `rotulo.revisor` |
+| `disenador`, `revisor` | no | **Retirados**: el rótulo ya no tiene DISEÑADOR ni REVISOR (plantilla v3). Un proyecto viejo que los traiga sigue valiendo; se ignoran y `editor --proyecto` avisa una vez. | — |
 | `prefijo_no_plano` | no | Comienzo del No. PLANO; el usuario completa el número en el editor. | `rotulo.no_plano` |
 | `firmas` | no | Por fila (`dibujo`, `diseno`, `reviso`, `aprobo`): solo `nombre` y `matricula`. | `rotulo.firmas.<fila>.nombre` / `.matricula` |
 
@@ -41,7 +38,7 @@ Reglas de los textos (las mismas que los valores del rótulo en `componer`,
 [formato_plano.md](formato_plano.md)):
 
 - texto o número entero;
-- en una celda de **varias líneas** (DISEÑADOR y REVISOR: 3; nombre de REVISÓ: 2) también una
+- en una celda de **varias líneas** (nombre de REVISÓ: 2) también una
   lista de líneas explícitas, `["LÍNEA 1", "LÍNEA 2"]`;
 - en una celda de **una sola línea**, sin saltos de línea (`prefijo_no_plano` siempre es una
   línea).

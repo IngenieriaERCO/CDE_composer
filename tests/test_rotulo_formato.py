@@ -30,9 +30,11 @@ def test_a1_erco_trae_los_campos_medidos_del_rotulo_v2():
     r = formato.rotulo
     assert r.version == 1 and r.relleno_mm == 0.6 and r.interlineado == 1.6
     assert r.fuente == Path("C:/Windows/Fonts/arial.ttf")
-    assert set(r.campos) == {"localizacion_escala", "este", "norte", "revisiones", "disenador",
-                             "revisor", "titulo", "firmas", "hoja", "de", "escala", "no_plano",
-                             "rev", "notas", "convenciones"}
+    assert set(r.campos) == {"localizacion_escala", "este", "norte", "revisiones", "titulo",
+                             "firmas", "hoja", "de", "escala", "no_plano", "rev", "notas",
+                             "convenciones"}
+    # La franja del logo ya no lleva DISEÑADOR ni REVISOR: planos viejos los traen y se ignoran.
+    assert r.campos_retirados == ("disenador", "revisor")
     revisiones = r.campos["revisiones"]
     assert isinstance(revisiones, CampoTabla)
     assert revisiones.filas == ("0", "C", "B", "A") and revisiones.orden == ("A", "B", "C", "0")
@@ -46,8 +48,9 @@ def test_a1_erco_trae_los_campos_medidos_del_rotulo_v2():
     assert r.campos["localizacion_escala"].por_defecto == "DEFINIR"
     assert r.campos["escala"].calculado == "escala_comun"
     assert r.campos["rev"].calculado == "ultima_revision"
-    # 12 celdas simples (con notas), 2 tablas y las convenciones (24 símbolos + 24 descripciones)
-    assert len(r.celdas()) == 12 + 4 * 7 + 4 * 4 + 48
+    # 10 celdas simples (con notas; sin diseñador ni revisor), 2 tablas y las convenciones (24
+    # símbolos + 24 descripciones)
+    assert len(r.celdas()) == 10 + 4 * 7 + 4 * 4 + 48
 
 
 def test_notas_en_a1_erco():

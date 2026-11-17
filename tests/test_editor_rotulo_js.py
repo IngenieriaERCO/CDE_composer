@@ -256,10 +256,11 @@ def test_lo_que_no_se_puede_editar_se_avisa(datos):
     r = js("""
         return R.noRepresentable(R.crearModelo(entrada.rotulo, entrada.datos.rotulo.definicion));
     """, {"rotulo": {**ROTULO_EJEMPLO, "titulo": ["A", "B"], "campo_futuro": 1,
-                     "revisor": {"raro": 1}}, "datos": datos})
+                     "de": {"raro": 1}, "revisor": {"raro": 1}}, "datos": datos})
     # Desde la 4.3b las listas de líneas (título, REVISÓ) sí se editan: ya no se avisan.
+    # disenador y revisor (retirados del formato) tampoco: su aviso único sale en validarRotulo.
     assert r == ["notas.archivos (3 archivo(s) .txt referidos)",
-                 "rotulo.revisor (valor que el formulario no sabe mostrar)",
+                 "rotulo.de (valor que el formulario no sabe mostrar)",
                  "rotulo.campo_futuro (el formato no tiene ese campo)"]
 
 

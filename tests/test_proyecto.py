@@ -44,8 +44,8 @@ def test_todos_los_problemas_juntos(definicion):
     malo = {
         "nombre": 3,  # y falta la versión
         "disenadr": "x",
-        "disenador": True,
-        "revisor": "LÍNEA 1\nLÍNEA 2",  # admite 3 líneas: un salto vale
+        "disenador": True,  # retirado del rótulo: se ignora (aunque su valor no sirva)
+        "revisor": "LÍNEA 1\nLÍNEA 2",
         "prefijo_no_plano": "ERCO\n",
         "firmas": {"dibujo": {"nombre": "A", "firma": {"imagen": "x"}}, "jefe": {},
                    "diseno": "LANP", "reviso": {"matricula": ["A", 1]}},
@@ -57,7 +57,6 @@ def test_todos_los_problemas_juntos(definicion):
         "proyecto.disenadr: campo no reconocido (campos válidos: version, nombre, disenador, "
         "revisor, prefijo_no_plano, firmas)",
         "proyecto.nombre: se esperaba un texto; tiene int 3",
-        "proyecto.disenador: se esperaba un texto o una lista de líneas; tiene un booleano (true)",
         "proyecto.prefijo_no_plano: la celda es de una sola línea y el texto trae un salto de línea",
         "proyecto.firmas.jefe: fila no reconocida (filas válidas: dibujo, diseno, reviso, aprobo)",
         "proyecto.firmas.dibujo.firma: campo no reconocido (el proyecto solo prellena nombre, "
@@ -66,7 +65,7 @@ def test_todos_los_problemas_juntos(definicion):
         "proyecto.firmas.reviso.matricula: se esperaba una lista de líneas de texto; tiene "
         "['A', 1]",
     ]
-    assert str(e.value).startswith("El proyecto 'p.json' tiene 9 problemas:\n- proyecto.version")
+    assert str(e.value).startswith("El proyecto 'p.json' tiene 8 problemas:\n- proyecto.version")
 
 
 def test_version_y_tipo(definicion):

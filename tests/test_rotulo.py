@@ -128,7 +128,7 @@ def test_todos_los_problemas_juntos(definicion, fuente):
         "titulo": "X" * 400,
         "revisiones": [{"ver": "A", "fecha": "1"}, {"ver": "A"}, {"ver": "D"}, {"ver": 0, "firma": "x"}],
         "firmas": {"revisor": {"nombre": "x"}, "dibujo": {"nombre": "LANP", "cedula": "1"}},
-        "disenador": "中国",
+        "de": "中国",
     }
     with pytest.raises(RotuloInvalido) as e:
         preparar_rotulo(definicion, valores, [50.0], fuente)
@@ -148,7 +148,7 @@ def test_todos_los_problemas_juntos(definicion, fuente):
         "- rotulo.firmas.revisor: fila no reconocida (filas válidas: dibujo, diseno, reviso, aprobo)",
         "- rotulo.firmas.dibujo.cedula: campo no reconocido",
         "- campo 'titulo': «XXXX",
-        "- campo 'disenador': la fuente Arial",
+        "- campo 'de': la fuente Arial",
     ]:
         assert esperado in m, esperado
     assert m.startswith("El rótulo tiene ")

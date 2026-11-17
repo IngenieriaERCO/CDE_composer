@@ -196,7 +196,7 @@ def test_veinte_notas_reducidas_igual_que_componer(entorno):
     ({"no_plano": "ERCO-PSF-CIV-PL-0001-REVISION-EXTRA-MUY-LARGA-QUE-NO-CABE"}, "no_plano"),
     ({"no_plano": "PRIMERA\nSEGUNDA"}, "no_plano"),  # salto de línea en celda de una línea
     ({"norte": 2.5}, "norte"),  # tipo no válido
-    ({"disenador": "ÁNGULO ☃"}, "disenador"),  # carácter que Arial no tiene
+    ({"este": "ÁNGULO ☃"}, "este"),  # carácter que Arial no tiene
     ({"notas": {"adicionales": [LARGO] * 30}}, "notas"),
     ({"convenciones": [{"simbolo": "corte", "descripcion": " ".join([LARGO] * 2)}]}, "convenciones.1.descripcion"),
     ({"firmas": {"dibujo": {"nombre": "NOMBRE DE UNA PERSONA FICTICIA MUCHO MÁS LARGO QUE SU CELDA"}}},

@@ -39,6 +39,7 @@ from componedor.formato import Formato, cargar_formato
 from componedor.fuente import FuenteInvalida, cargar_fuente
 from componedor.proyecto import ProyectoInvalido, leer_proyecto
 from componedor.inventario import ACEPTADO, EntradaInventario, construir_inventario
+from componedor.rotulo_formato import aviso_campos_retirados
 from componedor.rosa import NOMBRE as ROSA
 from componedor.rosa import documento_rosa_sola
 from componedor.transformaciones import rect_papel_a_pdf
@@ -136,6 +137,9 @@ def _datos_rotulo(formato: Formato, carpeta_notas, carpeta_firmas=None,
     except FuenteInvalida as e:
         fuente = None
         avisos.append(f"fuente: {e}")
+    aviso = aviso_campos_retirados(proyecto, formato.rotulo, "proyecto")  # proyecto.json viejo
+    if aviso:
+        avisos.append(aviso)
     notas = catalogo_notas(carpeta_notas) if carpeta_notas is not None else None
     if notas is not None and carpeta_salida is not None:
         # 4.3c: cómo nombra un plano.json (en la carpeta del editor) a cada .txt del catálogo.

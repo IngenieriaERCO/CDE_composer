@@ -16,6 +16,9 @@ los valores quedan COPIADOS en el plano.json; `componer` no lee proyecto.json). 
 se abre no se toca. Los textos siguen las reglas de los valores del rótulo (`rotulo.py`):
 texto o entero; lista de líneas solo en celdas de varias líneas; sin saltos de línea en una
 celda de una sola línea. Todos los problemas en un solo error.
+
+"disenador" y "revisor" ya no están en el rótulo A1 ERCO (`campos_retirados` del formato): un
+proyecto.json viejo que los traiga sigue valiendo; se ignoran y `editor --proyecto` avisa una vez.
 """
 
 import json
@@ -79,8 +82,9 @@ def validar_proyecto(datos, definicion: DefinicionRotulo | None, origen: str = "
         problemas.append("el formato no tiene sección \"rotulo\": el proyecto no se puede usar")
         raise ProyectoInvalido(origen, problemas)
 
+    retirados = definicion.campos_retirados if definicion is not None else ()
     for nombre in CAMPOS_TEXTO:
-        if nombre in datos:
+        if nombre in datos and nombre not in retirados:  # retirados: se ignoran (aviso al usarlo)
             _texto(datos[nombre], nombre, campos, problemas)
     if "prefijo_no_plano" in datos:
         campo = campos.get(CAMPO_NO_PLANO)

@@ -21,6 +21,8 @@ from componedor.datos_editor import construir_datos_editor
 from componedor.formato import cargar_formato
 from componedor.fuente import cargar_fuente
 from componedor.rotulo import RotuloInvalido, escala_comun, preparar_rotulo
+from componedor.rotulo_formato import AVISO_CAMPOS_RETIRADOS
+
 from conftest import (
     ARIAL,
     crear_paquete_real,
@@ -32,6 +34,8 @@ from conftest import (
 from test_editor_rotulo_js import IDA_Y_VUELTA, PLANOS, ROSA
 
 NODE = shutil.which("node")
+# Mismo texto en Python y en el editor (el editor lo recibe en la definición del rótulo).
+AVISO_RETIRADOS = AVISO_CAMPOS_RETIRADOS.format(campos="rotulo.disenador, rotulo.revisor")
 pytestmark = [pytest.mark.skipif(NODE is None, reason="Node no está instalado"), requiere_arial]
 CARPETA_JS = Path(componedor.__file__).parent / "editor"
 
@@ -107,8 +111,8 @@ def test_los_mismos_problemas_que_python(entorno):
     python = _python(entorno, MALOS)
     r = js(VALIDAR, {"datos": entorno["datos"], "rotulo": MALOS})
     assert sorted(r["errores"]) == sorted(python)  # mismos textos, ni uno más ni uno menos
-    assert len(python) == 22
-    assert r["avisos"] == []
+    assert len(python) == 20  # disenador y revisor ya no son error: se retiraron del rótulo
+    assert r["avisos"] == [AVISO_RETIRADOS]
 
 
 @pytest.mark.parametrize("valores", [
@@ -218,7 +222,7 @@ def test_texto_del_formulario_respeta_la_forma():
 def test_campos_simples_del_formulario(entorno):
     r = js("return F.camposSimples(entrada.rotulo.definicion);", entorno["datos"])
     assert [c["campo"] for c in r] == ["titulo", "no_plano", "hoja", "de", "este", "norte",
-                                       "localizacion_escala", "disenador", "revisor"]
+                                       "localizacion_escala"]  # sin diseñador ni revisor
     assert r[0]["etiqueta"] == "Título" and r[0]["celda"]["lineas_max"] == 3
     assert r[6]["por_defecto"] == "DEFINIR"
 
@@ -310,7 +314,8 @@ def test_editar_campos_solo_cambia_lo_tocado(entorno):
     assert r["guardado"] == esperado
     assert list(r["guardado"]["rotulo"]) == [k for k in plano["rotulo"] if k != "norte"]
     assert list(r["guardado"]) == list(plano)  # mismo orden de claves del plano
-    assert r["validacion"] == {"errores": [], "avisos": []}
+    # El plano de ejemplo es anterior: trae disenador y revisor, que se ignoran con un aviso.
+    assert r["validacion"] == {"errores": [], "avisos": [AVISO_RETIRADOS]}
     # Y Python acepta el rótulo guardado (sin notas ni convenciones, que no son de esta subfase).
     valores = {k: v for k, v in r["guardado"]["rotulo"].items()
                if k not in ("notas", "convenciones", "firmas")}
@@ -347,10 +352,9 @@ def test_proyecto_prellena_un_plano_nuevo_y_queda_copiado(entorno):
         const nada = R.prellenar(abierto, valores);
         return {valores, puestos, plano, abierto: R.serializar(abierto), nada};
     """, {"datos": entorno["datos"], "proyecto": PROYECTO})
-    assert r["valores"] == {"disenador": "DISEÑO S.A.S.", "revisor": ["INTERVENTORÍA", "ÑANDÚ"],
-                            "no_plano": "ERCO-PSF-CIV-PL-",
-                            "firmas": PROYECTO["firmas"]}
-    assert r["puestos"] == ["disenador", "revisor", "no_plano", "firmas"]
+    # El proyecto trae disenador y revisor, pero el rótulo ya no los tiene: no se prellenan.
+    assert r["valores"] == {"no_plano": "ERCO-PSF-CIV-PL-", "firmas": PROYECTO["firmas"]}
+    assert r["puestos"] == ["no_plano", "firmas"]
     assert r["plano"]["version"] == 2
     assert r["plano"]["rotulo"] == {**r["valores"], "no_plano": "ERCO-PSF-CIV-PL-0007"}
     assert r["abierto"] == {"titulo": "YA TIENE RÓTULO"} and r["nada"] == []

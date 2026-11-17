@@ -19,8 +19,9 @@ def datos_a1():
 
 def test_a1_erco_declara_la_plantilla():
     datos = json.loads(RUTA_A1.read_text(encoding="utf-8"))
-    # Rótulo v2 (subfase 4.1): reemplaza a rotulo_A1_ERCO.pdf.
-    assert datos["plantilla"] == "../plantillas/rotulo_A1_ERCO_v2.pdf"
+    # Rótulo v3: la v2 (subfase 4.1) sin la fila DISEÑADOR | REVISOR y con el logo centrado
+    # (sale de `crear-plantilla-v3`; la v2 no se toca).
+    assert datos["plantilla"] == "../plantillas/rotulo_A1_ERCO_v3.pdf"
 
 
 def test_carga_formato_a1_erco():

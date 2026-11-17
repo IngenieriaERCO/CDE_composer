@@ -44,8 +44,6 @@ Archivo `planos/mi_plano.json`:
        "dibujo": "LANP", "diseno": "LANP", "reviso": "A. GÓMEZ", "aprobo": "JP"},
       {"ver": "A", "fecha": "2026-10-20", "descripcion": "EMISIÓN PARA REVISIÓN INTERNA"}
     ],
-    "disenador": "INGENIERÍA DE DISEÑO S.A.S.",
-    "revisor": "INTERVENTORÍA LTDA.",
     "titulo": "VÍA DE ACCESO PRINCIPAL MA: PLANTA GENERAL, PERFIL LONGITUDINAL Y SECCIONES TÍPICAS",
     "firmas": {
       "dibujo": {"nombre": "LUIS Á. NÚÑEZ P.", "matricula": "PRACTICANTE", "fecha": "2026-11-06"},
@@ -126,12 +124,12 @@ Qué se puede escribir y **dónde** (celdas en mm) lo define la sección `"rotul
 (`formatos/A1_ERCO.json`); el plano solo trae los **textos**. Todo es opcional: un campo que
 falta queda vacío, salvo su valor por defecto. `null` o `""` dejan la celda vacía.
 
-| Campo del plano | Tipo | Celda (A1 ERCO v2) |
+| Campo del plano | Tipo | Celda (A1 ERCO) |
 |---|---|---|
 | `localizacion_escala` | texto | ESC del recuadro de localización. Por defecto **`DEFINIR`**. |
 | `este`, `norte` | texto | Coordenadas de la localización. |
 | `titulo` | texto o lista de hasta 3 líneas | Título del plano (2,5 mm; se puede reducir hasta 2,0 mm). |
-| `disenador`, `revisor` | texto o lista de hasta 3 líneas | Celdas a la izquierda y a la derecha del logo. |
+| ~~`disenador`, `revisor`~~ | — | **Retirados** (plantilla v3: la franja del logo solo lleva el logo). Un plano viejo que los traiga se compone igual: se ignoran con un solo aviso. |
 | `revisiones` | lista de objetos | Tabla de revisiones (ver abajo). |
 | `firmas` | objeto por fila | Tabla DIBUJÓ / DISEÑÓ / REVISÓ / APROBÓ (ver abajo). |
 | `hoja`, `de` | texto o entero | HOJA __ DE __ (las dos celdas tienen el mismo rango en X, 812,9–827,4 mm, y van centradas: los dos valores quedan uno debajo del otro). |

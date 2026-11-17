@@ -1507,6 +1507,47 @@ los scripts y capturas están en `data/verificacion/`, los paquetes de prueba en
 lo demás se borró (se regenera con los comandos). Los scripts `.mjs` conservan sus rutas viejas
 (son registro; para volver a correrlos hay que actualizarlas).
 
+### Rótulo: franja del logo sin DISEÑADOR ni REVISOR ✅ (2026-11-17, sin commit)
+
+**Qué se hizo**
+- Se averiguó cómo estaba hecha la franja: los títulos «DISEÑADOR | REVISOR» y la línea vertical
+  venían **dentro de la plantilla v2** (trazos SHX + 2 anotaciones invisibles, en una fila de
+  Y 99,4–106,2 mm, encima del logo); los nombres («Luis Angel», «Alan Ruiz» en GUAMO) eran los
+  campos `disenador` y `revisor` del rótulo, escritos por código a los lados del logo.
+- **Plantilla v3** (`plantilla_v3.py`, comando `crear-plantilla-v3`, documentado en el README):
+  desde la v2, **sin modificarla** (MD5 `d905e79296e4216cd003e4ee1e7487e6` antes y después),
+  borra los 26 trazos que caen completos en esa fila (14 letras de DISEÑADOR, 11 de REVISOR y la
+  línea vertical) y sus 2 anotaciones; no tapa nada con blanco. La fila queda vacía con su
+  línea de abajo (opción A). El logo se reinserta (misma imagen, byte a byte, sin
+  recomprimir; mismo tamaño) corrido **−2,06 mm** en X: su parte visible queda centrada en la
+  columna del rótulo (750,35 mm). Se verifica sola (fuera de la fila y del logo, 0 píxeles
+  distintos a 100 ppp). `formatos/A1_ERCO.json` usa la v3.
+- **Campos retirados**: `disenador` y `revisor` salen del formato y pasan a
+  `"campos_retirados"`. Un plano.json o proyecto.json viejo que los traiga sigue abriendo y
+  componiendo: se ignoran y se avisa **una vez** con el mismo texto en `componer`,
+  `editor --proyecto` y el editor (`rotulo_formato.AVISO_CAMPOS_RETIRADOS`, incrustado en la
+  definición del rótulo). El editor ya no muestra los campos Diseñador y Revisor, no los
+  prellena desde proyecto.json, no los repite en la lista de «no editable» y **los quita al
+  guardar** (`editor_rotulo.paraGuardar`): un plano viejo, una vez guardado, ya no los trae y
+  `Componer.bat` deja de detenerse por ese aviso. La validación sí los ve, para avisar al abrir.
+- Paridad: Python y el editor leen la misma definición, así que la maquetación y la vista previa
+  dejan de dibujar esos campos a la vez; el fondo del editor (SVG de la v3) tiene el logo
+  centrado igual que el PDF (centro visible 750,39 mm en los dos).
+
+**Verificación**: `resultados/planoguamo_prueba.pdf` desde `editor/planoguamo_prueba.json` con
+`Componer.bat`: sin errores, 1 aviso (campos retirados), sin «Alan Ruiz» ni «Luis Angel» en la
+franja (sigue «Luis Angel Nuñez» en la fila DIBUJÓ, como debe) y logo centrado (750,39 mm).
+El PDF anterior quedó en `_para_borrar/resultados_antes_v3/`.
+
+**Pruebas**: **867**, todas pasan (18 nuevas: `test_plantilla_v3.py` con una plantilla
+sintética de la misma geometría, y `test_campos_retirados.py`: formato, `componer` de un plano
+viejo, proyecto.json, datos del editor, paridad del aviso con el JS y que el editor los quite
+al guardar, con el plano guardado compuesto en Python sin el aviso). ruff: los mismos
+hallazgos que había en `HEAD` (ninguno nuevo; los 173 previos son de todo el proyecto).
+
+**Nota**: el aviso es una advertencia de `componer`, así que `Componer.bat` se detiene a
+mostrarla con un plano viejo que todavía no se volvió a guardar en el editor.
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

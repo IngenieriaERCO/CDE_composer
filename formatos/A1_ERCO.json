@@ -4,7 +4,7 @@
   "unidades": "mm",
   "origen": "inferior_izquierdo",
   "orientacion": "horizontal",
-  "plantilla": "../plantillas/rotulo_A1_ERCO_v2.pdf",
+  "plantilla": "../plantillas/rotulo_A1_ERCO_v3.pdf",
   "hoja": [0, 0, 841, 594],
   "marco": [12.7, 12.7, 828.3, 581.3],
   "zonas": {
@@ -29,6 +29,7 @@
     "interlineado": 1.6,
     "carpeta_firmas": ["../firmas"],
     "formato_fecha": "dd/mm/aa",
+    "campos_retirados": ["disenador", "revisor"],
     "campos": {
       "localizacion_escala": {"tipo": "texto", "rect_mm": [809.4, 447.6, 827.4, 454.8],
                               "alinear": "izq", "altura_mm": 2.0, "por_defecto": "DEFINIR"},
@@ -64,10 +65,6 @@
           "aprobo": {"x_mm": [816.8, 828.2], "alinear": "centro"}
         }
       },
-      "disenador": {"tipo": "texto", "rect_mm": [673.2, 76.5, 714.7, 97.5],
-                    "alinear": "centro", "altura_mm": 2.0, "lineas_max": 3},
-      "revisor": {"tipo": "texto", "rect_mm": [789.5, 76.5, 827.4, 97.5],
-                  "alinear": "centro", "altura_mm": 2.0, "lineas_max": 3},
       "titulo": {"tipo": "texto", "rect_mm": [673.2, 48.8, 827.4, 73.5],
                  "alinear": "centro", "altura_mm": 2.5, "altura_min_mm": 2.0, "lineas_max": 3},
       "firmas": {

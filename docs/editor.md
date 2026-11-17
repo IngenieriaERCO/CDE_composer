@@ -122,18 +122,24 @@ python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --sal
   incrustan** en editor.html. Se omiten, con aviso, las carpetas sin PNG o con un nombre que
   `componer` no aceptaría.
 - `--proyecto <proyecto.json>`: datos que se repiten en todos los planos del proyecto
-  (diseñador, revisor, nombres y matrículas de las firmas, prefijo del No. PLANO). Esquema en
+  (nombres y matrículas de las firmas, prefijo del No. PLANO). Esquema en
   [formato_proyecto.md](formato_proyecto.md). **Solo prellena un plano NUEVO**; al guardar,
   los valores quedan copiados en el plano.json (`componer` no lee proyecto.json). Un plano que
   se abre no se toca. Si el proyecto tiene errores, el editor no se genera y se listan todos.
 
 Panel **Rótulo** (a la derecha), por secciones que se pliegan:
 
-- **Datos del plano**: Título, No. PLANO, HOJA, DE, coordenadas ESTE/NORTE, ESC. de
-  localización, Diseñador y Revisor. Las celdas de varias líneas (Título 3, Diseñador y Revisor
-  3, REVISÓ 2) usan una caja de varios renglones: **una línea por renglón**. Debajo, **ESCALA**
-  y **REV.** calculadas, de solo lectura, con la misma regla que `componer` (REV.: «0» si existe
-  la emisión 0; si no, la letra más alta entre C, B y A; vacía sin revisiones).
+- **Datos del plano**: Título, No. PLANO, HOJA, DE, coordenadas ESTE/NORTE y ESC. de
+  localización. Las celdas de varias líneas (Título 3, REVISÓ 2) usan una caja de varios
+  renglones: **una línea por renglón**. Debajo, **ESCALA** y **REV.** calculadas, de solo
+  lectura, con la misma regla que `componer` (REV.: «0» si existe la emisión 0; si no, la letra
+  más alta entre C, B y A; vacía sin revisiones).
+- **Diseñador y Revisor ya no existen**: la franja del logo de ERCO solo lleva el logo
+  (plantilla v3). Un plano.json o proyecto.json viejo que los traiga se abre sin error: se
+  ignoran y el panel avisa **una vez** («Aviso: rotulo.disenador, rotulo.revisor: campo(s) que
+  el rótulo ya no tiene…», el mismo texto que `componer`). Al **guardar**, el editor los
+  **quita** del plano.json: el plano nuevo ya no los trae y `componer` (y `Componer.bat`) ya no
+  avisa. Un plano viejo que no se vuelve a guardar sigue componiendo, con ese aviso.
 - **Revisiones**: una tarjeta por revisión con **VER.** (lista con las letras libres: 0, A, B o
   C, sin repetir), Fecha, Descripción, Dibujó, Diseñó, Revisó y Aprobó; botones **Quitar** y
   **Agregar revisión** (toma la primera letra libre; cámbiela en la lista).
@@ -330,7 +336,7 @@ La casilla **Vista previa del rótulo** (barra de arriba, encendida al abrir) di
 hoja, en su sitio, lo que `componer` escribirá:
 
 - los **textos del rótulo**: título, No. PLANO, ESCALA y REV. (calculadas), HOJA / DE,
-  coordenadas, diseñador, revisor, cada celda de las **revisiones** y de las **firmas**
+  coordenadas, cada celda de las **revisiones** y de las **firmas**
   (nombre, matrícula, firma en texto, fecha); un campo sin valor muestra su valor por defecto
   («DEFINIR»), como `componer`;
 - las **notas** numeradas, con su sangría francesa y sus viñetas (las de los .txt de
@@ -436,7 +442,8 @@ fondo que está debajo no tapa al de encima.
   `"etiqueta_escala": false`) el plano es **versión 2**; si no, versión 1. Texto con saltos
   de línea LF.
 - Si el plano se **abrió**, lo que no se tocó sale **tal como venía** (ver «2c. Rótulo»):
-  abrir y guardar sin cambios da el mismo JSON.
+  abrir y guardar sin cambios da el mismo JSON. Única excepción: los campos retirados del
+  rótulo (`disenador`, `revisor`) se quitan al guardar.
 - El rótulo se edita en los paneles **Rótulo** y **Notas** (secciones 2c y 2d); lo que no se
   edita ahí (convenciones, notas de archivos .txt, lo que el formulario no sabe mostrar) se
   **conserva tal cual** al guardar. Lo
