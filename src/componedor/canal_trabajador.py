@@ -12,6 +12,11 @@ contrato admite `cancel` y `status` en cualquier momento: van por fuera de la co
 - Cancelar: una tarea en cola se quita; la que está en curso recibe `cancel`. Si el
   trabajador no lo acepta a tiempo, o no responde, se detiene a la fuerza (se cierra su Job).
 - Un `BUSY` que llegue igual es un error del Componedor: se anota y se reintenta UNA vez.
+- «Detener a la fuerza» (`detener`, etapa 3): el usuario lo pide sin esperar la cancelación; se
+  cierra el Job del trabajador, la tarea en curso y las de la cola quedan canceladas y la sesión
+  se pierde (hay que volver a cargar el DXF).
+- Una tarea puede terminar SIN trabajador (`terminada_sin_trabajador`): p. ej. un paquete que ya
+  estaba publicado; el editor la sigue igual que las demás.
 """
 
 import itertools
@@ -39,6 +44,14 @@ SIN_INICIAR, ARRANCANDO, LISTO, OCUPADO, DETENIDO = (
     "sin_iniciar", "arrancando", "listo", "ocupado", "detenido")
 
 
+class FalloDeTarea(ValueError):
+    """Lo lanza `procesar` para que la tarea falle con SU código (p. ej. EXPORT_FAILED)."""
+
+    def __init__(self, codigo: str, mensaje: str, consejo: str | None = None):
+        super().__init__(mensaje)
+        self.codigo, self.mensaje, self.consejo = codigo, mensaje, consejo
+
+
 @dataclass
 class Tarea:
     id: str
@@ -55,6 +68,7 @@ class Tarea:
     ultima_noticia: float = field(default_factory=time.monotonic)
     cancelando: bool = False
     forzada: bool = False
+    motivo_forzada: str | None = None  # «Detener a la fuerza» del usuario (si no, por tiempo)
 
     def foto(self) -> dict:
         """Lo que ve el editor (JSON)."""
@@ -100,6 +114,36 @@ class Canal:
                 self._cola.append(tarea)
                 self._cv.notify_all()
             return tarea
+
+    def terminada_sin_trabajador(self, tipo: str, resultado: Any) -> Tarea:
+        """Una tarea que ya nace terminada (no pasa por el trabajador ni por la cola)."""
+        with self._cv:
+            tarea = Tarea(f"t-{next(self._ids)}", tipo, "", {}, None, estado=TERMINADA,
+                          resultado=resultado)
+            self._tareas[tarea.id] = tarea
+            return tarea
+
+    def detener(self, motivo: str = "Detenido a la fuerza por el usuario.") -> bool:
+        """«Detener a la fuerza»: cierra el Job del trabajador sin esperar. La tarea en curso y
+        las de la cola quedan canceladas. True si había un trabajador."""
+        with self._cv:
+            trabajador = self._trabajador
+            for tarea in self._cola:
+                tarea.estado = CANCELADA
+                tarea.error = {"codigo": "CANCELLED", "mensaje": motivo + " (no llegó a empezar)",
+                               "consejo": None}
+            self._cola.clear()
+            en_curso = [t for t in self._tareas.values() if t.estado == EN_CURSO]
+            for t in en_curso:
+                t.forzada, t.cancelando, t.motivo_forzada = True, True, motivo
+        if trabajador is None:
+            return False
+        trabajador.anotar(f"se detiene a la fuerza a pedido del usuario ({len(en_curso)} en curso)")
+        if not en_curso:  # sin tarea que note la caída: se descarta aquí (otra sesión)
+            self.reiniciar()
+            return True
+        trabajador.matar()
+        return True
 
     def tarea(self, id_tarea: str) -> Tarea | None:
         with self._cv:
@@ -202,6 +246,8 @@ class Canal:
             break
         try:
             tarea.resultado = tarea.procesar(data, tarea) if tarea.procesar else data
+        except FalloDeTarea as e:
+            self._fallar(tarea, e.codigo, e.mensaje, e.consejo)
         except ValueError as e:
             self._fallar(tarea, "RESPUESTA_INVALIDA",
                          f"La respuesta del trabajador no se puede usar: {e}",
@@ -255,8 +301,8 @@ class Canal:
                 else:
                     self._estado = SIN_INICIAR
         if tarea.forzada:
-            self._terminar_cancelada(tarea, "Se detuvo el trabajador a la fuerza: no "
-                                            "respondió a la cancelación a tiempo.")
+            self._terminar_cancelada(tarea, tarea.motivo_forzada or (
+                "Se detuvo el trabajador a la fuerza: no respondió a la cancelación a tiempo."))
         else:
             self._fallar(tarea, "CAIDO", mensaje,
                          "Vuelva a intentarlo; el próximo pedido arranca otro trabajador.")

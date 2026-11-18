@@ -73,6 +73,10 @@
       previa: (ref) => pedir("POST", "/api/previa", { ref }),
       // El PNG de una vista previa terminada (url: la que dio la tarea, /api/previas/<id>).
       png: (url) => pedir("GET", url, null, true),
+      // Etapa 3: un pedido «export» por bloque; «Detener a la fuerza»; lo ya exportado.
+      exportar: (bloques) => pedir("POST", "/api/exportar", { bloques }),
+      detener: () => pedir("POST", "/api/trabajador/detener"),
+      exportados: () => pedir("GET", "/api/exportados"),
       tarea: (id) => pedir("GET", tarea(id)),
       cancelar: (id) => pedir("POST", tarea(id) + "/cancelar"),
       reiniciar: () => pedir("POST", "/api/trabajador/reiniciar"),

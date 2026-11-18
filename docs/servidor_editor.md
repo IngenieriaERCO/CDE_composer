@@ -1,4 +1,4 @@
-# Servidor local del editor, «Cargar DXF» y vista previa (etapas 1 y 2)
+# Servidor local del editor: «Cargar DXF», vista previa y «Exportar» (etapas 1 a 3)
 
 El editor (`editor.html`) sigue siendo un solo archivo que funciona con doble clic, sin
 servidor. Para **cargar un DXF** y ver sus bloques, el editor necesita a alguien que lea el DXF:
@@ -12,7 +12,8 @@ Edge  ──HTTP (127.0.0.1, token)──>  servidor del Componedor  ──JSON 
 - **Etapa 1**: cargar el DXF y ver la carpeta de bloques.
 - **Etapa 2**: poner bloques en la hoja como cajas exactas, cambiarles la escala y ver la vista
   previa PNG del trabajador (ver [editor.md §2f](editor.md#2f-cargar-dxf-con-servidor-local)).
-- Todavía **no** se exporta (etapa 3).
+- **Etapa 3**: «Exportar» los bloques del plano a paquetes (PDF + TXT + manifiesto), que pasan a
+  ser detalles normales.
 
 ## Cómo se usa
 
@@ -68,6 +69,8 @@ menor: el editor escribe «página ≤ …». La caja exacta la dará el manifie
 | `trabajo` | sí | Carpeta del trabajador (sus temporales y caché de vistas previas) y de los registros. Se crea. Está en `data/`, fuera de git. |
 | `margen_mm` | no (5) | Margen de página con que se exportará; se manda en `load` y vale para toda la sesión del trabajador. |
 | `cache_previas_mb` | no | Tope de la caché de vistas previas del trabajador (`--preview-cache-mb`). Sin la clave, el del trabajador: 500 MB. |
+| `paquetes` | no (`data/input/dxf`) | Dónde «Exportar» publica: `<paquetes>/<nombre del DXF>/`. Al generar el editor se miran también las subcarpetas de `editor.paquetes`, así que con el valor por defecto los paquetes exportados aparecen en «Detalles disponibles». |
+| `para_borrar` | no (`_para_borrar`) | Adónde se **mueven** (nunca se borran) los paquetes viejos que «Exportar» reemplaza. |
 
 Sin la sección, el editor funciona igual, sin «Cargar DXF», y lo dice.
 
@@ -159,6 +162,38 @@ Exportador Vectorial.»
   editor muestra **Volver a cargar** (`POST /api/dxf/recargar`), que repite `load` con la ruta
   que el servidor ya conoce.
 
+### Exportar (`export`, etapa 3)
+
+- **Un pedido `export` por bloque**, con un solo trabajo (`POST /api/exportar`): cada uno tiene su
+  tarea, su barra de avance y su «Cancelar». El servidor los pone en su cola, uno a la vez,
+  detrás de lo que ya esperaba (p. ej. vistas previas). Dos copias del mismo bloque a la misma
+  escala son una sola tarea (un paquete).
+- **Dónde y con qué nombre**: `<paquetes>/<DXF>/<file_stem>_1-N` (`nombres_paquete.py`: si pasa de
+  60 caracteres, recortado con nuestro sufijo de hash antes de la escala). Opciones: las
+  recomendadas por el contrato (`solids: footprint`, `omit_unsupported: true`), `overwrite:
+  false`, `write_summary: false`; `units` y `margin_mm` no se mandan (son los de `load`).
+- **Antes de pedirlo**:
+  - si el DXF cambió en el disco desde que se cargó (tamaño o fecha, la regla §9 del
+    contrato), 409 «vuelva a cargarlo», también para lo que saldría de la caché;
+  - **caché**: si el paquete ya está publicado y es el de este bloque (SHA-256 del DXF, handle,
+    escala y margen) y pasa `importar_paquete`, se usa sin exportar (la tarea nace terminada);
+  - si en su lugar hay otro (otra versión del DXF, a medio publicar…), sus archivos se
+    **mueven** a `_para_borrar/paquetes_<fecha>/…` y recién entonces se exporta.
+- **Después**: el paquete pasa por `importar_paquete` (completo, íntegro, coherente, escala
+  física garantizada) y además tiene que ser el pedido (los mismos cuatro datos y una página que
+  no pase de la caja del editor). Si no, la tarea falla con `PAQUETE_NO_VALIDO` y no se usa.
+- **Colocación por el centro CAD**: el punto CAD del centro de la caja de `load` va al
+  `centro_mm` del plano: `posición = centro − (px, alto − py)`, con `(px, py) = cad_to_page · C`.
+  El resultado trae `desde_centro_mm` para colocar cualquier copia del bloque.
+- **Cancelar**: en cola se quita; en curso se manda `cancel` (el contrato no deja archivos a
+  medias). **Detener a la fuerza** (`POST /api/trabajador/detener`) cierra el Job del
+  trabajador sin esperar: lo que estaba en curso y lo que esperaba quedan cancelados y la sesión
+  se pierde (hay que volver a cargar el DXF).
+- **DXF_CHANGED** en un trabajo que esperaba turno: falla con ese código y el editor muestra
+  «Volver a cargar».
+- Las carpetas `.cde-tmp-*` que el exportador usa (o deja) en la salida se ignoran al buscar
+  paquetes (`localizar_paquetes`).
+
 ### Lo que el Componedor exige de la respuesta de `load`
 
 `session`, `dxf.name`, `margin_mm` (número ≥ 0) y la lista `blocks`. Sin eso, la carga falla con
@@ -181,6 +216,9 @@ bloque:
 | `POST /api/dxf/elegir` | Abre el cuadro nativo; si se elige un DXF, encola `load`. Responde `{elegido, tarea}`. 409 si ya hay un cuadro abierto o una carga en curso. |
 | `POST /api/dxf/recargar` | «Volver a cargar»: `load` otra vez con la ruta del último DXF elegido. 409 si no hay ninguno o ya se está cargando. |
 | `POST /api/previa` | Cuerpo `{"ref": "<ref de la carpeta>"}`: encola `preview`. Responde `{tarea}`. 409 sin DXF o con la sesión vencida; 404 si el `ref` no está en la carpeta. El resultado de la tarea trae `px`, `cad_a_px`, `caja_cad`, `omitidos`, `en_cache` y `url` (nunca la ruta del PNG). |
+| `POST /api/exportar` | Cuerpo `{"bloques": [{"id", "handle", "sha256", "escala", "centro_mm"}]}` (hasta 200): una tarea por bloque, `{tareas}` en el mismo orden. El resultado de cada una trae `paquete`, `manifiesto` (relativo a la carpeta del editor), `posicion_mm`, `desde_centro_mm`, `detalle` (la entrada del catálogo, con su miniatura), `en_cache`, `movidos` y `avisos`. 409 sin DXF, con la sesión vencida, con el DXF cambiado o de otro DXF; 404 si el bloque no está; 400 si no cabe. |
+| `POST /api/trabajador/detener` | «Detener a la fuerza». `{detenido}`. |
+| `GET /api/exportados` | Las entradas de catálogo de lo exportado en esta sesión del servidor (para el editor que se recarga). |
 | `GET /api/previas/<id>` | El PNG (`image/png`) de esa tarea de vista previa, con el token en la cabecera. 404 si no existe o ya no está en la caché. |
 | `GET /api/tareas/<id>` | Foto de la tarea: `estado` (`en_cola`, `en_curso`, `terminada`, `fallida`, `cancelada`), `avance`, `resultado`, `error` {`codigo`, `mensaje`, `consejo`}, `sin_noticias_s`. |
 | `POST /api/tareas/<id>/cancelar` | Cancela la tarea. |

@@ -22,6 +22,14 @@
     hash: "Calculando la huella y el hash del DXF",
     blocks: "Listando los bloques",
     layers: "Leyendo las capas",
+    draw: "Dibujando",
+    paint: "Pintando la vista previa",
+    extract: "Extrayendo el bloque",
+    analyze: "Analizando (fidelidad e inventario)",
+    pdf: "Escribiendo el PDF",
+    checks: "Comprobando el paquete",
+    publish: "Publicando el paquete",
+    verificar: "Verificando el paquete (Componedor)",
   };
   const SIN_NOTICIAS_S = 30;
 

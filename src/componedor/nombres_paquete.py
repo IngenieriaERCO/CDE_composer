@@ -24,10 +24,10 @@ def limpiar(nombre: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "_", sin_tildes).lstrip(".") or "_"
 
 
-def nombre_paquete(file_stem: str, denominador: int) -> str:
+def nombre_paquete(file_stem: str, denominador: float) -> str:
     """`<file_stem>_1-N`, o `<recorte>_<hash6>_1-N` si pasaría de 60 caracteres."""
     base = limpiar(file_stem)
-    escala = f"_1-{int(denominador)}"
+    escala = f"_1-{float(denominador):g}"  # 1:2000 → _1-2000; 1:12.5 → _1-12.5
     if len(base) + len(escala) <= MAX_PAQUETE:
         return base + escala
     sufijo = "_" + hashlib.sha256(file_stem.encode("utf-8")).hexdigest()[:LARGO_HASH] + escala

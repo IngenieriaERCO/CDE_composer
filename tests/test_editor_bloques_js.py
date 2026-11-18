@@ -259,3 +259,44 @@ def entorno_editor(tmp_path):
     datos, _ = construir_datos_editor(tmp_path / "input", tmp_path / "formato.json",
                                       tmp_path / "editor")
     return tmp_path, datos
+
+
+# --- Exportar (etapa 3) --------------------------------------------------------------------------
+
+def test_que_bloques_se_piden_al_exportar():
+    catalogo = {"dxf": {"nombre": "GUAMO_prueba.dxf", "sha256": SHA}, "sesion_activa": True,
+                "bloques": [{"handle": "50CA"}, {"handle": "1A3"}]}
+    dxf = {"nombre": "GUAMO_prueba.dxf", "sha256": SHA, "margen_mm": 5.0}
+    otro = {"nombre": "otro.dxf", "sha256": "f" * 64, "margen_mm": 5.0}
+    cambiado = {"nombre": "GUAMO_prueba.dxf", "sha256": "e" * 64, "margen_mm": 5.0}
+
+    def c(id_, handle, escala, centro, d=dxf, tamano=(957.18, 1350.019)):
+        return {"id": id_, "escala": escala, "centro": list(centro),
+                "bloque": {"handle": handle, "tamano_m": list(tamano), "dxf": d}}
+
+    colocaciones = [
+        {"id": "exportado", "detalle": {}, "pos": [0, 0]},
+        c("ok", "50CA", 5000, (342.55, 297.0)),
+        c("grande", "50CA", 2500, (342.55, 297.0)),
+        c("afuera", "1A3", 50, (30, 30), tamano=(10, 4)),
+        c("ajeno", "50CA", 5000, (342.55, 297.0), d=otro),
+        c("viejo", "50CA", 5000, (342.55, 297.0), d=cambiado),
+        c("borrado", "FF", 5000, (342.55, 297.0)),
+    ]
+    r = js("return B.pedidosExportar(entrada.cs, entrada.cat, entrada.zona);",
+           {"cs": colocaciones, "cat": catalogo, "zona": ZONA_A1})
+    assert r["pedidos"] == [{"id": "ok", "handle": "50CA", "sha256": SHA, "escala": 5000,
+                             "centro_mm": [342.55, 297.0]}]
+    assert {o["id"]: o["motivo"] for o in r["omitidos"]} == {
+        "grande": "no cabe a 1:2500: cambie la escala",
+        "afuera": "se sale del área de dibujo: muévalo",
+        "ajeno": "es de «otro.dxf» y el cargado es «GUAMO_prueba.dxf»",
+        "viejo": "el DXF cambió desde que se colocó: «Volver a cargar» primero",
+        "borrado": "el bloque ya no está en el DXF"}
+    sin = js("return [B.pedidosExportar(entrada.cs, null, entrada.zona).omitidos[0].motivo, "
+             "B.pedidosExportar(entrada.cs, Object.assign({}, entrada.cat, {sesion_activa: false}),"
+             " entrada.zona).omitidos[0].motivo, B.posicionExportada([342.55, 297], [100.718, 140.0019])];",
+             {"cs": colocaciones[1:2], "cat": catalogo, "zona": ZONA_A1})
+    assert sin[:2] == ["cargue «GUAMO_prueba.dxf» con «Cargar DXF»",
+                       "vuelva a cargar el DXF («Volver a cargar»)"]
+    assert sin[2] == pytest.approx([241.832, 156.9981])

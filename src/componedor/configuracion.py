@@ -20,9 +20,13 @@ Esquema (versión 1):
         "comando": "cde-exporter",             (obligatorio: comando, o lista [programa, args…])
         "trabajo": "data/cache_exportador",    (obligatorio: carpeta del trabajador; se crea)
         "margen_mm": 5,                        (opcional: margen de página al exportar; 5)
-        "cache_previas_mb": 500                (opcional: tope de la caché de vistas previas
+        "cache_previas_mb": 500,               (opcional: tope de la caché de vistas previas
                                                 del trabajador, --preview-cache-mb; sin la
                                                 clave, el del trabajador: 500)
+        "paquetes": "data/input/dxf",          (opcional: dónde «Exportar» publica los
+                                                paquetes, en <paquetes>/<dxf>/; ese valor)
+        "para_borrar": "_para_borrar"          (opcional: adónde se MUEVEN los paquetes viejos
+                                                que se reemplazan; ese valor)
       }
     }
 
@@ -77,6 +81,8 @@ class ConfigExportador:
     trabajo: Path  # carpeta del trabajador (--work-dir) y de los registros
     margen_mm: float = 5.0
     cache_previas_mb: int | None = None  # --preview-cache-mb; None: el del trabajador
+    paquetes: Path | None = None  # «Exportar»: <paquetes>/<dxf>/ (None: no se puede exportar)
+    para_borrar: Path | None = None  # adónde se mueven los paquetes viejos
 
     def opciones_trabajador(self) -> tuple[str, ...]:
         """Lo que va después de `worker --work-dir <trabajo>`."""
@@ -85,7 +91,10 @@ class ConfigExportador:
         return ("--preview-cache-mb", str(self.cache_previas_mb))
 
 
-CLAVES_EXPORTADOR = ("comando", "trabajo", "margen_mm", "cache_previas_mb")
+CLAVES_EXPORTADOR = ("comando", "trabajo", "margen_mm", "cache_previas_mb", "paquetes",
+                     "para_borrar")
+PAQUETES_POR_DEFECTO = "data/input/dxf"
+PARA_BORRAR_POR_DEFECTO = "_para_borrar"
 MARGEN_MM_POR_DEFECTO = 5.0
 
 
@@ -132,11 +141,15 @@ def leer_config_exportador(ruta: Path | str) -> ConfigExportador | None:
     cache = seccion.get("cache_previas_mb")
     if cache is not None and (isinstance(cache, bool) or not isinstance(cache, int) or cache < 1):
         problemas.append("exportador.cache_previas_mb: se esperaba un entero ≥ 1 (MB) o null.")
+    paquetes = _ruta(seccion.get("paquetes", PAQUETES_POR_DEFECTO), "exportador.paquetes", True,
+                     ruta.parent, problemas)
+    para_borrar = _ruta(seccion.get("para_borrar", PARA_BORRAR_POR_DEFECTO),
+                        "exportador.para_borrar", True, ruta.parent, problemas)
     if problemas:
         raise ConfigInvalida(f"El archivo de configuración '{ruta}' tiene "
                              f"{len(problemas)} problema(s):\n"
                              + "\n".join(f"- {p}" for p in problemas))
-    return ConfigExportador(comando, trabajo, float(margen), cache)
+    return ConfigExportador(comando, trabajo, float(margen), cache, paquetes, para_borrar)
 
 
 def _leer_seccion(ruta: Path | str, nombre: str, verificar_rutas: bool) -> dict[str, Path | None]:

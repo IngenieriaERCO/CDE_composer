@@ -281,3 +281,15 @@ main { flex: 1; display: flex; min-height: 0; }
 .medida.no-cabe { color: var(--muy-fuerte); font-weight: 600; }
 #hoja.vista-limpia .detalle .estado-bloque,
 #hoja.vista-limpia .detalle .tirador { display: none; }
+
+/* Exportar (etapa 3): un trabajo por bloque con su barra de avance. */
+.exportar-dxf { border: 1px solid var(--borde); border-radius: 4px; background: var(--panel); padding: 6px;
+  display: flex; flex-direction: column; gap: 4px; }
+.exportar-dxf .nombre { font-weight: 600; word-break: break-word; }
+.trabajo-exportar { border: 1px solid #e5e7eb; border-radius: 4px; padding: 4px 6px; font-size: 12px; }
+.trabajo-exportar progress { width: 100%; }
+.trabajo-exportar.terminada { border-color: #bbf7d0; background: #f0fdf4; }
+.trabajo-exportar.fallida { border-color: #fecaca; background: #fef2f2; }
+.trabajo-exportar.cancelada { border-color: #fde68a; background: #fffbeb; }
+.exportar-dxf .botones { display: flex; gap: 4px; flex-wrap: wrap; }
+.exportar-dxf button.peligro { color: var(--muy-fuerte); border-color: var(--muy-fuerte); }

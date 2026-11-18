@@ -2,7 +2,7 @@
 
 Se lanza como el de verdad: `python trabajador_falso.py worker --work-dir CARPETA`. Sigue el
 contrato final (`docs/protocolo_trabajador.md` del exportador, aprobado el 2026-11-17) en lo que
-usan las etapas 1 y 2 (`load`, `preview`, `status`, `cancel`, `close`):
+usan las etapas 1 a 3 (`load`, `preview`, `export`, `status`, `cancel`, `close`):
 
 - stdout solo lleva JSON por líneas, en UTF-8; el registro va a stderr (§1).
 - `status` y `cancel` se responden SIEMPRE, también durante un paso que no se puede cortar: un
@@ -16,6 +16,12 @@ usan las etapas 1 y 2 (`load`, `preview`, `status`, `cancel`, `close`):
   comprueben que el PNG cae donde debe. `cad_to_px` sin giro y a = −d; caché en
   `previews/<huella>/<handle>_<px>_visible.png` (`cached: true` la segunda vez).
   `NO_SESSION` si la sesión no es la actual y `DXF_CHANGED` si cambió el tamaño o la fecha (§9).
+- `export` (§5): publica paquetes COHERENTES (PDF con el contorno del dibujo donde dice
+  page_bounds_mm, manifiesto 1.3 con sha256 del PDF, TXT), a la escala pedida y con el margen de
+  load; los prepara en una carpeta `.cde-tmp-*` de la salida y los mueve (manifiesto el último).
+  Comprueba antes: sesión, DXF cambiado, referencias, escala, nombres (§5.1), repetidos y
+  OUTPUT_EXISTS; `units`/`margin_mm` distintos de load → BAD_REQUEST. Avance por trabajo con las
+  etapas del contrato; cancelar deja publicados los ya hechos.
 
 El «DXF» es un JSON con lo que debe responder `load` y cómo portarse:
 
@@ -27,9 +33,14 @@ El «DXF» es un JSON con lo que debe responder `load` y cómo portarse:
      "caer_en_paso": null,              # termina el proceso (código 3) en ese paso
      "respuesta": null,                 # reemplaza la respuesta entera (para probar errores)
      "previa_demora_s": 0.0,            # espera en cada etapa de preview (draw, paint)
-     "respuesta_previa": null}          # reemplaza la respuesta de preview
+     "respuesta_previa": null,          # reemplaza la respuesta de preview
+     "export_demora_s": 0.0,            # espera en cada etapa de export
+     "export_no_cancelable_s": 0,       # un paso de export que no mira la cancelación
+     "dejar_temporal": false}           # deja una carpeta .cde-tmp-* en la salida
 y en cada bloque, para preview: "marca": [x, y] (punto CAD) y "bounds_previa": {"min", "max"}
-(la caja de lo dibujado; por defecto la de load).
+(la caja de lo dibujado; por defecto la de load); para export: "bounds_exacta" (la caja exacta,
+si la de load es aproximada), "falla_export": "mensaje" (EXPORT_FAILED en ese trabajo) y
+"escala_no_garantizada": true.
 
 Opciones de arranque para las pruebas: --protocolo 2.0, --sin-ready, --basura (una línea que no
 es JSON antes de ready), --nieto RUTA (lanza un proceso nieto y escribe su PID en RUTA).
@@ -50,6 +61,11 @@ from pathlib import Path
 
 ETAPAS = ("read", "hash", "blocks", "layers")
 ETAPAS_PREVIA = ("draw", "paint")
+ETAPAS_EXPORT = ("extract", "analyze", "draw", "pdf", "checks", "publish")
+MENSAJES_EXPORT = {"extract": "Extrayendo", "analyze": "Analizando", "draw": "Dibujando",
+                   "pdf": "Escribiendo el PDF de", "checks": "Comprobando", "publish": "Publicando"}
+RE_PAQUETE = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9._-]*$")
+MM_A_PT = 72 / 25.4
 MAX_PAQUETE = 60
 
 
@@ -79,11 +95,19 @@ class Falso:
             sys.stdout.buffer.write((json.dumps(mensaje, ensure_ascii=False) + "\n").encode())
             sys.stdout.buffer.flush()
 
+    def _fin(self, id_):
+        """El pedido en curso termina: se libera ANTES de responder (como el real), así el
+        siguiente pedido que llegue enseguida no recibe BUSY."""
+        if id_ is not None and id_ == self.en_curso:
+            self.en_curso = None
+
     def responder(self, id_, comando, data):
+        self._fin(id_)
         self.enviar({"protocol": "1.0", "id": id_, "type": "result", "command": comando,
                      "data": data})
 
     def error(self, id_, codigo, mensaje, consejo=None, detalles=None):
+        self._fin(id_)
         self.enviar({"protocol": "1.0", "id": id_, "type": "error",
                      "error": {"code": codigo, "message": mensaje, "advice": consejo,
                                "details": detalles or {}}})
@@ -152,7 +176,7 @@ class Falso:
             elif comando == "preview":
                 self.previar(id_, datos)
             else:
-                self.error(id_, "NO_SESSION", "El trabajador falso no sabe exportar.")
+                self.exportar(id_, datos)
         finally:
             self.en_curso = None
 
@@ -199,7 +223,8 @@ class Falso:
         respuesta = self.respuesta_load(ruta, contenido, spec, datos)
         estado = ruta.stat()
         self.cargado = {"ruta": ruta, "firma": (estado.st_size, estado.st_mtime_ns), "spec": spec,
-                        "huella": respuesta["dxf"]["fingerprint"],
+                        "huella": respuesta["dxf"]["fingerprint"], "dxf": respuesta["dxf"],
+                        "units": datos.get("units"), "margen": respuesta["margin_mm"],
                         "bloques": {b["ref"]: (b, s) for b, s in
                                     zip(respuesta["blocks"], spec.get("blocks", []))}}
         self.responder(id_, "load", respuesta)
@@ -243,6 +268,182 @@ class Falso:
             return
         self.responder(id_, "preview", self.dibujar_previa(
             bloque, spec_bloque, int(datos.get("long_side_px") or 1500), c["huella"]))
+
+    # --- export ---------------------------------------------------------------------------------
+
+    def _sesion_o_error(self, id_, datos) -> dict | None:
+        c = self.cargado
+        if c is None or datos.get("session") != f"s-{self.sesion}":
+            self.error(id_, "NO_SESSION", "No hay un DXF cargado con esa sesión.",
+                       "Vuelva a cargar el DXF.", {"session": datos.get("session")})
+            return None
+        return c
+
+    def _cambio(self, c) -> bool:
+        try:
+            estado = c["ruta"].stat()
+            return (estado.st_size, estado.st_mtime_ns) != c["firma"]
+        except OSError:
+            return True
+
+    def exportar(self, id_, datos):
+        c = self._sesion_o_error(id_, datos)
+        if c is None:
+            return
+        if self._cambio(c):
+            self.error(id_, "DXF_CHANGED", f"El DXF «{c['ruta'].name}» cambió desde que se cargó.",
+                       "Vuelva a cargarlo.", {"dxf": str(c["ruta"])})
+            return
+        opciones = datos.get("options") or {}
+        if "margin_mm" in opciones and opciones["margin_mm"] != c["margen"]:
+            self.error(id_, "BAD_REQUEST", "«margin_mm» distinto del de load.")
+            return
+        if "units" in opciones and opciones["units"] != c["units"]:
+            self.error(id_, "BAD_REQUEST", "«units» distintas de las de load.")
+            return
+        salida = Path(str(datos.get("output_dir") or ""))
+        if not salida.is_dir():
+            self.error(id_, "OUTPUT_INVALID", f"«{salida}» no es una carpeta.")
+            return
+        trabajos = datos.get("jobs") or []
+        vistos = set()
+        for t in trabajos:
+            paquete = str(t.get("package", ""))
+            if (not RE_PAQUETE.match(paquete) or len(paquete) > 60
+                    or len(str(salida / (paquete + ".manifest.json"))) > 240):
+                self.error(id_, "OUTPUT_INVALID", f"Nombre de paquete no válido: «{paquete}».")
+                return
+            if paquete in vistos:
+                self.error(id_, "OUTPUT_INVALID", f"Paquete repetido: «{paquete}».")
+                return
+            vistos.add(paquete)
+            if t.get("ref") not in c["bloques"]:
+                self.error(id_, "REFERENCE_NOT_FOUND", f"No existe la referencia «{t.get('ref')}».")
+                return
+            m = re.match(r"^1:(\d+(?:\.\d+)?)$", str(t.get("scale", "")))
+            if not m or float(m.group(1)) <= 0:
+                self.error(id_, "BAD_REQUEST", f"Escala no válida: «{t.get('scale')}».")
+                return
+            if not opciones.get("overwrite"):
+                for ext in (".pdf", ".txt", ".manifest.json"):
+                    if (salida / (paquete + ext)).exists():
+                        self.error(id_, "OUTPUT_EXISTS", f"Ya existe «{paquete}{ext}».",
+                                   None, {"file": str(salida / (paquete + ext))})
+                        return
+        resultados = []
+        demora = float(c["spec"].get("export_demora_s", 0))
+        total = len(ETAPAS_EXPORT) * len(trabajos)
+        for j, t in enumerate(trabajos, start=1):
+            if self._cambio(c):  # antes de cada trabajo (§9)
+                self.error(id_, "DXF_CHANGED", f"El DXF «{c['ruta'].name}» cambió.",
+                           "Vuelva a cargarlo.", {"jobs": resultados})
+                return
+            bloque, spec_bloque = c["bloques"][t["ref"]]
+            for i, etapa in enumerate(ETAPAS_EXPORT, start=1):
+                self.etapa = etapa
+                if etapa == "draw" and c["spec"].get("export_no_cancelable_s"):
+                    time.sleep(float(c["spec"]["export_no_cancelable_s"]))
+                fin = time.monotonic() + demora
+                while time.monotonic() < fin and not self.cancelado.is_set():
+                    time.sleep(0.01)
+                if self.cancelado.is_set():
+                    for pendiente in trabajos[j - 1:]:
+                        resultados.append({"job": pendiente.get("job"), "ref": pendiente.get("ref"),
+                                           "status": "cancelled", "package": None})
+                    self.error(id_, "CANCELLED", "Exportación cancelada.", None,
+                               {"jobs": resultados})
+                    return
+                hechas = (j - 1) * len(ETAPAS_EXPORT) + i
+                self.enviar({"protocol": "1.0", "id": id_, "type": "progress",
+                             "data": {"job": t.get("job"), "job_index": j, "job_total": len(trabajos),
+                                      "stage": etapa, "stage_index": i,
+                                      "stage_total": len(ETAPAS_EXPORT),
+                                      "percent": 100.0 * hechas / total,
+                                      "message": f"{MENSAJES_EXPORT[etapa]} «{bloque['name']}»"}})
+            if spec_bloque.get("falla_export"):
+                resultados.append({"job": t.get("job"), "ref": t["ref"], "status": "failed",
+                                   "package": None, "validation_status": None,
+                                   "physical_scale_guaranteed": None, "page_size_mm": None,
+                                   "notices": [], "seconds": 0.01,
+                                   "error": {"code": "EXPORT_FAILED",
+                                             "message": spec_bloque["falla_export"]}})
+                continue
+            resultados.append(self.publicar(salida, t, bloque, spec_bloque, c))
+        publicados = sum(r["status"] == "published" for r in resultados)
+        self.responder(id_, "export", {
+            "output_dir": str(salida), "jobs": resultados, "summary": None,
+            "totals": {"published": publicados, "failed": len(resultados) - publicados,
+                       "cancelled": 0}})
+
+    def publicar(self, salida, t, bloque, spec_bloque, c):
+        import pymupdf
+
+        n = float(t["scale"].split(":")[1])
+        margen = c["margen"]
+        mm = bloque["units"]["millimeters_per_unit"]
+        caja = spec_bloque.get("bounds_exacta") or bloque["bounds"]
+        (x0, y0), (x1, y1) = caja["min"], caja["max"]
+        k = mm / n
+        ancho, alto = (x1 - x0) * k + 2 * margen, (y1 - y0) * k + 2 * margen
+        matriz = [k, 0.0, 0.0, -k, margen - k * x0, margen + k * y1]
+        dibujo = [margen, margen, margen + (x1 - x0) * k, margen + (y1 - y0) * k]
+        doc = pymupdf.open()
+        pagina = doc.new_page(width=ancho * MM_A_PT, height=alto * MM_A_PT)
+        px0, py0, px1, py1 = (v * MM_A_PT for v in dibujo)
+        esquinas = [pymupdf.Point(px0, py0), pymupdf.Point(px1, py0), pymupdf.Point(px1, py1),
+                    pymupdf.Point(px0, py1)]
+        pagina.draw_polyline(esquinas + [esquinas[0]], color=(0, 0, 0), width=0.5)
+        pdf = doc.tobytes()
+        doc.close()
+        paquete = t["package"]
+        manifiesto = {
+            "document_type": "cde-detail-manifest", "schema_version": "1.3", "model_version": "2",
+            "generated_at": "2026-11-17T10:00:00-05:00",
+            "exporter": {"version": "0.0-falso", "ezdxf": "-", "pymupdf": "-"},
+            "source": {"dxf_name": c["dxf"]["name"], "dxf_sha256": c["dxf"]["sha256"],
+                       "dxf_bytes": c["dxf"]["bytes"], "block_name": bloque["name"],
+                       "block_definition_handle": "1F",
+                       "reference": {"handle": bloque["handle"], "occurrence": bloque["occurrence"],
+                                     "total_occurrences": bloque["total_occurrences"],
+                                     "layer": bloque["layer"], "selection_method": "worker"}},
+            "units": {"declared_code": 6, "name": bloque["units"]["name"],
+                      "millimeters_per_unit": mm, "status": "falso", "user_override": None},
+            "scale": {"requested": t["scale"], "denominator": n, "factor_mm_per_cad_unit": k,
+                      "physical_scale_guaranteed": not spec_bloque.get("escala_no_garantizada"),
+                      "physical_scale_reason": None},
+            "pdf": {"file_name": f"{paquete}.pdf", "bytes": len(pdf),
+                    "sha256": hashlib.sha256(pdf).hexdigest(), "page_count": 1,
+                    "page_size_mm": [ancho, alto], "expected_page_size_mm": [ancho, alto],
+                    "margin_mm": margen, "content_size_mm": [ancho - 2 * margen, alto - 2 * margen],
+                    "drawing": {"cad_bounds": {"min": [x0, y0], "max": [x1, y1]},
+                                "page_bounds_mm": dict(zip(("x0", "y0", "x1", "y1"), dibujo)),
+                                "cad_to_page": {"units": "mm", "origin": "top-left",
+                                                "y_axis": "down", "matrix": matriz}}},
+            "entities": {"total": 1, "by_type": [], "by_layer": [], "not_conserved": []},
+            "fonts": [], "dependencies": [],
+            "notices": {"counts": {"info": 0, "warning": 0, "critical": 0}, "by_category": {}},
+            "validation": {"status": "complete", "checks": []}, "selection": None,
+            "options": {"margin_mm": margen, "units": c["units"], "include_hidden_layers": None},
+        }
+        temporal = salida / f".cde-tmp-{os.getpid()}-{t.get('job')}"
+        temporal.mkdir(exist_ok=True)
+        (temporal / "pid").write_text(str(os.getpid()), encoding="utf-8")
+        (temporal / f"{paquete}.pdf").write_bytes(pdf)
+        (temporal / f"{paquete}.txt").write_text(
+            f"Paquete falso de «{bloque['name']}» a {t['scale']}\n", encoding="utf-8")
+        (temporal / f"{paquete}.manifest.json").write_text(
+            json.dumps(manifiesto, ensure_ascii=False, indent=2), encoding="utf-8")
+        for ext in (".pdf", ".txt", ".manifest.json"):  # el manifiesto, el último
+            os.replace(temporal / f"{paquete}{ext}", salida / f"{paquete}{ext}")
+        if not c["spec"].get("dejar_temporal"):
+            (temporal / "pid").unlink()
+            temporal.rmdir()
+        return {"job": t.get("job"), "ref": t["ref"], "status": "published",
+                "package": {e: str(salida / f"{paquete}{x}") for e, x in
+                            (("pdf", ".pdf"), ("txt", ".txt"), ("manifest", ".manifest.json"))},
+                "validation_status": "complete",
+                "physical_scale_guaranteed": not spec_bloque.get("escala_no_garantizada"),
+                "page_size_mm": [ancho, alto], "notices": [], "error": None, "seconds": 0.01}
 
     def dibujar_previa(self, bloque, spec_bloque, lado, huella):
         import pymupdf  # solo aquí: load no lo necesita

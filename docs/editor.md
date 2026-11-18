@@ -350,7 +350,28 @@ los sólidos 3D). Es una imagen solo para ubicar; el PDF final es vector.
 - **Si el DXF cambió en el disco** (AutoCAD lo guardó) o el trabajador se reinició, la carpeta
   muestra el aviso y **Volver a cargar**: el servidor lo lee de nuevo con la ruta que ya
   conoce; los bloques puestos pasan al DXF nuevo (con su tamaño nuevo) y se avisa.
-- Hasta la etapa 3 no se exporta: `componer` dice qué bloques faltan por exportar.
+- Mientras no se exporten, `componer` dice qué bloques faltan.
+
+### Exportar (etapa 3)
+
+Debajo de la carpeta del DXF, **Exportar bloques del plano (N)** exporta cada bloque sin exportar
+a un paquete en `data/input/dxf/<DXF>/` (PDF vectorial + TXT + manifiesto), a la escala que tiene
+en la hoja.
+
+- Uno a la vez, cada uno con su **barra de avance** y **Cancelar**; además **Cancelar todo** y
+  **Detener a la fuerza** (pide confirmación: corta sin esperar y después hay que volver a
+  cargar el DXF).
+- No se exportan, con su motivo: los que no caben o se salen del área, los de otro DXF y los de
+  una versión anterior del DXF.
+- Al terminar, cada bloque **pasa a ser un detalle normal** en la hoja: su paquete, puesto de
+  modo que el punto del dibujo que estaba en el centro de la caja quede en el mismo lugar. El
+  paquete aparece en «Detalles disponibles» y el plano.json lo guarda con su manifiesto, como
+  cualquier detalle.
+- Si el paquete ya estaba publicado (mismo bloque, escala, margen y versión del DXF), se usa tal
+  cual: «ya estaba publicado».
+- Si en su lugar había uno viejo (otra versión del DXF), se **mueve** a `_para_borrar/` (nunca se
+  borra) y se dice.
+- Si el DXF cambió en el disco, no se exporta: **Volver a cargar** primero.
 
 ## 3. Qué se ve en la hoja
 
@@ -532,8 +553,7 @@ fondo que está debajo no tapa al de encima.
 
 ## 7. Limitaciones
 
-- Los bloques de un DXF (etapa 2) se colocan y se les cambia la escala, pero todavía no se
-  exportan desde el editor (etapa 3): un plano con bloques sin exportar no se compone.
+- Un plano con bloques sin exportar no se compone: hay que exportarlos (etapa 3) antes.
 - La vista previa muestra solo las capas visibles y no dibuja los sólidos 3D (la exportación
   sí, como huella en planta).
 

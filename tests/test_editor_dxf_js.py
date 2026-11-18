@@ -79,12 +79,16 @@ def test_cliente_vista_previa_y_volver_a_cargar():
       const c = S.crearCliente({token: "TK"}, fetchFalso);
       const png = await c.png("/api/previas/t-4");
       await c.previa("Pilar Ñ#2"); await c.recargarDxf();
+      await c.exportar([{id: "B", handle: "1A"}]); await c.detener(); await c.exportados();
       return {vistos, png};""")
     assert r["png"] == "BLOB"
     assert [(v["ruta"], v["op"]["method"], v["op"].get("body")) for v in r["vistos"]] == [
         ("/api/previas/t-4", "GET", None),
         ("/api/previa", "POST", '{"ref":"Pilar Ñ#2"}'),
-        ("/api/dxf/recargar", "POST", "{}")]
+        ("/api/dxf/recargar", "POST", "{}"),
+        ("/api/exportar", "POST", '{"bloques":[{"id":"B","handle":"1A"}]}'),
+        ("/api/trabajador/detener", "POST", "{}"),
+        ("/api/exportados", "GET", None)]
     assert all(v["op"]["headers"]["X-Componedor-Token"] == "TK" for v in r["vistos"])
 
 
@@ -177,7 +181,9 @@ def test_editor_html_trae_el_boton_y_los_js_del_dxf(tmp_path):
     assert '<button id="btn-cargar-dxf" type="button" disabled>Cargar DXF</button>' in html
     assert '<div id="panel-dxf" class="panel-dxf" hidden></div>' in html
     for funcion in ("function detectar", "function lineasBloque", "function tarjetaBloque",
-                    "function paginaMm", "function dibujarBloque", "function pedirPrevia"):
+                    "function paginaMm", "function dibujarBloque", "function pedirPrevia",
+                    "function pedidosExportar", "function aplicarExportado",
+                    "function seccionExportar"):
         assert funcion in html
     # editor_bloques.js va antes que la lógica (que lo usa para el plano versión 3).
     assert html.index("function paginaMm") < html.index("function serializarPlano")

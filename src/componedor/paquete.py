@@ -51,10 +51,24 @@ class Paquete:
         return COMPLETO
 
 
+PREFIJO_TEMPORAL = ".cde-tmp-"  # temporales del trabajador del exportador (contrato §1.1)
+
+
+def es_temporal(ruta: Path, carpeta: Path) -> bool:
+    """True si `ruta` está dentro de (o es) una carpeta `.cde-tmp-*` bajo `carpeta`, o es un
+    archivo con ese prefijo: el exportador la está usando o quedó de una publicación cortada."""
+    try:
+        partes = Path(ruta).relative_to(carpeta).parts
+    except ValueError:
+        partes = (Path(ruta).name,)
+    return any(p.startswith(PREFIJO_TEMPORAL) for p in partes)
+
+
 def localizar_paquetes(carpeta: Path | str, recursivo: bool = False) -> list[Paquete]:
     """Paquetes de `carpeta` (y subcarpetas si `recursivo`), ordenados por carpeta y prefijo.
 
-    Un manifiesto inválido no detiene el recorrido: se lista con sus problemas.
+    Un manifiesto inválido no detiene el recorrido: se lista con sus problemas. Las carpetas y
+    archivos `.cde-tmp-*` (temporales del exportador) se ignoran.
     """
     return localizar_con_sueltos(carpeta, recursivo)[0]
 
@@ -71,7 +85,8 @@ def localizar_con_sueltos(carpeta: Path | str,
 
     carpetas = [carpeta]
     if recursivo:
-        carpetas += sorted(p for p in carpeta.rglob("*") if p.is_dir())
+        carpetas += sorted(p for p in carpeta.rglob("*")
+                           if p.is_dir() and not es_temporal(p, carpeta))
 
     paquetes, sueltos = [], []
     for actual in carpetas:
@@ -99,7 +114,8 @@ def paquete_de_manifiesto(ruta_manifiesto: Path | str) -> Paquete:
 
 
 def _paquetes_de_una_carpeta(carpeta: Path) -> tuple[list[Paquete], list[Path]]:
-    archivos = {p.name: p for p in carpeta.iterdir() if p.is_file()}
+    archivos = {p.name: p for p in carpeta.iterdir()
+                if p.is_file() and not p.name.startswith(PREFIJO_TEMPORAL)}
     usados: set[str] = set()  # PDF que ya pertenecen a algún paquete
     paquetes = []
 

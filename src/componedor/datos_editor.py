@@ -70,7 +70,8 @@ def construir_datos_editor(carpeta_paquetes: Path | str, ruta_formato: Path | st
     carpeta_salida = Path(carpeta_salida)
     formato = cargar_formato(ruta_formato)
     proyecto = leer_proyecto(ruta_proyecto, formato.rotulo) if ruta_proyecto is not None else None
-    entradas = construir_inventario(carpeta_paquetes, formato, ZONA_EDITABLE)
+    # Con subcarpetas: los paquetes que exporta el editor van en <paquetes>/dxf/<dxf>/ (etapa 3).
+    entradas = construir_inventario(carpeta_paquetes, formato, ZONA_EDITABLE, recursivo=True)
 
     detalles, rechazados, ids = [], [], set()
     for e in entradas:

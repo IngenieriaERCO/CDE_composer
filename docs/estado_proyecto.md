@@ -1645,7 +1645,7 @@ OK.
 **Pendiente de esta etapa**
 - Probar el cuadro nativo a mano: en Edge sin ventana no se puede hacer clic.
 
-### Integración con el exportador — Etapa 2: bloques en la hoja y vista previa ✅ (2026-11-17, sin commit)
+### Integración con el exportador — Etapa 2: bloques en la hoja y vista previa ✅ (2026-11-17, commit ab77c6f)
 
 Decisiones (visto bueno del 2026-11-17):
 - (a) solo capas visibles en la vista previa;
@@ -1729,6 +1729,71 @@ ruff: los mismos 173 hallazgos de `HEAD`.
 
 **Pendiente**
 - Etapa 3: «Exportar» (con `nombres_paquete` e ignorar `.cde-tmp-*` en `localizar_paquetes`).
+- Probar el cuadro nativo a mano (sigue de la etapa 1).
+
+### Integración con el exportador — Etapa 3: «Exportar» ✅ (2026-11-18, sin commit)
+
+**Qué se hizo**
+- **Exportar** (`aplicacion_editor.py`, `exportar_dxf.py`, `POST /api/exportar`):
+  - un pedido `export` con un solo trabajo por bloque, en la cola del canal (uno a la vez);
+    dos copias del mismo bloque a la misma escala son una sola tarea;
+  - salida en `<exportador.paquetes>/<DXF>/<file_stem>_1-N` (por defecto `data/input/dxf/`),
+    con `nombres_paquete` (nuestro hash si pasa de 60 caracteres);
+  - opciones recomendadas del contrato (`solids: footprint`, `omit_unsupported: true`),
+    `overwrite: false`, `write_summary: false`.
+- **Caché por paquetes publicados**: si el paquete ya está y es el de este bloque (SHA-256 del
+  DXF, handle, escala, margen) y pasa `importar_paquete`, se usa sin exportar.
+- **Paquetes viejos**: si en su lugar hay otro, sus archivos se mueven a
+  `_para_borrar/paquetes_<fecha>/…` (nunca se borran; `exportador.para_borrar`).
+- **Verificación de cada paquete**: `importar_paquete` y que sea el pedido (los mismos cuatro
+  datos y una página que no pase de la caja del editor); si no, `PAQUETE_NO_VALIDO`.
+- **Colocación por el centro CAD**: posición = centro − (px, alto − py), con (px, py) =
+  `cad_to_page` · centro de la caja de `load`. El resultado trae `desde_centro_mm` para cada copia.
+- **DXF cambiado**:
+  - antes del pedido, el servidor compara tamaño y fecha con los de la carga (la regla §9) y
+    responde 409 «vuelva a cargarlo», también para lo que saldría de la caché;
+  - si cambia mientras el trabajo espera turno, el trabajador responde `DXF_CHANGED`.
+- **Cancelar** (en cola o en curso) y **Detener a la fuerza** (`Canal.detener`,
+  `POST /api/trabajador/detener`): cierra el Job sin esperar; lo en curso y lo en cola queda
+  cancelado; la sesión se pierde (hay que volver a cargar).
+- **`localizar_paquetes`** ignora las carpetas y archivos `.cde-tmp-*`; el editor se genera
+  mirando también las subcarpetas de `editor.paquetes` (los exportados aparecen en el catálogo).
+- **Editor** (`editor_panel_dxf.js`, `editor_ui.js`, `editor_bloques.js`):
+  - «Exportar bloques del plano (N)», con un trabajo por paquete y su barra de avance;
+  - Cancelar, «Cancelar todo» y «Detener a la fuerza» (con confirmación);
+  - los que no se exportan, con su motivo;
+  - cada bloque exportado pasa a ser un detalle normal (su paquete entra al catálogo);
+  - `GET /api/exportados` para el editor que se recarga.
+- `componedor.json`: `exportador.paquetes` y `exportador.para_borrar`, opcionales.
+
+**Con el exportador real** (su etapa 3 ya tiene `export`), GUAMO_prueba.dxf, BLOQUE1 a 1:5000:
+- exportado, verificado por el Componedor y colocado por el centro CAD;
+- la segunda vez, de la caché;
+- el `export` tardó unos 9,5 min en pytest y unos 6 min en Edge (el contrato estimaba ~94 s):
+  observación para el Exportador.
+
+**Pruebas**: **1080** pasan y 1 se salta (la larga con el real: `COMPONEDOR_PRUEBA_LARGA=1`;
+corrida aparte, pasa). Nuevas: `test_exportar_dxf`, `test_exportar_editor`,
+`test_detalle_exportado`, y en `test_servidor`, `test_configuracion`, `test_editor_bloques_js`,
+`test_editor_dxf_js`. El trabajador falso publica paquetes coherentes (pasan `importar_paquete`)
+y comprueba lo del contrato (`OUTPUT_EXISTS`, nombres §5.1, margen distinto, `DXF_CHANGED`,
+cancelar). Incluye componer un plano con el paquete exportado.
+
+ruff: los mismos 173 hallazgos de `HEAD`.
+
+**Verificación en Edge** (`data/verificacion/verificar_exportar_dxf.mjs`, fuera de git): todo OK.
+- Dos trabajos con barra de avance (las dos vigas en uno), el segundo «En espera».
+- Los bloques pasan a detalles por el centro CAD.
+- Caché y recargar la página.
+- Cancelar y detener a la fuerza (0,4 s), con «Volver a cargar».
+- DXF cambiado: no exporta ni usa la caché; el paquete viejo va a `_para_borrar`.
+- Exportador real con GUAMO.
+- Sin errores de JavaScript.
+
+Las de las etapas 1 y 2 siguen todo OK.
+
+**Pendiente**
+- Etapa 4: componer desde el editor.
 - Probar el cuadro nativo a mano (sigue de la etapa 1).
 
 ### Pendiente en la Fase 4 (al 2026-11-11)

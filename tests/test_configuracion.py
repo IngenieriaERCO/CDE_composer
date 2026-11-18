@@ -145,7 +145,8 @@ def test_componedor_json_del_repositorio():
     k = leer_config_componer(RAIZ / "componedor.json", verificar_rutas=False)
     assert (k.formato, k.resultados) == (c.formato, RAIZ / "resultados")
     x = leer_config_exportador(RAIZ / "componedor.json")
-    assert x == ConfigExportador(("cde-exporter",), RAIZ / "data" / "cache_exportador", 5.0)
+    assert x == ConfigExportador(("cde-exporter",), RAIZ / "data" / "cache_exportador", 5.0,
+                                 None, RAIZ / "data" / "input" / "dxf", RAIZ / "_para_borrar")
 
 
 # --- sección exportador («Cargar DXF») ----------------------------------------------------------
@@ -157,7 +158,9 @@ def test_exportador_ausente_es_none(entorno):
 def test_exportador_completo_y_por_defecto(entorno):
     ruta = _config(entorno, EDITOR, COMPONER,
                    exportador={"comando": ["py", "-m", "cde"], "trabajo": "w", "margen_mm": 7.5})
-    assert leer_config_exportador(ruta) == ConfigExportador(("py", "-m", "cde"), entorno / "w", 7.5)
+    assert leer_config_exportador(ruta) == ConfigExportador(
+        ("py", "-m", "cde"), entorno / "w", 7.5, None, entorno / "data" / "input" / "dxf",
+        entorno / "_para_borrar")
     ruta = _config(entorno, EDITOR, COMPONER, exportador={"comando": "cde-exporter",
                                                           "trabajo": "w"})
     assert leer_config_exportador(ruta).margen_mm == 5.0
@@ -167,6 +170,12 @@ def test_exportador_completo_y_por_defecto(entorno):
     x = leer_config_exportador(ruta)
     assert x.cache_previas_mb == 200
     assert x.opciones_trabajador() == ("--preview-cache-mb", "200")
+    # Etapa 3: adónde exporta y adónde van los paquetes viejos (relativas al archivo).
+    ruta = _config(entorno, EDITOR, COMPONER, exportador={"comando": "c", "trabajo": "w",
+                                                          "paquetes": "salida/dxf",
+                                                          "para_borrar": "basura"})
+    x = leer_config_exportador(ruta)
+    assert (x.paquetes, x.para_borrar) == (entorno / "salida" / "dxf", entorno / "basura")
     # Las otras secciones siguen leyéndose con la sección nueva presente.
     assert leer_config_editor(ruta).paquetes == entorno / "input"
 
@@ -181,6 +190,8 @@ def test_exportador_completo_y_por_defecto(entorno):
     ({"comando": "c", "trabajo": "w", "puerto": 1}, "exportador.puerto: clave desconocida"),
     ({"comando": "c", "trabajo": "w", "cache_previas_mb": 0}, "exportador.cache_previas_mb"),
     ({"comando": "c", "trabajo": "w", "cache_previas_mb": 2.5}, "exportador.cache_previas_mb"),
+    ({"comando": "c", "trabajo": "w", "paquetes": ""}, "exportador.paquetes: se esperaba una ruta"),
+    ({"comando": "c", "trabajo": "w", "para_borrar": 3}, "exportador.para_borrar: se esperaba"),
 ])
 def test_exportador_invalido(entorno, seccion, mensaje):
     with pytest.raises(ConfigInvalida, match=mensaje):

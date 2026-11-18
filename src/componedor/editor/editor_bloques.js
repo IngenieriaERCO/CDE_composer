@@ -333,7 +333,45 @@
     return d;
   }
 
-  return { EPS_MM, ESCALAS, paginaMm, excesoDeTamano, escalaSugerida, escalaVecina, textoEscala,
+  // ---------------------------------------------------------------------------------------
+  // Exportar (etapa 3).
+  // ---------------------------------------------------------------------------------------
+
+  /**
+   * Qué bloques sin exportar del plano se pueden pedir al servidor con la carpeta cargada:
+   * {pedidos: [{id, handle, sha256, escala, centro_mm}], omitidos: [{id, motivo}]}. No se
+   * piden los que no caben o se salen del área, ni los de otro DXF (u otra versión del mismo).
+   */
+  function pedidosExportar(colocaciones, catalogo, zona) {
+    const pedidos = [];
+    const omitidos = [];
+    for (const c of colocaciones) {
+      if (!c.bloque) continue;
+      const b = c.bloque;
+      const pagina = paginaMm(b.tamano_m, c.escala, b.dxf.margen_mm);
+      const e = estadoCaja(c.centro, pagina, zona);
+      let motivo = null;
+      if (!catalogo) motivo = "cargue «" + b.dxf.nombre + "» con «Cargar DXF»";
+      else if (catalogo.dxf.sha256 !== b.dxf.sha256) {
+        motivo = catalogo.dxf.nombre === b.dxf.nombre
+          ? "el DXF cambió desde que se colocó: «Volver a cargar» primero"
+          : "es de «" + b.dxf.nombre + "» y el cargado es «" + catalogo.dxf.nombre + "»";
+      } else if (!catalogo.sesion_activa) motivo = "vuelva a cargar el DXF («Volver a cargar»)";
+      else if (!catalogo.bloques.some((x) => x.handle === b.handle)) motivo = "el bloque ya no está en el DXF";
+      else if (!e.cabe) motivo = "no cabe a " + textoEscala(c.escala) + ": cambie la escala";
+      else if (!e.dentro) motivo = "se sale del área de dibujo: muévalo";
+      if (motivo) omitidos.push({ id: c.id, motivo });
+      else pedidos.push({ id: c.id, handle: b.handle, sha256: b.dxf.sha256, escala: c.escala,
+        centro_mm: c.centro.slice() });
+    }
+    return { pedidos, omitidos };
+  }
+
+  /** Esquina inferior izquierda de la página exportada para un bloque con centro `centro`
+   *  (el servidor da `desde_centro_mm`, que vale para cualquier copia a esa escala). */
+  const posicionExportada = (centro, desdeCentro) => [centro[0] - desdeCentro[0], centro[1] - desdeCentro[1]];
+
+  return { EPS_MM, ESCALAS, pedidosExportar, posicionExportada, paginaMm, excesoDeTamano, escalaSugerida, escalaVecina, textoEscala,
     leerEscala, rectCentrado, rectDibujo, centroLimitado, centroZona, estadoCaja, escalaPorTirador,
     mmPorUnidadCad, centroCaja, cadAPapel, pxACad, imagenEnPapel, entradaDxf, nombreArchivo,
     leerListaDxf, leerPendiente, asignarIdsDxf, listaDxf, pendienteParaGuardar };

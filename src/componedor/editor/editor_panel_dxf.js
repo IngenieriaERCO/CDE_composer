@@ -5,7 +5,13 @@
  *
  * Sin servidor (editor abierto con doble clic) el botón queda desactivado con una explicación
  * y el panel no se muestra: el editor es el de siempre (un plano versión 3 se abre igual, con
- * las cajas sin vista previa). Todavía no se exporta.
+ * las cajas sin vista previa).
+ *
+ * Etapa 3, «Exportar bloques del plano»: un pedido por bloque (el servidor los pone en cola,
+ * uno a la vez), cada uno con su barra de avance y «Cancelar»; «Cancelar todo» y «Detener a la
+ * fuerza» (cierra el trabajador sin esperar: hay que volver a cargar el DXF). Cada bloque
+ * exportado (o que ya estaba publicado) pasa a ser un detalle normal en la hoja
+ * (window.EditorUI.aplicarExportado).
  *
  * window.EditorPanelDxf (lo usa editor_ui.js):
  *   previa(bloque)  → {estado: "pidiendo"|"lista"|"error"|"sin_dxf"|"recargar"|"sin_servidor",
@@ -27,7 +33,8 @@
     "el exportador). Con doble clic en editor.html el editor funciona igual, sin esta opción.";
   const LATIDO_MS = 60000;
 
-  const vista = { estado: null, tarea: null, error: null, ocupado: false, recargar: null };
+  const vista = { estado: null, tarea: null, error: null, ocupado: false, recargar: null,
+    exportacion: { trabajos: [], omitidos: [], pidiendo: false } };
   const previas = new Map(); // "sha256|handle" → estado de su vista previa
   window.EditorPruebaDxf = { vista, conexion, previas };
   const UI = () => window.EditorUI || null;
@@ -144,6 +151,7 @@
     }
     if (e && e.dxf) hijos.push(carpeta(e.dxf));
     panel.replaceChildren(...hijos);
+    pintarExportar();
     panel.hidden = !hijos.length;
   }
 
@@ -253,7 +261,165 @@
     if (e && e.estado === "error") previas.delete(clave(b));
   }
 
-  window.EditorPanelDxf = { previa, soltar, reintentar };
+  // La sección «Exportar» va en su propio contenedor (debajo del panel): el editor la repinta
+  // cuando cambia el plano sin volver a dibujar la carpeta.
+  const anfitrion = document.createElement("div");
+  anfitrion.id = "exportar-dxf";
+  panel.after(anfitrion);
+  function pintarExportar() {
+    const seccion = seccionExportar();
+    anfitrion.replaceChildren(...(seccion ? [seccion] : []));
+    anfitrion.hidden = !seccion;
+  }
+
+  window.EditorPanelDxf = { previa, soltar, reintentar, alCambiarPlano: () => pintarExportar() };
+
+  // ---------------------------------------------------------------------------------------
+  // Exportar (etapa 3).
+  // ---------------------------------------------------------------------------------------
+
+  const B = window.EditorBloques;
+  const x = vista.exportacion;
+  const enMarcha = (t) => !S.FINALES.includes(t.foto.estado);
+
+  function textoTrabajo(t) {
+    const f = t.foto;
+    if (enMarcha(t)) return D.textoAvance(f);
+    if (f.estado === "terminada") {
+      const r = f.resultado;
+      let texto = "Exportado: " + r.paquete + (r.en_cache ? " (ya estaba publicado: se usó tal cual)" : "");
+      if (r.movidos && r.movidos.length) texto += " · " + r.movidos.length + " archivo(s) viejos movidos a _para_borrar";
+      return texto;
+    }
+    return D.textoError(f);
+  }
+
+  function seccionExportar() {
+    const ui = UI();
+    const bloques = ui ? ui.colocaciones().filter((c) => c.bloque).length : 0;
+    if (!bloques && !x.trabajos.length) return null;
+    const caja = nodo("div", { class: "exportar-dxf" });
+    caja.appendChild(nodo("div", { class: "nombre" }, "Exportar"));
+    const enCurso = x.trabajos.some(enMarcha);
+    const boton = nodo("button", { type: "button", id: "btn-exportar" },
+      "Exportar bloques del plano (" + bloques + ")");
+    boton.disabled = !bloques || enCurso || x.pidiendo;
+    boton.title = "Un paquete (PDF + manifiesto) por bloque, a su escala, en la carpeta de paquetes del DXF";
+    boton.addEventListener("click", exportar);
+    caja.appendChild(boton);
+    if (x.omitidos.length) {
+      caja.appendChild(lista(x.omitidos.map((o) => "'" + o.id + "' no se exporta: " + o.motivo + "."), "avisos-dxf"));
+    }
+    for (const t of x.trabajos) {
+      const fila = nodo("div", { class: "trabajo-exportar " + t.foto.estado, "data-tarea": t.foto.id });
+      fila.appendChild(nodo("div", { class: "nombre" }, t.ids.join(", ") + " · " + B.textoEscala(t.escala)));
+      if (enMarcha(t)) {
+        const barra = nodo("progress", { max: "100" });
+        if (typeof (t.foto.avance || {}).percent === "number") barra.value = t.foto.avance.percent;
+        fila.appendChild(barra);
+      }
+      fila.appendChild(nodo("div", { class: "dato" }, textoTrabajo(t)));
+      if (enMarcha(t)) {
+        const cancelar = nodo("button", { type: "button" }, "Cancelar");
+        cancelar.disabled = !!t.foto.cancelando;
+        cancelar.addEventListener("click", () => cliente.cancelar(t.foto.id).catch((err) => {
+          vista.error = err.message;
+          pintar();
+        }));
+        fila.appendChild(cancelar);
+      }
+      caja.appendChild(fila);
+    }
+    if (enCurso) {
+      const botones = nodo("div", { class: "botones" });
+      const todo = nodo("button", { type: "button" }, "Cancelar todo");
+      todo.addEventListener("click", () => {
+        for (const t of x.trabajos.filter(enMarcha)) cliente.cancelar(t.foto.id).catch(() => {});
+      });
+      const fuerza = nodo("button", { type: "button", class: "peligro" }, "Detener a la fuerza");
+      fuerza.title = "Cierra el trabajador del exportador sin esperar a que cancele. Lo que estaba " +
+        "exportando se descarta y hay que volver a cargar el DXF.";
+      fuerza.addEventListener("click", detenerALaFuerza);
+      botones.append(todo, fuerza);
+      caja.appendChild(botones);
+    }
+    return caja;
+  }
+
+  async function exportar() {
+    const ui = UI();
+    if (!ui) return;
+    const catalogo = vista.estado && vista.estado.dxf;
+    const { pedidos, omitidos } = B.pedidosExportar(ui.colocaciones(), catalogo, ui.zona());
+    x.omitidos = omitidos;
+    x.trabajos = x.trabajos.filter(enMarcha); // los terminados de antes ya no hacen falta
+    if (!pedidos.length) {
+      pintar();
+      return;
+    }
+    x.pidiendo = true;
+    pintar();
+    let r;
+    try {
+      r = await cliente.exportar(pedidos);
+    } catch (err) {
+      if (err.estadoHttp === 409) vista.recargar = err.message; // DXF cambiado o sesión vencida
+      else vista.error = err.message;
+      x.pidiendo = false;
+      await refrescar();
+      return;
+    }
+    x.pidiendo = false;
+    // Dos copias del mismo bloque a la misma escala son UNA tarea (un paquete).
+    const porTarea = new Map();
+    r.tareas.forEach((foto, i) => {
+      if (!porTarea.has(foto.id)) {
+        const t = { foto, ids: [], escala: pedidos[i].escala };
+        porTarea.set(foto.id, t);
+        x.trabajos.push(t);
+      }
+      porTarea.get(foto.id).ids.push(pedidos[i].id);
+    });
+    pintar();
+    await Promise.all([...porTarea.values()].map(seguirExportacion));
+    await refrescar();
+  }
+
+  async function seguirExportacion(t) {
+    try {
+      t.foto = await S.seguirTarea(cliente, t.foto.id, (foto) => {
+        t.foto = foto;
+        pintar();
+      });
+    } catch (err) {
+      t.foto = Object.assign({}, t.foto, { estado: "fallida", error: { mensaje: err.message } });
+    }
+    if (t.foto.estado === "terminada" && UI()) {
+      for (const id of t.ids) UI().aplicarExportado(id, t.foto.resultado);
+    }
+    const codigo = t.foto.error && t.foto.error.codigo;
+    if (codigo === "DXF_CHANGED" || codigo === "NO_SESSION") {
+      vista.recargar = codigo === "DXF_CHANGED"
+        ? "El DXF cambió en el disco: vuelva a cargarlo y exporte de nuevo."
+        : "El trabajador ya no tiene este DXF cargado: vuelva a cargarlo.";
+    }
+    pintar();
+  }
+
+  async function detenerALaFuerza() {
+    if (!window.confirm("¿Detener a la fuerza el trabajador del exportador?\n\nLo que está exportando " +
+        "se descarta (no deja archivos a medias) y lo que espera turno se cancela. Después hay que " +
+        "volver a cargar el DXF.")) return;
+    try {
+      await cliente.detener();
+    } catch (err) {
+      vista.error = err.message;
+    }
+    await refrescar();
+  }
+
+  // Paquetes exportados antes de recargar la página: el editor los reconoce al abrir un plano.
+  cliente.exportados().then((r) => UI() && UI().registrarDetalles(r.detalles), () => {});
 
   async function recargar() {
     vista.error = null;

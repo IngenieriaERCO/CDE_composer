@@ -115,6 +115,7 @@ Componedor/   (carpeta raíz, en Documents)
   editor/                # SOLO editor.html (todo incrustado; se regenera) + planos guardados [no]
   resultados/            # PDF que deja Componer.bat / componer --config                      [no]
   data/input/            # paquetes del exportador (hoy de prueba; ruta en componedor.json)   [no]
+  data/input/dxf/<dxf>/  # los que publica «Exportar» del editor (el editor mira subcarpetas)  [no]
   data/pruebas/          # paquetes y planos de prueba (una prueba lee planos/ejemplo_rotulo_v2.json) [no]
   data/verificacion/     # scripts .mjs y capturas de las verificaciones en Edge              [no]
   data/cache_exportador/ # trabajador del exportador («Cargar DXF») y sus registros          [no]
@@ -139,7 +140,8 @@ Reglas de esta estructura:
   `{"imagen": "<persona>"}`. La imagen la lee `componer` desde `firmas/` y solo va al PDF.
   `formatos/A1_ERCO.json` busca firmas únicamente en `../firmas`.
 - **Borrar**: lo que se elimine pasa primero por `_para_borrar/`, y solo se borra de verdad
-  cuando el usuario lo confirma.
+  cuando el usuario lo confirma. «Exportar» del editor también MUEVE ahí los paquetes viejos
+  que reemplaza (`_para_borrar/paquetes_<fecha>/`).
 
 Ejecución: `python -m componedor.cli <subcomando> ...`; el uso diario es con los dos `.bat`
 (con `--config componedor.json`).

@@ -17,7 +17,9 @@ Controles de cada pedido (`motivo_rechazo`), en este orden:
 Ninguna ruta entrega archivos del disco salvo editor.html y el PNG de una vista previa
 terminada (y solo si está dentro de la carpeta de vistas previas del trabajador: lo comprueba
 `aplicacion_editor`); ninguna recibe rutas ni opciones para el comando del exportador. Lo único
-que el editor manda en un cuerpo es el `ref` de un bloque de la carpeta ya cargada.
+que el editor manda en un cuerpo es el `ref` de un bloque de la carpeta ya cargada y, para
+«Exportar», la lista de bloques del plano (id, handle, sha256, escala, centro): la carpeta de
+salida y los nombres de paquete los decide el servidor.
 """
 
 import json
@@ -38,9 +40,9 @@ LIMITE_CUERPO = 64 * 1024
 RUTA_TAREA = re.compile(r"^/api/tareas/(t-\d+)$")
 RUTA_CANCELAR = re.compile(r"^/api/tareas/(t-\d+)/cancelar$")
 RUTA_PNG = re.compile(r"^/api/previas/(t-\d+)$")
-RUTAS_GET = ("/", "/api/estado")
-RUTAS_POST = ("/api/dxf/elegir", "/api/dxf/recargar", "/api/previa",
-              "/api/trabajador/reiniciar", "/api/latido")
+RUTAS_GET = ("/", "/api/estado", "/api/exportados")
+RUTAS_POST = ("/api/dxf/elegir", "/api/dxf/recargar", "/api/previa", "/api/exportar",
+              "/api/trabajador/reiniciar", "/api/trabajador/detener", "/api/latido")
 
 
 def ruta_conocida(metodo: str, ruta: str) -> bool:
@@ -195,6 +197,8 @@ def _manejador(servidor: ServidorEditor):
             app = servidor.app
             if metodo == "GET" and ruta == "/api/estado":
                 return app.estado()
+            if metodo == "GET" and ruta == "/api/exportados":
+                return app.exportados()
             if metodo == "GET" and (m := RUTA_TAREA.match(ruta)):
                 return app.tarea(m.group(1))
             if ruta == "/api/dxf/elegir":
@@ -203,6 +207,10 @@ def _manejador(servidor: ServidorEditor):
                 return app.recargar()
             if ruta == "/api/previa":
                 return app.pedir_previa(cuerpo.get("ref"))
+            if ruta == "/api/exportar":
+                return app.exportar(cuerpo.get("bloques"))
+            if ruta == "/api/trabajador/detener":
+                return app.detener()
             if ruta == "/api/trabajador/reiniciar":
                 return app.reiniciar()
             if ruta == "/api/latido":

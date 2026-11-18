@@ -379,6 +379,8 @@
     pintarAdvertencias(lista);
     panelRotulo.refrescar(); // ESCALA depende de los detalles colocados
     programarVistaPrevia();
+    const panelDxf = P();
+    if (panelDxf && panelDxf.alCambiarPlano) panelDxf.alCambiarPlano(); // «Exportar (N)»
   }
 
   // ---------------------------------------------------------------------------------------
@@ -1245,7 +1247,49 @@
     actualizar();
   }
 
-  window.EditorUI = { agregarBloque, catalogoCambiado, refrescar: () => actualizar() };
+  /**
+   * Agrega al catálogo los detalles de paquetes exportados desde el editor (etapa 3), si no
+   * están (por su manifiesto). Devuelve la entrada del catálogo de cada uno.
+   */
+  function registrarDetalles(detalles) {
+    const salida = [];
+    let nuevos = 0;
+    for (const d of detalles || []) {
+      let entrada = CATALOGO.find((x) => x.manifiesto === d.manifiesto);
+      if (!entrada) {
+        entrada = Object.assign({}, d, { id: L.idUnico(d.id, new Set(CATALOGO.map((x) => x.id))) });
+        CATALOGO.push(entrada);
+        nuevos++;
+      }
+      salida.push(entrada);
+    }
+    if (nuevos) pintarCatalogo();
+    return salida;
+  }
+
+  /**
+   * Un bloque exportado pasa a ser un detalle normal: su paquete, con la página donde la pone el
+   * centro CAD (centro − desde_centro_mm). Si por redondeo se saliera del área, se acomoda.
+   * Devuelve true si cambió algo.
+   */
+  function aplicarExportado(idPlano, resultado) {
+    const i = estado.colocaciones.findIndex((c) => c.id === idPlano && esBloque(c) &&
+      c.bloque.handle === resultado.handle && c.escala === resultado.escala);
+    if (i < 0) return false; // se quitó o se cambió mientras se exportaba
+    const c = estado.colocaciones[i];
+    const [detalle] = registrarDetalles([resultado.detalle]);
+    const pos = B.posicionExportada(c.centro, resultado.desde_centro_mm);
+    const limitada = L.clampAZona(pos, detalle.tamano_pagina_mm, ZONA) || pos;
+    const nueva = { id: c.id, detalle, pos: limitada };
+    if (c.etiqueta_escala === false) nueva.etiqueta_escala = false;
+    estado.colocaciones[i] = nueva;
+    marcarCambios();
+    actualizar();
+    return true;
+  }
+
+  window.EditorUI = { agregarBloque, catalogoCambiado, refrescar: () => actualizar(),
+    colocaciones: () => estado.colocaciones, zona: () => ZONA, aplicarExportado, registrarDetalles };
 
   // Para la verificación automática del reporte (no la usa la interfaz).
   window.EditorPrueba = { estado, agregar: (id) => agregar(CATALOGO.find((d) => d.id === id)),

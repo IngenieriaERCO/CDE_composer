@@ -72,7 +72,9 @@ La sección `exportador` es opcional: sin ella el editor funciona igual, pero si
 `comando` es el comando del Exportador Vectorial (o una lista `[programa, argumentos…]`);
 `trabajo`, la carpeta del trabajador (se crea); `margen_mm`, el margen de página con que se
 exportará (por defecto 5 mm); `cache_previas_mb` (opcional), el tope de la caché de vistas previas
-del trabajador (por defecto, el suyo: 500 MB). Ver [docs/servidor_editor.md](docs/servidor_editor.md).
+del trabajador (por defecto, el suyo: 500 MB); `paquetes` (opcional, `data/input/dxf`), dónde
+publica «Exportar»; `para_borrar` (opcional, `_para_borrar`), adónde se mueven los paquetes viejos.
+Ver [docs/servidor_editor.md](docs/servidor_editor.md).
 
 ## Comandos
 
@@ -334,7 +336,13 @@ página que tendrá al exportarlo a 1:N) con la **vista previa PNG** del trabaja
 lugar exacto. La escala se cambia con el selector, las teclas **+ / −** o el tirador de la
 esquina, y el centro no se mueve; si no cabe, queda en rojo. Un plano con bloques sin exportar se
 guarda como **versión 3** ([docs/formato_plano.md](docs/formato_plano.md)); `componer` dice qué
-falta por exportar (la exportación desde el editor es la etapa 3).
+falta por exportar.
+
+**Exportar** (etapa 3): «Exportar bloques del plano» publica un paquete por bloque en
+`data/input/dxf/<DXF>/`, uno a la vez, con barra de avance, Cancelar y «Detener a la fuerza».
+Cada paquete se verifica (`importar_paquete` y que sea el pedido) y el bloque pasa a ser un
+detalle normal, puesto por el centro CAD. Lo ya publicado se reutiliza; los paquetes viejos que
+se reemplazan se mueven a `_para_borrar/`.
 
 ### Elementos fijos de la plantilla y datos del editor
 

@@ -257,3 +257,36 @@ def test_vista_previa_y_su_png(servidor):
     estado, r = pedido(servidor, "POST", "/api/dxf/recargar")
     assert estado == 200 and r["elegido"] == "obra.dxf"
     assert esperar(servidor, r["tarea"]["id"])["estado"] == "terminada"
+
+
+def test_exportar_y_detener(tmp_path):
+    """Etapa 3: POST /api/exportar con la lista de bloques; POST /api/trabajador/detener."""
+    (tmp_path / "editor.html").write_text(HTML, encoding="utf-8")
+    ruta = dxf_falso(tmp_path / "obra.dxf", blocks=[
+        {"name": "B1", "size_cad": [10.0, 4.0], "handle": "1A"}])
+    app = AplicacionEditor(tmp_path / "editor.html", ZONA_A1,
+                           ConfigExportador(comando_falso(), tmp_path / "trabajo", 5.0, None,
+                                            tmp_path / "dxf", tmp_path / "_para_borrar"),
+                           elegir=lambda inicial: ruta)
+    s = ServidorEditor(app)
+    s.iniciar()
+    try:
+        _, r = pedido(s, "POST", "/api/dxf/elegir")
+        carpeta = esperar(s, r["tarea"]["id"])["resultado"]
+        bloque = {"id": "B1", "handle": "1A", "sha256": carpeta["dxf"]["sha256"], "escala": 50,
+                  "centro_mm": [300, 200]}
+        estado, r = pedido(s, "POST", "/api/exportar",
+                           cuerpo=json.dumps({"bloques": [bloque]}).encode())
+        assert estado == 200 and len(r["tareas"]) == 1
+        foto = esperar(s, r["tareas"][0]["id"])
+        assert foto["estado"] == "terminada", foto["error"]
+        assert foto["resultado"]["manifiesto"] == "dxf/obra/B1_1-50.manifest.json"
+        assert pedido(s, "POST", "/api/exportar", cuerpo=b'{"bloques": []}')[0] == 400
+        _, ex = pedido(s, "GET", "/api/exportados")
+        assert [d["manifiesto"] for d in ex["detalles"]] == ["dxf/obra/B1_1-50.manifest.json"]
+        assert pedido(s, "POST", "/api/trabajador/detener") == (200, {"detenido": True})
+        _, e = pedido(s, "GET", "/api/estado")
+        assert e["dxf"]["sesion_activa"] is False
+    finally:
+        s.detener()
+        app.cerrar()
