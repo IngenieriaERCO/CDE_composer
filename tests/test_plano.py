@@ -89,7 +89,7 @@ def test_detalles_invalidos(tmp_path, detalles, esperado):
 
 
 @pytest.mark.parametrize("cambio, esperado", [
-    ({"version": 3}, "- version: versión 3 no soportada; el componedor entiende las versiones 1 y 2"),
+    ({"version": 4}, "- version: versión 4 no soportada; el componedor entiende las versiones 1, 2 y 3"),
     ({"version": "1"}, "- version: se esperaba un número entero; tiene texto '1'"),
     ({"version": True}, "- version: se esperaba un número entero; tiene un booleano"),
     ({"formato": None}, "- formato: se esperaba una ruta (texto); tiene null"),
@@ -108,7 +108,7 @@ def test_falta_campo_de_la_raiz(tmp_path, campo):
 
 
 def test_varios_problemas_en_un_solo_mensaje(tmp_path):
-    datos = _base(version=3, detalles=[
+    datos = _base(version=9, detalles=[
         {"id": "a", "manifiesto": "m"},
         {"id": "a", "manifiesto": "m", "centrar": True},
         {"id": "b", "manifiesto": "m", "posicion_mm": [0, 0], "centrar": True},

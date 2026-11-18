@@ -2,7 +2,7 @@
 
 Se lanza como el de verdad: `python trabajador_falso.py worker --work-dir CARPETA`. Sigue el
 contrato final (`docs/protocolo_trabajador.md` del exportador, aprobado el 2026-11-17) en lo que
-usa la etapa 1 (`load`, `status`, `cancel`, `close`):
+usan las etapas 1 y 2 (`load`, `preview`, `status`, `cancel`, `close`):
 
 - stdout solo lleva JSON por líneas, en UTF-8; el registro va a stderr (§1).
 - `status` y `cancel` se responden SIEMPRE, también durante un paso que no se puede cortar: un
@@ -11,6 +11,11 @@ usa la etapa 1 (`load`, `status`, `cancel`, `close`):
   (sin acentos, solo A–Z, a–z, 0–9, «.», «-», «_», 60 caracteres como mucho con sufijo de hash).
 - `load`: `units` y `margin_mm` valen para la sesión; `include_layers: false` deja `layers`
   vacío (§3); cada bloque trae `bounds_with_hidden` (null si no tiene nada oculto, §3.1).
+- `preview` (§4): PNG transparente hecho con PyMuPDF, con un cuadrito negro de 5 × 5 px centrado
+  en el punto CAD `marca` del bloque (por defecto el centro de su caja), para que las pruebas
+  comprueben que el PNG cae donde debe. `cad_to_px` sin giro y a = −d; caché en
+  `previews/<huella>/<handle>_<px>_visible.png` (`cached: true` la segunda vez).
+  `NO_SESSION` si la sesión no es la actual y `DXF_CHANGED` si cambió el tamaño o la fecha (§9).
 
 El «DXF» es un JSON con lo que debe responder `load` y cómo portarse:
 
@@ -20,7 +25,11 @@ El «DXF» es un JSON con lo que debe responder `load` y cómo portarse:
      "pasos": 4, "demora_s": 0.0,       # avance: cuatro etapas, con esa espera en cada una
      "no_cancelable_s": 0,              # un paso que no mira la cancelación (como ezdxf)
      "caer_en_paso": null,              # termina el proceso (código 3) en ese paso
-     "respuesta": null}                 # reemplaza la respuesta entera (para probar errores)
+     "respuesta": null,                 # reemplaza la respuesta entera (para probar errores)
+     "previa_demora_s": 0.0,            # espera en cada etapa de preview (draw, paint)
+     "respuesta_previa": null}          # reemplaza la respuesta de preview
+y en cada bloque, para preview: "marca": [x, y] (punto CAD) y "bounds_previa": {"min", "max"}
+(la caja de lo dibujado; por defecto la de load).
 
 Opciones de arranque para las pruebas: --protocolo 2.0, --sin-ready, --basura (una línea que no
 es JSON antes de ready), --nieto RUTA (lanza un proceso nieto y escribe su PID en RUTA).
@@ -29,6 +38,7 @@ es JSON antes de ready), --nieto RUTA (lanza un proceso nieto y escribe su PID e
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -39,6 +49,7 @@ import unicodedata
 from pathlib import Path
 
 ETAPAS = ("read", "hash", "blocks", "layers")
+ETAPAS_PREVIA = ("draw", "paint")
 MAX_PAQUETE = 60
 
 
@@ -61,6 +72,7 @@ class Falso:
         self.cancelado = threading.Event()
         self.sesion = 0
         self.dxf: str | None = None
+        self.cargado: dict | None = None  # ruta, firma (tamaño, fecha), spec, bloques por ref
 
     def enviar(self, mensaje: dict) -> None:
         with self.escritura:
@@ -137,8 +149,10 @@ class Falso:
         try:
             if comando == "load":
                 self.cargar(id_, datos)
+            elif comando == "preview":
+                self.previar(id_, datos)
             else:
-                self.error(id_, "NO_SESSION", "El trabajador falso solo sabe cargar.")
+                self.error(id_, "NO_SESSION", "El trabajador falso no sabe exportar.")
         finally:
             self.en_curso = None
 
@@ -169,6 +183,7 @@ class Falso:
                 time.sleep(0.01)
             if self.cancelado.is_set():
                 self.dxf = None
+                self.cargado = None
                 self.error(id_, "CANCELLED", "Carga cancelada.")
                 return
             self.enviar({"protocol": "1.0", "id": id_, "type": "progress",
@@ -181,7 +196,81 @@ class Falso:
             return
         self.sesion += 1
         self.dxf = ruta.name
-        self.responder(id_, "load", self.respuesta_load(ruta, contenido, spec, datos))
+        respuesta = self.respuesta_load(ruta, contenido, spec, datos)
+        estado = ruta.stat()
+        self.cargado = {"ruta": ruta, "firma": (estado.st_size, estado.st_mtime_ns), "spec": spec,
+                        "huella": respuesta["dxf"]["fingerprint"],
+                        "bloques": {b["ref"]: (b, s) for b, s in
+                                    zip(respuesta["blocks"], spec.get("blocks", []))}}
+        self.responder(id_, "load", respuesta)
+
+    def previar(self, id_, datos):
+        c = self.cargado
+        if c is None or datos.get("session") != f"s-{self.sesion}":
+            self.error(id_, "NO_SESSION", "No hay un DXF cargado con esa sesión.",
+                       "Vuelva a cargar el DXF.", {"session": datos.get("session")})
+            return
+        try:
+            estado = c["ruta"].stat()
+            cambio = (estado.st_size, estado.st_mtime_ns) != c["firma"]
+        except OSError:
+            cambio = True
+        if cambio:
+            self.error(id_, "DXF_CHANGED", f"El DXF «{c['ruta'].name}» cambió desde que se cargó.",
+                       "Vuelva a cargarlo.", {"dxf": str(c["ruta"])})
+            return
+        if datos.get("ref") not in c["bloques"]:
+            self.error(id_, "REFERENCE_NOT_FOUND", f"No existe la referencia «{datos.get('ref')}».")
+            return
+        bloque, spec_bloque = c["bloques"][datos["ref"]]
+        demora = float(c["spec"].get("previa_demora_s", 0))
+        for i, etapa in enumerate(ETAPAS_PREVIA, start=1):
+            self.etapa = etapa
+            fin = time.monotonic() + demora
+            while time.monotonic() < fin and not self.cancelado.is_set():
+                time.sleep(0.01)
+            if self.cancelado.is_set():
+                self.error(id_, "CANCELLED", "Vista previa cancelada.")
+                return
+            self.enviar({"protocol": "1.0", "id": id_, "type": "progress",
+                         "data": {"job": None, "job_index": None, "job_total": None,
+                                  "stage": etapa, "stage_index": i,
+                                  "stage_total": len(ETAPAS_PREVIA),
+                                  "percent": 100.0 * i / len(ETAPAS_PREVIA),
+                                  "message": f"Vista previa de «{bloque['name']}»: {etapa}"}})
+        if c["spec"].get("respuesta_previa") is not None:
+            self.responder(id_, "preview", c["spec"]["respuesta_previa"])
+            return
+        self.responder(id_, "preview", self.dibujar_previa(
+            bloque, spec_bloque, int(datos.get("long_side_px") or 1500), c["huella"]))
+
+    def dibujar_previa(self, bloque, spec_bloque, lado, huella):
+        import pymupdf  # solo aquí: load no lo necesita
+
+        caja = spec_bloque.get("bounds_previa") or bloque["bounds"]
+        (x0, y0), (x1, y1) = caja["min"], caja["max"]
+        s = lado / max(x1 - x0, y1 - y0)
+        ancho, alto = max(1, round((x1 - x0) * s)), max(1, round((y1 - y0) * s))
+        matriz = [s, 0.0, 0.0, -s, -s * x0, s * y1]
+        png = (Path(self.args.work_dir) / "previews" / huella
+               / f"{bloque['handle']}_{lado}_visible.png")
+        en_cache = png.is_file()
+        if not en_cache:
+            mx, my = spec_bloque.get("marca") or [(x0 + x1) / 2, (y0 + y1) / 2]
+            cx = math.floor(matriz[0] * mx + matriz[4])  # el píxel que contiene el punto
+            cy = math.floor(matriz[3] * my + matriz[5])
+            pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, ancho, alto), 1)
+            pix.clear_with()  # todos los bytes en 0: transparente (alfa 0)
+            for x in range(cx - 2, cx + 3):
+                for y in range(cy - 2, cy + 3):
+                    if 0 <= x < ancho and 0 <= y < alto:
+                        pix.set_pixel(x, y, (0, 0, 0, 255))
+            png.parent.mkdir(parents=True, exist_ok=True)
+            pix.save(str(png))
+        return {"png": str(png), "px": [ancho, alto],
+                "bounds": {"min": [x0, y0], "max": [x1, y1]}, "cad_to_px": matriz,
+                "omitted": {"3DSOLID": bloque["contains"]["solids_3d"], "REGION": 0},
+                "cached": en_cache, "seconds": 0.01}
 
     def respuesta_load(self, ruta, contenido, spec, datos):
         unidades = {"declared_code": 6, "name": "m", "millimeters_per_unit": 1000.0,
@@ -243,6 +332,7 @@ def main() -> int:
     p.add_argument("--sin-ready", action="store_true")
     p.add_argument("--basura", action="store_true")
     p.add_argument("--nieto")
+    p.add_argument("--preview-cache-mb", type=int, default=500)
     args = p.parse_args()
     return Falso(args).correr()
 

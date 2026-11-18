@@ -161,6 +161,12 @@ def test_exportador_completo_y_por_defecto(entorno):
     ruta = _config(entorno, EDITOR, COMPONER, exportador={"comando": "cde-exporter",
                                                           "trabajo": "w"})
     assert leer_config_exportador(ruta).margen_mm == 5.0
+    assert leer_config_exportador(ruta).cache_previas_mb is None  # el del trabajador (500)
+    ruta = _config(entorno, EDITOR, COMPONER, exportador={"comando": "c", "trabajo": "w",
+                                                          "cache_previas_mb": 200})
+    x = leer_config_exportador(ruta)
+    assert x.cache_previas_mb == 200
+    assert x.opciones_trabajador() == ("--preview-cache-mb", "200")
     # Las otras secciones siguen leyéndose con la sección nueva presente.
     assert leer_config_editor(ruta).paquetes == entorno / "input"
 
@@ -173,6 +179,8 @@ def test_exportador_completo_y_por_defecto(entorno):
     ({"comando": "c", "trabajo": "w", "margen_mm": -1}, "exportador.margen_mm: se esperaba"),
     ({"comando": "c", "trabajo": "w", "margen_mm": True}, "exportador.margen_mm: se esperaba"),
     ({"comando": "c", "trabajo": "w", "puerto": 1}, "exportador.puerto: clave desconocida"),
+    ({"comando": "c", "trabajo": "w", "cache_previas_mb": 0}, "exportador.cache_previas_mb"),
+    ({"comando": "c", "trabajo": "w", "cache_previas_mb": 2.5}, "exportador.cache_previas_mb"),
 ])
 def test_exportador_invalido(entorno, seccion, mensaje):
     with pytest.raises(ConfigInvalida, match=mensaje):

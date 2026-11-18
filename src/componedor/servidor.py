@@ -14,8 +14,10 @@ Controles de cada pedido (`motivo_rechazo`), en este orden:
    viene, debe ser `same-origin` (o `none`: la barra de direcciones, solo para la página).
 5. POST: cuerpo JSON (`Content-Type: application/json`) de hasta 64 KB.
 
-Ninguna ruta entrega archivos del disco salvo editor.html; ninguna recibe rutas ni opciones
-para el comando del exportador.
+Ninguna ruta entrega archivos del disco salvo editor.html y el PNG de una vista previa
+terminada (y solo si está dentro de la carpeta de vistas previas del trabajador: lo comprueba
+`aplicacion_editor`); ninguna recibe rutas ni opciones para el comando del exportador. Lo único
+que el editor manda en un cuerpo es el `ref` de un bloque de la carpeta ya cargada.
 """
 
 import json
@@ -35,13 +37,15 @@ CABECERA_TOKEN = "X-Componedor-Token"
 LIMITE_CUERPO = 64 * 1024
 RUTA_TAREA = re.compile(r"^/api/tareas/(t-\d+)$")
 RUTA_CANCELAR = re.compile(r"^/api/tareas/(t-\d+)/cancelar$")
+RUTA_PNG = re.compile(r"^/api/previas/(t-\d+)$")
 RUTAS_GET = ("/", "/api/estado")
-RUTAS_POST = ("/api/dxf/elegir", "/api/trabajador/reiniciar", "/api/latido")
+RUTAS_POST = ("/api/dxf/elegir", "/api/dxf/recargar", "/api/previa",
+              "/api/trabajador/reiniciar", "/api/latido")
 
 
 def ruta_conocida(metodo: str, ruta: str) -> bool:
     if metodo == "GET":
-        return ruta in RUTAS_GET or bool(RUTA_TAREA.match(ruta))
+        return ruta in RUTAS_GET or bool(RUTA_TAREA.match(ruta) or RUTA_PNG.match(ruta))
     if metodo == "POST":
         return ruta in RUTAS_POST or bool(RUTA_CANCELAR.match(ruta))
     return False
@@ -163,25 +167,31 @@ def _manejador(servidor: ServidorEditor):
             if ruta != "/":
                 servidor.app.latido()  # todo pedido de la API cuenta como señal del editor
             try:
+                cuerpo = {}
                 if metodo == "POST":
                     largo = int(self.headers.get("Content-Length") or 0)
-                    cuerpo = self.rfile.read(largo) if largo else b"{}"
+                    crudo = self.rfile.read(largo) if largo else b"{}"
                     try:
-                        json.loads(cuerpo.decode("utf-8") or "{}")
+                        cuerpo = json.loads(crudo.decode("utf-8") or "{}")
                     except (UnicodeDecodeError, json.JSONDecodeError):
-                        self._responder(400, {"error": "El cuerpo no es JSON."})
+                        cuerpo = None
+                    if not isinstance(cuerpo, dict):
+                        self._responder(400, {"error": "El cuerpo no es un objeto JSON."})
                         return
                 if ruta == "/":
                     self._pagina()
                     return
-                self._responder(200, self._api(metodo, ruta))
+                if m := RUTA_PNG.match(ruta):
+                    self._enviar(200, servidor.app.png_previa(m.group(1)), "image/png")
+                    return
+                self._responder(200, self._api(metodo, ruta, cuerpo))
             except ErrorAplicacion as e:
                 self._responder(e.estado_http, {"error": e.mensaje})
             except Exception as e:  # noqa: BLE001 - un pedido no tumba el servidor
                 servidor.anotar(f"error interno en {metodo} {ruta}: {e!r}")
                 self._responder(500, {"error": f"Error interno del servidor: {e}"})
 
-        def _api(self, metodo: str, ruta: str) -> dict:
+        def _api(self, metodo: str, ruta: str, cuerpo: dict) -> dict:
             app = servidor.app
             if metodo == "GET" and ruta == "/api/estado":
                 return app.estado()
@@ -189,6 +199,10 @@ def _manejador(servidor: ServidorEditor):
                 return app.tarea(m.group(1))
             if ruta == "/api/dxf/elegir":
                 return app.elegir_y_cargar()
+            if ruta == "/api/dxf/recargar":
+                return app.recargar()
+            if ruta == "/api/previa":
+                return app.pedir_previa(cuerpo.get("ref"))
             if ruta == "/api/trabajador/reiniciar":
                 return app.reiniciar()
             if ruta == "/api/latido":

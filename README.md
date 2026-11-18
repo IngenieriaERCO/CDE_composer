@@ -71,7 +71,8 @@ ruta que no existe es error, y se listan todos los problemas juntos.
 La sección `exportador` es opcional: sin ella el editor funciona igual, pero sin «Cargar DXF».
 `comando` es el comando del Exportador Vectorial (o una lista `[programa, argumentos…]`);
 `trabajo`, la carpeta del trabajador (se crea); `margen_mm`, el margen de página con que se
-exportará (por defecto 5 mm). Ver [docs/servidor_editor.md](docs/servidor_editor.md).
+exportará (por defecto 5 mm); `cache_previas_mb` (opcional), el tope de la caché de vistas previas
+del trabajador (por defecto, el suyo: 500 MB). Ver [docs/servidor_editor.md](docs/servidor_editor.md).
 
 ## Comandos
 
@@ -324,9 +325,16 @@ Si Node está instalado, `pytest` prueba también la lógica del editor (JavaScr
 elegir un DXF, el trabajador del Exportador Vectorial lo lee una sola vez y el editor muestra
 una **carpeta** con sus bloques: tamaño real en m, unidades, **escala sugerida** (la primera de
 la lista estándar con la que la página cabe en el área de dibujo) y notas (caja aproximada,
-sólidos 3D, capas ocultas, unidades sin verificar). Todavía no se arrastran al plano ni se
-exportan. Requiere un `cde-exporter` con la orden `worker`; si el instalado no la tiene, el
-editor lo dice. Detalles y seguridad en [docs/servidor_editor.md](docs/servidor_editor.md).
+sólidos 3D, capas ocultas, unidades sin verificar). Requiere un `cde-exporter` con la orden
+`worker`; si el instalado no la tiene, el editor lo dice. Detalles y seguridad en
+[docs/servidor_editor.md](docs/servidor_editor.md).
+
+**Bloques en la hoja** (etapa 2): «Agregar al plano» pone un bloque como **caja exacta** (la
+página que tendrá al exportarlo a 1:N) con la **vista previa PNG** del trabajador encima, en su
+lugar exacto. La escala se cambia con el selector, las teclas **+ / −** o el tirador de la
+esquina, y el centro no se mueve; si no cabe, queda en rojo. Un plano con bloques sin exportar se
+guarda como **versión 3** ([docs/formato_plano.md](docs/formato_plano.md)); `componer` dice qué
+falta por exportar (la exportación desde el editor es la etapa 3).
 
 ### Elementos fijos de la plantilla y datos del editor
 

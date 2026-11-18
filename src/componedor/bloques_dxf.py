@@ -50,6 +50,15 @@ def _par(v) -> tuple[float, float] | None:
     return None
 
 
+def _caja(caja: dict) -> dict | None:
+    """{"min": [x, y], "max": [x, y]} en el marco único del contrato, o None si no sirve."""
+    puntos = [caja.get(k) for k in ("min", "max")]
+    if all(isinstance(p, list) and len(p) >= 2 and all(_numero(v) for v in p[:2])
+           for p in puntos) and all(puntos[0][i] <= puntos[1][i] for i in (0, 1)):
+        return {"min": [float(v) for v in puntos[0][:2]], "max": [float(v) for v in puntos[1][:2]]}
+    return None
+
+
 def _texto(v) -> str | None:
     return v if isinstance(v, str) and v else None
 
@@ -125,6 +134,8 @@ def _bloque(b, margen_mm: float, zona: RectMM, zona_nombre: str) -> dict:
         "tamano_m": list(tamano_m) if tamano_m else None,
         "unidades": unidades,
         "caja_exacta": caja["exact"],
+        # Para poner la vista previa: el centro de esta caja va al centro de la página.
+        "caja_cad": _caja(caja),
         "escala_sugerida": sugerida,
         "pagina_sugerida_mm": (list(pagina_mm(tamano_m, sugerida, margen_mm))
                                if sugerida is not None else None),

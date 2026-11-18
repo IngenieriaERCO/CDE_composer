@@ -19,7 +19,10 @@ Esquema (versión 1):
       "exportador": {                          (opcional: «Cargar DXF» del editor con servidor)
         "comando": "cde-exporter",             (obligatorio: comando, o lista [programa, args…])
         "trabajo": "data/cache_exportador",    (obligatorio: carpeta del trabajador; se crea)
-        "margen_mm": 5                         (opcional: margen de página al exportar; 5)
+        "margen_mm": 5,                        (opcional: margen de página al exportar; 5)
+        "cache_previas_mb": 500                (opcional: tope de la caché de vistas previas
+                                                del trabajador, --preview-cache-mb; sin la
+                                                clave, el del trabajador: 500)
       }
     }
 
@@ -73,9 +76,16 @@ class ConfigExportador:
     comando: tuple[str, ...]  # programa y argumentos previos a "worker"
     trabajo: Path  # carpeta del trabajador (--work-dir) y de los registros
     margen_mm: float = 5.0
+    cache_previas_mb: int | None = None  # --preview-cache-mb; None: el del trabajador
+
+    def opciones_trabajador(self) -> tuple[str, ...]:
+        """Lo que va después de `worker --work-dir <trabajo>`."""
+        if self.cache_previas_mb is None:
+            return ()
+        return ("--preview-cache-mb", str(self.cache_previas_mb))
 
 
-CLAVES_EXPORTADOR = ("comando", "trabajo", "margen_mm")
+CLAVES_EXPORTADOR = ("comando", "trabajo", "margen_mm", "cache_previas_mb")
 MARGEN_MM_POR_DEFECTO = 5.0
 
 
@@ -119,11 +129,14 @@ def leer_config_exportador(ruta: Path | str) -> ConfigExportador | None:
     margen = seccion.get("margen_mm", MARGEN_MM_POR_DEFECTO)
     if isinstance(margen, bool) or not isinstance(margen, (int, float)) or not margen >= 0:
         problemas.append("exportador.margen_mm: se esperaba un número ≥ 0 (mm).")
+    cache = seccion.get("cache_previas_mb")
+    if cache is not None and (isinstance(cache, bool) or not isinstance(cache, int) or cache < 1):
+        problemas.append("exportador.cache_previas_mb: se esperaba un entero ≥ 1 (MB) o null.")
     if problemas:
         raise ConfigInvalida(f"El archivo de configuración '{ruta}' tiene "
                              f"{len(problemas)} problema(s):\n"
                              + "\n".join(f"- {p}" for p in problemas))
-    return ConfigExportador(comando, trabajo, float(margen))
+    return ConfigExportador(comando, trabajo, float(margen), cache)
 
 
 def _leer_seccion(ruta: Path | str, nombre: str, verificar_rutas: bool) -> dict[str, Path | None]:

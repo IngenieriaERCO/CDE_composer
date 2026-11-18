@@ -69,7 +69,8 @@ def test_catalogo_de_un_bloque():
     (b,) = c["bloques"]
     assert b == {"ref": "B1#1", "nombre": "B1", "handle": "1A", "ocurrencia": 1,
                  "total_ocurrencias": 1, "capa": "0", "tamano_m": [10.0, 4.0],
-                 "unidades": c["unidades"], "caja_exacta": True, "escala_sugerida": 50,
+                 "unidades": c["unidades"], "caja_exacta": True,
+                 "caja_cad": {"min": [0.0, 0.0], "max": [10.0, 4.0]}, "escala_sugerida": 50,
                  "pagina_sugerida_mm": [210.0, 90.0], "entidades": 12, "archivo": "B1",
                  "notas": []}
     assert c["omitidos"] == [] and c["avisos"] == [] and c["problemas"] == []
@@ -160,3 +161,16 @@ def test_no_modifica_la_respuesta():
     copia = copy.deepcopy(r)
     catalogo_dxf(r, ZONA_A1)
     assert r == copia
+
+
+@pytest.mark.parametrize("caja, esperada", [
+    ({"min": [899699.777, 937885.353], "max": [900656.957, 939235.372], "exact": True},
+     {"min": [899699.777, 937885.353], "max": [900656.957, 939235.372]}),
+    ({"min": [5, 0], "max": [1, 1], "exact": True}, None),       # min > max
+    ({"min": [0, 0], "max": ["x", 1], "exact": True}, None),     # no es número
+    ({"exact": False}, None),                                    # sin min/max
+])
+def test_caja_cad_para_poner_la_vista_previa(caja, esperada):
+    """La caja de load (marco único del contrato): su centro va al centro de la página."""
+    (b,) = catalogo_dxf(respuesta(bloque(bounds=caja)), ZONA_A1)["bloques"]
+    assert b["caja_cad"] == esperada

@@ -59,6 +59,7 @@ from componedor.fuente import Fuente, FuenteInvalida, cargar_fuente
 from componedor.importador import PaqueteAceptado, PaqueteRechazado, importar_paquete
 from componedor.maquetacion import TextoMaquetado
 from componedor.plano import Plano
+from componedor.plano_dxf import texto_pendientes
 from componedor.plantilla import TOLERANCIA_MARCO_MM, InformePlantilla, buscar_marco
 from componedor.rosa import NOMBRE as ROSA
 from componedor.rosa import (
@@ -133,6 +134,9 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
             f"El archivo '{salida}' ya existe. Use --sobrescribir para reemplazarlo.")
 
     formato = _formato(plano)
+    if plano.pendientes:  # plano versión 3 con bloques de DXF sin exportar
+        raise PlanoNoComponible(texto_pendientes(plano.pendientes, plano.dxf,
+                                                 formato.zonas[ZONA], ZONA))
     destino_rosa = _destino_rosa(plano, formato)
     elementos = (list(formato.elementos_plantilla) if destino_rosa == MANTENER
                  else elementos_visibles(formato, destino_rosa))

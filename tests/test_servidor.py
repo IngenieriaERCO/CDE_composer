@@ -54,10 +54,23 @@ def pedido(s, metodo, ruta, cabeceras=None, cuerpo=None, token=True, origen=True
     r = c.getresponse()
     datos = r.read()
     c.close()
+    if r.getheader("Content-Type") == "image/png":
+        return r.status, datos  # los bytes del PNG
     try:
         return r.status, json.loads(datos)
     except json.JSONDecodeError:
         return r.status, datos.decode("utf-8")
+
+
+def esperar(s, id_tarea):
+    fin = time.monotonic() + 20
+    while True:
+        estado, foto = pedido(s, "GET", f"/api/tareas/{id_tarea}")
+        assert estado == 200
+        if foto["estado"] in ("terminada", "fallida", "cancelada"):
+            return foto
+        assert time.monotonic() < fin
+        time.sleep(0.05)
 
 
 def test_escucha_solo_en_127_0_0_1(servidor):
@@ -219,3 +232,28 @@ def test_cli_servidor_sin_seccion_exportador(tmp_path, capsys):
                  "--inactividad-min", "0.0005"]) == 0
     assert "«Cargar DXF»: no disponible. componedor.json no tiene la sección" in (
         capsys.readouterr().out)
+
+
+def test_vista_previa_y_su_png(servidor):
+    """Etapa 2: el editor pide la vista previa de un ref y baja el PNG con el token."""
+    assert pedido(servidor, "POST", "/api/previa", cuerpo=b'{"ref": "B1#1"}')[0] == 409  # sin DXF
+    _, r = pedido(servidor, "POST", "/api/dxf/elegir")
+    assert esperar(servidor, r["tarea"]["id"])["estado"] == "terminada"
+    assert pedido(servidor, "POST", "/api/previa", cuerpo=b"[1, 2]") == (
+        400, {"error": "El cuerpo no es un objeto JSON."})
+    assert pedido(servidor, "POST", "/api/previa", cuerpo=b'{"ref": "NO#1"}')[0] == 404
+    estado, r = pedido(servidor, "POST", "/api/previa", cuerpo=b'{"ref": "B1#1"}')
+    assert estado == 200 and r["tarea"]["tipo"] == "previa"
+    foto = esperar(servidor, r["tarea"]["id"])
+    assert foto["estado"] == "terminada", foto["error"]
+    url = foto["resultado"]["url"]
+    assert url == f"/api/previas/{r['tarea']['id']}"
+    estado, png = pedido(servidor, "GET", url)
+    assert estado == 200 and png[:4] == bytes([0x89]) + b"PNG"
+    assert pedido(servidor, "GET", url, token=False)[0] == 403  # también con token
+    assert pedido(servidor, "GET", "/api/previas/t-99")[0] == 404
+    assert pedido(servidor, "GET", "/api/previas/../../firmas")[0] == 404
+    # «Volver a cargar»: con la ruta que ya conoce el servidor.
+    estado, r = pedido(servidor, "POST", "/api/dxf/recargar")
+    assert estado == 200 and r["elegido"] == "obra.dxf"
+    assert esperar(servidor, r["tarea"]["id"])["estado"] == "terminada"

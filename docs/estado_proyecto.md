@@ -1645,6 +1645,92 @@ OK.
 **Pendiente de esta etapa**
 - Probar el cuadro nativo a mano: en Edge sin ventana no se puede hacer clic.
 
+### Integración con el exportador — Etapa 2: bloques en la hoja y vista previa ✅ (2026-11-17, sin commit)
+
+Decisiones (visto bueno del 2026-11-17):
+- (a) solo capas visibles en la vista previa;
+- (b) plano.json versión 3 con `centro_mm` y `origen`;
+- (c) un bloque que no cabe se queda en rojo y se guarda con aviso; `componer` lo rechaza;
+- (d) teclas + y −, que no actúan con el foco en un cuadro de texto;
+- nombres de paquete con nuestro propio sufijo de hash al agregar la escala (las carpetas
+  `.cde-tmp-*` en `localizar_paquetes` quedan para la etapa 3).
+
+**Qué se hizo**
+- **Caja exacta** (`editor_bloques.js`, lógica pura): página = tamaño_m × 1000 ÷ N + 2 × margen;
+  centro fijo al cambiar la escala; el centro se limita al mover (si cabe, la página completa en
+  el área); escala vecina (+ / −) y escala por tirador (la esquina más cerca del puntero).
+- **Vista previa PNG**: el PNG va al papel por coordenadas CAD (`cad_to_px` del contrato: sin
+  giro, a = −d), con la misma fórmula de la caja; al cambiar la escala solo se reescala (no se
+  pide otra). Llega como `blob:` (el token va en la cabecera).
+- **Editor** (`editor_ui.js`, `editor_panel_dxf.js`):
+  - «Agregar al plano» en cada tarjeta (desactivado sin unidades verificadas);
+  - la caja punteada con la imagen encima, «Pidiendo vista previa…», y en rojo con «no cabe:
+    sobran X × Y mm; sugerida 1:N»;
+  - Propiedades del bloque: selector de escala (la sugerida marcada), «Escala sugerida»,
+    centro X / Y, página, estado de la vista previa y «Reintentar»;
+  - arrastre por el centro (con el paso), flechas, teclas + / −, tirador;
+  - advertencias: no cabe, se sale y «N bloque(s) sin exportar»; las de traslapes, rosa y
+    etiquetas «ESC» funcionan igual que con los detalles;
+  - «Volver a cargar» si el DXF cambió (`DXF_CHANGED`) o el trabajador ya no lo tiene
+    (`NO_SESSION`); los bloques puestos pasan al DXF nuevo, con su tamaño nuevo.
+- **Servidor** (`aplicacion_editor.py`, `servidor.py`, `previa_dxf.py`):
+  - `POST /api/previa {ref}`, `GET /api/previas/<id>` (solo PNG dentro de
+    `<trabajo>/previews`), `POST /api/dxf/recargar`;
+  - dos pedidos del mismo bloque en curso son una tarea; cargar otro DXF cancela las previas en
+    cola;
+  - la respuesta de `preview` se comprueba (b = c = 0, a = −d, `png` en la carpeta).
+- **plano.json versión 3** (`plano_dxf.py`, `plano.py`, `editor_logica.js`): lista `dxf` y
+  detalles pendientes con `origen` y `centro_mm`; abrir y guardar sin tocar nada da el mismo
+  archivo; las versiones 1 y 2 no cambian.
+- **componer** dice qué bloques faltan por exportar (y cuáles no caben) y no compone.
+- **Nombres de paquete** (`nombres_paquete.py`): `<file_stem>_1-N`, o recortado con nuestro hash
+  antes de la escala si pasa de 60 caracteres (para la etapa 3).
+- `componedor.json`: `exportador.cache_previas_mb` opcional (`--preview-cache-mb`).
+- La espera de `ready` pasó de 30 s a **60 s**: el exportador real, la primera vez después de
+  actualizarlo, tardó más de 30 s en arrancar (compila sus archivos); después, unos 10 s.
+
+**Con el exportador real** (su etapa 2 ya tiene `preview`), GUAMO_prueba.dxf:
+- `load` en 3,4 s, 1 bloque (BLOQUE1), escala sugerida 1:5000;
+- vista previa en 6–7 s, 1070 × 1500 px, transparente;
+- lo dibujado, llevado a CAD con su matriz, cae dentro de la caja de `load`;
+- el PNG real trae un borde transparente alrededor de lo dibujado: no estorba, porque se pone
+  por su matriz.
+
+**Pruebas**: **1045**, todas pasan (68 nuevas). Nuevas:
+- `test_previa_dxf`, `test_plano_v3`, `test_nombres_paquete`, `test_editor_bloques_js`;
+- en `test_trabajador`, `test_aplicacion_editor`, `test_servidor`, `test_configuracion`,
+  `test_bloques_dxf` y `test_editor_dxf_js`.
+
+Cubren:
+- la paridad JS–Python: página, exceso, escala sugerida, lista de escalas;
+- que un punto CAD caiga en el mismo lugar del papel por la caja y por el PNG del trabajador
+  falso (< medio píxel);
+- `preview`, caché, `NO_SESSION` y `DXF_CHANGED`;
+- PNG fuera de la carpeta;
+- la versión 3 de ida y vuelta y `componer` con pendientes;
+- el exportador real con GUAMO.
+
+ruff: los mismos 173 hallazgos de `HEAD`.
+
+**Verificación en Edge** (`data/verificacion/verificar_bloques_dxf.mjs`, fuera de git): todo OK,
+53 comprobaciones.
+- Agregar y vista previa: el PNG cae en la caja ±1 px.
+- Lo dibujado más chico que la caja cae en su lugar por coordenadas CAD.
+- Selector: 1:2500 no cabe, queda en rojo con el centro fijo y el PNG al doble.
+- Teclas + / −, también las del teclado numérico; no actúan con el foco en «Centro X» ni en el
+  selector.
+- Tirador hacia adentro y hacia afuera.
+- Arrastre con paso de 1 mm y límite del área.
+- Versión 3 idéntica al abrir y guardar.
+- DXF cambiado → «Volver a cargar».
+- Sin servidor, las cajas sin vista previa.
+- GUAMO real.
+- Sin errores de JavaScript.
+
+**Pendiente**
+- Etapa 3: «Exportar» (con `nombres_paquete` e ignorar `.cde-tmp-*` en `localizar_paquetes`).
+- Probar el cuadro nativo a mano (sigue de la etapa 1).
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

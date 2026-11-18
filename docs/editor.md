@@ -315,9 +315,42 @@ una vez, con barra de avance y **Cancelar**, y arriba de «Detalles disponibles�
 
 Al final, «No exportables» (bloques anónimos, XREF…). Recargar la página no pierde la carpeta.
 
-En esta etapa la carpeta es **solo para mirar**: los bloques todavía no se arrastran al plano ni
-se exportan. Sin servidor, el botón aparece desactivado y explica cómo abrirlo. Si el
-`cde-exporter` instalado no tiene la orden `worker`, el editor lo dice.
+Sin servidor, el botón aparece desactivado y explica cómo abrirlo. Si el `cde-exporter`
+instalado no tiene la orden `worker`, el editor lo dice.
+
+### Bloques en la hoja: caja exacta y vista previa (etapa 2)
+
+Cada tarjeta de la carpeta tiene **Agregar al plano** (desactivado si las unidades del bloque no
+están verificadas: sin ellas no se sabe su tamaño en papel). El bloque aparece en el centro del
+área de dibujo como una **caja exacta**: la página que tendrá el paquete al exportarlo a la
+escala sugerida (`tamaño_m × 1000 ÷ N + 2 × margen`), con borde morado punteado y la marca
+«vista previa (sin exportar)». Enseguida el editor pide su **vista previa** al trabajador
+(«Pidiendo vista previa…»; de 1 a 10 s según el bloque) y la pone encima, en su lugar exacto:
+el PNG va por coordenadas CAD, así que cae donde caerá el dibujo en el PDF (aunque no muestre
+los sólidos 3D). Es una imagen solo para ubicar; el PDF final es vector.
+
+- **Mover**: se arrastra como un detalle (por su centro, con el paso de la barra), con las
+  flechas o escribiendo «Centro X / Centro Y» en Propiedades. Si cabe, la página queda siempre
+  completa dentro del área de dibujo.
+- **Cambiar la escala** (el **centro no se mueve**; solo cambia el tamaño de la caja y de la
+  imagen, sin pedir otra vista previa):
+  - el selector **Escala** de Propiedades (las 12 estándar, la sugerida marcada) y el botón
+    **Escala sugerida**;
+  - las teclas **+** (dibujo más grande: de 1:100 a 1:50) y **−** (más chico), también las del
+    teclado numérico. No actúan si el foco está en un cuadro de texto o en una lista;
+  - el **tirador** (cuadrito blanco en la esquina superior derecha del bloque seleccionado):
+    al arrastrarlo, la escala salta a la estándar cuya esquina queda más cerca del puntero.
+- **Si no cabe** (o se sale del área): borde rojo y «no cabe: sobran X × Y mm; sugerida 1:N» en
+  la caja, en Propiedades y en Advertencias. Se puede guardar igual (con aviso), pero `componer`
+  lo rechaza.
+- **Guardar**: con bloques sin exportar el plano.json es **versión 3** (ver
+  [formato_plano.md](formato_plano.md#bloques-de-un-dxf-sin-exportar-versión-3)). Abrirlo y
+  guardarlo sin tocar nada da el mismo archivo. Sin servidor el plano se abre igual: las cajas
+  se ven sin vista previa.
+- **Si el DXF cambió en el disco** (AutoCAD lo guardó) o el trabajador se reinició, la carpeta
+  muestra el aviso y **Volver a cargar**: el servidor lo lee de nuevo con la ruta que ya
+  conoce; los bloques puestos pasan al DXF nuevo (con su tamaño nuevo) y se avisa.
+- Hasta la etapa 3 no se exporta: `componer` dice qué bloques faltan por exportar.
 
 ## 3. Qué se ve en la hoja
 
@@ -499,8 +532,10 @@ fondo que está debajo no tapa al de encima.
 
 ## 7. Limitaciones
 
-- «Cargar DXF» (etapa 1) solo lista los bloques: todavía no se arrastran, no se cambia su
-  escala ni se exportan.
+- Los bloques de un DXF (etapa 2) se colocan y se les cambia la escala, pero todavía no se
+  exportan desde el editor (etapa 3): un plano con bloques sin exportar no se compone.
+- La vista previa muestra solo las capas visibles y no dibuja los sólidos 3D (la exportación
+  sí, como huella en planta).
 
 - No hay deshacer (Ctrl+Z): use **Quitar** y vuelva a agregar, o abra el plano guardado.
 - Solo posición: no gira ni escala detalles (vienen a escala 1:N del exportador), ni usa

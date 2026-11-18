@@ -4,6 +4,7 @@ import shutil
 import sys
 import threading
 import time
+from pathlib import Path
 
 import pytest
 from conftest import comando_falso, dxf_falso
@@ -200,3 +201,123 @@ def test_resolver_comando(tmp_path):
         resolver_comando(("no-existe-xyz",))
     with pytest.raises(TrabajadorNoDisponible, match="No hay comando"):
         resolver_comando(())
+
+
+# --- preview (etapa 2) -----------------------------------------------------------------------
+
+def previar(t, sesion, ref, **kw):
+    return t.pedir("preview", {"session": sesion, "ref": ref, "long_side_px": 300,
+                               "include_hidden_layers": None}, **kw)
+
+
+def test_preview_png_transparente_con_la_marca_donde_dice_la_matriz(trabajador, tmp_path):
+    """El PNG del falso tiene un cuadrito en el punto CAD «marca»: cad_to_px lo ubica."""
+    import pymupdf
+
+    ruta = dxf_falso(tmp_path / "a.dxf", blocks=[
+        {"name": "B", "size_cad": [40.0, 20.0], "min": [1000.0, 2000.0], "marca": [1010.0, 2015.0]}])
+    sesion = cargar(trabajador, ruta)["session"]
+    avances = []
+    p = previar(trabajador, sesion, "B#1", al_avance=avances.append)
+    assert [a["stage"] for a in avances] == ["draw", "paint"]
+    a, b, c, d, e, f = p["cad_to_px"]
+    assert b == c == 0 and a == -d == 300 / 40.0
+    assert p["px"] == [300, 150] and p["cached"] is False
+    assert p["png"].endswith("1A0_300_visible.png") and "previews" in p["png"]
+    pix = pymupdf.Pixmap(p["png"])
+    assert (pix.width, pix.height, pix.alpha) == (300, 150, 1)
+    px, py = int(a * 1010.0 + e), int(d * 2015.0 + f)  # (75, 37)
+    assert pix.pixel(px, py) == (0, 0, 0, 255)
+    assert pix.pixel(0, 0)[3] == 0 and pix.pixel(px + 5, py)[3] == 0  # el resto, transparente
+    assert previar(trabajador, sesion, "B#1")["cached"] is True
+
+
+def test_preview_sin_sesion_o_con_el_dxf_cambiado(trabajador, tmp_path):
+    ruta = dxf_falso(tmp_path / "a.dxf")
+    with pytest.raises(ErrorTrabajador) as e:
+        previar(trabajador, "s-1", "B1#1")
+    assert e.value.codigo == "NO_SESSION"
+    sesion = cargar(trabajador, ruta)["session"]
+    with pytest.raises(ErrorTrabajador) as e:
+        previar(trabajador, "s-viejo", "B1#1")
+    assert e.value.codigo == "NO_SESSION"
+    with pytest.raises(ErrorTrabajador) as e:
+        previar(trabajador, sesion, "NO#1")
+    assert e.value.codigo == "REFERENCE_NOT_FOUND"
+    ruta.write_text(ruta.read_text(encoding="utf-8") + " ", encoding="utf-8")  # AutoCAD guardó
+    with pytest.raises(ErrorTrabajador) as e:
+        previar(trabajador, sesion, "B1#1")
+    assert e.value.codigo == "DXF_CHANGED" and e.value.consejo == "Vuelva a cargarlo."
+
+
+def test_opciones_despues_de_work_dir(tmp_path):
+    t = Trabajador(comando_falso(), tmp_path / "trabajo", opciones=("--preview-cache-mb", "7"))
+    t.iniciar()
+    try:
+        assert "'--preview-cache-mb', '7'" in t.ruta_registro.read_text(encoding="utf-8")
+    finally:
+        t.cerrar()
+
+
+@pytest.mark.skipif(shutil.which("cde-exporter") is None, reason="cde-exporter no instalado")
+def test_cde_exporter_real_con_guamo(tmp_path):
+    """Con el exportador real y GUAMO_prueba.dxf (fuera de git): load y, si ya existe, preview.
+    La ruta se puede cambiar con la variable COMPONEDOR_DXF_REAL."""
+    import os
+
+    from conftest import ZONA_A1
+
+    from componedor.bloques_dxf import catalogo_dxf
+    from componedor.previa_dxf import leer_previa, pedido_previa
+
+    dxf = Path(os.environ.get("COMPONEDOR_DXF_REAL", Path(__file__).parents[2]
+                              / "Exportador Vectorial" / "data" / "input" / "GUAMO_prueba.dxf"))
+    if not dxf.is_file():
+        pytest.skip(f"no está {dxf}")
+    t = Trabajador(("cde-exporter",), tmp_path / "trabajo", espera_ready_s=90)
+    try:
+        try:
+            t.iniciar()
+        except TrabajadorNoDisponible as e:
+            pytest.skip(str(e))
+        datos = t.pedir("load", {"dxf": str(dxf), "units": None, "margin_mm": 5.0,
+                                 "include_layers": False}, espera_s=300)
+        carpeta = catalogo_dxf(datos, ZONA_A1)
+        assert carpeta["bloques"] and not carpeta["problemas"]
+        assert all(b["caja_cad"] is not None for b in carpeta["bloques"])
+        # El bloque más chico (la vista previa más rápida).
+        b = min(carpeta["bloques"], key=lambda x: (x["entidades"] or 0))
+        try:
+            r = t.pedir("preview", pedido_previa(carpeta["sesion"], b["ref"]), espera_s=300)
+        except ErrorTrabajador as e:
+            if e.codigo == "UNKNOWN_COMMAND":
+                pytest.skip("el trabajador real todavía no tiene «preview» (etapa 2 del "
+                            "exportador)")
+            raise
+        previa = leer_previa(r, tmp_path / "trabajo" / "previews")  # cumple el contrato
+        assert max(previa["px"]) == 1500 and previa["png"].is_file()
+        import pymupdf
+
+        pix = pymupdf.Pixmap(str(previa["png"]))
+        assert pix.alpha == 1 and [pix.width, pix.height] == previa["px"]  # fondo transparente
+        # Mismo marco que load: lo dibujado cae dentro de la caja del bloque (puede ser menor,
+        # p. ej. sin los 3DSOLID). Tolerancia: medio píxel.
+        tol = 0.5 / previa["cad_a_px"][0]
+        (x0, y0), (x1, y1) = b["caja_cad"]["min"], b["caja_cad"]["max"]
+        (p0, q0), (p1, q1) = previa["caja_cad"]["min"], previa["caja_cad"]["max"]
+        assert x0 - tol <= p0 <= p1 <= x1 + tol and y0 - tol <= q0 <= q1 <= y1 + tol
+        # Lo que de verdad se dibujó (píxeles no transparentes), llevado a CAD con cad_to_px,
+        # cae dentro de la caja de load (±1 px): el PNG se puede poner por coordenadas CAD.
+        ma, _, _, md, me, mf = previa["cad_a_px"]
+        opacos = [(x, y) for y in range(0, pix.height, 2) for x in range(0, pix.width, 2)
+                  if pix.pixel(x, y)[3] > 0]
+        assert opacos, "el PNG real no tiene nada dibujado"
+        xs = [(x - me) / ma for x, _ in opacos] + [(x + 1 - me) / ma for x, _ in opacos]
+        ys = [(y - mf) / md for _, y in opacos] + [(y + 1 - mf) / md for _, y in opacos]
+        un_px = 1 / ma
+        assert x0 - 2 * un_px <= min(xs) and max(xs) <= x1 + 2 * un_px
+        assert y0 - 2 * un_px <= min(ys) and max(ys) <= y1 + 2 * un_px
+        # La segunda vez sale de la caché.
+        assert t.pedir("preview", pedido_previa(carpeta["sesion"], b["ref"]))["cached"] is True
+    finally:
+        t.cerrar()

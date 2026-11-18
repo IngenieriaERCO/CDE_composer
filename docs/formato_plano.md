@@ -1,4 +1,4 @@
-# Formato de plano.json (versiones 1 y 2)
+# Formato de plano.json (versiones 1, 2 y 3)
 
 Un `plano.json` dice **qué detalles van en una hoja y dónde** y, desde la versión 2, **qué
 se escribe en el rótulo** y **dónde va la rosa de los vientos**. Lo lee el comando
@@ -19,6 +19,10 @@ El editor HTML (`editor.html`) lo escribe arrastrando y soltando, pero el compon
 - **Versión 1**: solo detalles. Sigue siendo válida.
 - **Versión 2** (subfase 4.1): lo mismo más `rotulo`, `rosa_vientos` y, en cada detalle,
   `etiqueta_escala`. Todo eso es opcional.
+- **Versión 3** (integración con el exportador, etapa 2): la versión 2 más bloques de un DXF
+  colocados en el editor y **todavía sin exportar**. El editor la escribe solo cuando el plano
+  tiene alguno; `componer` la lee, pero no la compone hasta que estén exportados. Ver
+  [Bloques de un DXF sin exportar](#bloques-de-un-dxf-sin-exportar-versión-3).
 
 ## Ejemplo (versión 2)
 
@@ -386,9 +390,68 @@ avisa con una advertencia (mueva el detalle o ponga `"etiqueta_escala": false`).
 Las etiquetas y los campos calculados se escriben siempre que el formato tenga la sección
 `"rotulo"`, también en un plano versión 1.
 
+## Bloques de un DXF sin exportar (versión 3)
+
+Con «Cargar DXF» (editor abierto con `Abrir editor.bat`) se ponen en la hoja **cajas exactas**
+de bloques del DXF: la página que tendrá el paquete al exportarlo a 1:N. Mientras no se
+exporten, el plano.json los guarda así:
+
+```json
+{
+  "version": 3,
+  "formato": "../formatos/A1_ERCO.json",
+  "plantilla": null,
+  "dxf": [
+    {"id": "d1", "archivo": "../data/input/dxf/GUAMO_prueba.dxf",
+     "sha256": "4b1d…(64 caracteres)", "bytes": 6781020, "unidades": "m", "margen_mm": 5}
+  ],
+  "detalles": [
+    {"id": "Corte_A", "manifiesto": "../data/input/corte_a.manifest.json", "posicion_mm": [30, 40]},
+    {"id": "BLOQUE1",
+     "origen": {"dxf": "d1", "bloque": "BLOQUE1", "handle": "50CA", "ocurrencia": 1,
+                "escala": "1:5000", "tamano_m": [957.18, 1350.019], "caja_exacta": true},
+     "centro_mm": [342.55, 297.0]}
+  ]
+}
+```
+
+- **`dxf`** (lista): cada DXF que usan los bloques pendientes.
+  - `id`: lo nombra (`d1`, `d2`…).
+  - `archivo`: ruta del DXF, relativa a la carpeta del plano (o absoluta si está en otro disco).
+  - `sha256`: el del DXF cuando se cargó (64 caracteres hexadecimales en minúsculas).
+  - `margen_mm`: el margen de página con que se exportará.
+  - `bytes` y `unidades`: informativos.
+- **Un detalle pendiente** lleva `origen` y `centro_mm` en lugar de `manifiesto` y
+  `posicion_mm` (y, como en la versión 2, `etiqueta_escala` opcional):
+  - `origen.dxf`: el `id` de su DXF en la lista.
+  - `origen.bloque`, `origen.handle` (el del INSERT, hexadecimal en mayúsculas) y
+    `origen.ocurrencia` (1, 2… si el bloque se repite): qué referencia es.
+  - `origen.escala`: `"1:N"`.
+  - `origen.tamano_m`: `[ancho, alto]` real en m. Con él y la escala sale la página:
+    **página_mm = tamaño_m × 1000 ÷ N + 2 × margen_mm** por eje (fórmula del contrato del
+    trabajador).
+  - `origen.caja_exacta`: `false` si la caja es aproximada (bloques anidados girados); entonces
+    la página real puede salir algo menor.
+  - `centro_mm`: el **centro** de la página en la hoja (mm de papel, Y hacia arriba). Se guarda
+    el centro y no la esquina porque la página exacta la dará el manifiesto al exportar; el
+    centro no cambia.
+- En un mismo plano se pueden mezclar detalles exportados y pendientes; el orden de `detalles`
+  sigue siendo el de apilado.
+
+`componer` (y `Componer.bat`) **no compone un plano con pendientes**. Dice cuáles faltan, a qué
+escala, de qué DXF y si alguno no cabe, por ejemplo:
+
+```
+Error: No se compone el plano: tiene 2 bloque(s) de DXF sin exportar todavía (plano versión 3). Componer necesita el paquete (PDF + manifiesto) de cada uno:
+- 'BLOQUE1': bloque «BLOQUE1» (handle 50CA) a 1:5000, de GUAMO_prueba.dxf
+- 'Carro': bloque «Carro frontal 1» (ocurrencia 2, handle 1A3) a 1:50, de GUAMO_prueba.dxf — NO CABE en 'area_dibujo' a 1:50 (página 650.0 × 90.0 mm; sobran 10.3 × 0.0 mm): cambie la escala en el editor
+Expórtelos primero (desde el editor, cuando esté la exportación —etapa 3—, o con cde-exporter) y vuelva a componer.
+```
+
 ## Qué hace `componer` con el plano
 
-1. Lee y valida el plano.json.
+1. Lee y valida el plano.json. Si es versión 3 y tiene bloques sin exportar, se detiene y dice
+   cuáles (sección anterior).
 2. Carga el formato y decide dónde va la rosa (o si va oculta).
 3. Cada detalle pasa por `importar_paquete` (la única puerta: completo, íntegro y
    coherente, con escala física garantizada). Si hay paquetes rechazados **no se genera

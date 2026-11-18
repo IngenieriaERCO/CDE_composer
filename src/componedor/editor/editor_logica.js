@@ -13,6 +13,9 @@
  *
  * Las reglas son las mismas que en Python (componer.py, colocar.py), pero el editor NO es
  * la fuente de la verdad: `componer` revalida todo.
+ *
+ * Etapa 2 (bloques de un DXF sin exportar, plano versión 3): la geometría de esos bloques está
+ * en editor_bloques.js (EditorBloques); aquí solo se leen y escriben en plano.json.
  */
 (function (raiz, fabrica) {
   "use strict";
@@ -24,6 +27,10 @@
   }
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
+
+  // editor_bloques.js: en el navegador ya está cargado (va antes en editor.html).
+  const B = typeof module === "object" && module.exports
+    ? require("./editor_bloques.js") : self.EditorBloques;
 
   const EPS_MM = 1e-6; // igual que formato.EPS_MM: solo ruido numérico
   const ZONA_EDITABLE = "area_dibujo";
@@ -250,7 +257,7 @@
   }
 
   // ---------------------------------------------------------------------------------------
-  // plano.json (versiones 1 y 2, docs/formato_plano.md).
+  // plano.json (versiones 1, 2 y 3, docs/formato_plano.md).
   // ---------------------------------------------------------------------------------------
 
   /** id, id_2, id_3… el primero que no esté en `usados`. */
@@ -274,7 +281,9 @@
    * extra (opcional): {rosa: {visible, pos}, rotulo: {...}}. Si el formato tiene rosa, se
    * guarda siempre su estado ("rosa_vientos"); el rótulo de un plano abierto se conserva tal
    * cual (el editor no lo edita). Con alguna de esas claves, o con "etiqueta_escala": false
-   * en un detalle, el plano es versión 2; si no, versión 1.
+   * en un detalle, el plano es versión 2; si no, versión 1. Con bloques de un DXF sin
+   * exportar ({id, bloque, escala, centro}), versión 3: la lista "dxf" y cada bloque con
+   * "origen" y "centro_mm" (sin manifiesto).
    */
   function serializarPlano(colocaciones, datos, extra) {
     return JSON.stringify(objetoPlano(colocaciones, datos, extra), null, 2)
@@ -296,9 +305,18 @@
     const original = esObjeto(extra.original) ? extra.original : null;
     const zona = zonaEditable(datos);
     let v2 = false;
+    const pendientes = colocaciones.filter((c) => c.bloque);
+    B.asignarIdsDxf(pendientes.map((c) => c.bloque.dxf));
     const detalles = colocaciones.map((c) => {
       const etiqueta = c.etiqueta_escala === false ? false : undefined;
       const etiquetaOriginal = c.original && c.original.etiqueta_escala === false ? false : undefined;
+      if (c.bloque) { // sin exportar: centro y escala (no se movió ni cambió: tal como vino)
+        if (c.original && mismaPos(c.centro, c.centroOriginal) && c.escala === c.escalaOriginal &&
+            etiqueta === etiquetaOriginal) {
+          return JSON.parse(JSON.stringify(c.original));
+        }
+        return B.pendienteParaGuardar(c);
+      }
       if (c.original && mismaPos(c.pos, c.posOriginal) && etiqueta === etiquetaOriginal) {
         if (etiqueta === false) v2 = true;
         return JSON.parse(JSON.stringify(c.original));
@@ -319,8 +337,9 @@
       formato: original && original.formato !== undefined &&
         normalizarRuta(original.formato) === normalizarRuta(datos.formato) ? original.formato : datos.formato,
       plantilla: original && "plantilla" in original ? original.plantilla : null,
-      detalles: detalles,
     };
+    if (pendientes.length) nuevo.dxf = dxfParaGuardar(pendientes, original);
+    nuevo.detalles = detalles;
     const rosa = rosaParaGuardar(extra.rosa, datos, zona, original);
     if (rosa !== undefined) {
       nuevo.rosa_vientos = rosa;
@@ -331,19 +350,31 @@
       v2 = true;
     }
     if (v2) nuevo.version = 2;
-    if (original && !v2 && original.version === 2) nuevo.version = 2; // no se baja de versión
+    if (pendientes.length) nuevo.version = 3;
+    // No se baja de versión (un plano 3 sin bloques pendientes sigue siendo válido).
+    if (original && (original.version === 2 || original.version === 3) &&
+        original.version > nuevo.version) nuevo.version = original.version;
     if (!original) return nuevo;
     // Mismo orden de claves que el original; lo que no estaba, al final.
     const salida = {};
     for (const clave of Object.keys(original)) {
       if (clave in nuevo) salida[clave] = nuevo[clave];
-      else if (!["rosa_vientos", "rotulo"].includes(clave)) salida[clave] = original[clave];
+      else if (!["rosa_vientos", "rotulo", "dxf"].includes(clave)) salida[clave] = original[clave];
     }
     for (const clave of Object.keys(nuevo)) {
       // "plantilla": null es lo mismo que no tenerla: si el original no la traía, no se agrega.
       if (!(clave in salida) && clave !== "plantilla") salida[clave] = nuevo[clave];
     }
     return salida;
+  }
+
+  /** La lista "dxf": las entradas del plano abierto que no cambiaron salen tal como vinieron. */
+  function dxfParaGuardar(pendientes, original) {
+    const previas = original && Array.isArray(original.dxf) ? original.dxf : [];
+    return B.listaDxf(pendientes.map((c) => c.bloque.dxf)).map((d) => {
+      const previa = previas.find((x) => esObjeto(x) && x.id === d.id && x.sha256 === d.sha256);
+      return previa ? JSON.parse(JSON.stringify(previa)) : d;
+    });
   }
 
   /** "rosa_vientos" para guardar, o undefined si no hace falta escribirla. */
@@ -435,11 +466,16 @@
     if (!esObjeto(plano)) {
       return vacio(["El plano debe ser un objeto JSON {...}."]);
     }
-    if (plano.version !== 1 && plano.version !== 2) {
+    if (![1, 2, 3].includes(plano.version)) {
       errores.push("version: versión " + JSON.stringify(plano.version) +
-        " no soportada; el editor entiende las versiones 1 y 2.");
+        " no soportada; el editor entiende las versiones 1, 2 y 3.");
     }
-    const v2 = plano.version === 2;
+    const v3 = plano.version === 3;
+    const v2 = plano.version === 2 || v3; // la 3 incluye todo lo de la 2
+    if (!v3 && plano.dxf !== undefined) {
+      errores.push("dxf: solo existe en la versión 3 del plano (use \"version\": 3).");
+    }
+    const dxfs = v3 && plano.dxf !== undefined ? B.leerListaDxf(plano.dxf, errores) : new Map();
     for (const clave of ["rotulo", "rosa_vientos"]) {
       if (!v2 && plano[clave] !== undefined) {
         errores.push(clave + ": solo existe en la versión 2 del plano (use \"version\": 2).");
@@ -479,6 +515,22 @@
         return;
       }
       ids.add(item.id);
+      if (v3 && "origen" in item) { // bloque de un DXF sin exportar
+        const b = B.leerPendiente(item, donde + " ('" + item.id + "')", dxfs, errores);
+        if (!b) return;
+        const pagina = B.paginaMm(b.bloque.tamano_m, b.escala, b.bloque.dxf.margen_mm);
+        const centro = B.centroLimitado(b.centro, pagina, zona);
+        const igual = centro[0] === b.centro[0] && centro[1] === b.centro[1];
+        if (!igual) {
+          avisos.push("'" + item.id + "' se salía del área de dibujo: su centro se movió a (" +
+            centro[0].toFixed(2) + ", " + centro[1].toFixed(2) + ") mm.");
+        }
+        const colocacion = { id: item.id, bloque: b.bloque, escala: b.escala, centro, original: item,
+          centroOriginal: igual ? centro.slice() : null, escalaOriginal: b.escala };
+        if (b.etiqueta_escala === false) colocacion.etiqueta_escala = false;
+        colocaciones.push(colocacion);
+        return;
+      }
       const ruta = normalizarRuta(item.manifiesto || "");
       const detalle = catalogo.get(ruta);
       if (!detalle) {

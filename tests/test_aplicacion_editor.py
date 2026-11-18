@@ -158,3 +158,118 @@ def test_latido(armar):
     app.ultimo_latido = 0.0
     assert app.latido() == {"ok": True}
     assert time.monotonic() - app.ultimo_latido < 5
+
+
+# --- vista previa y «Volver a cargar» (etapa 2) ----------------------------------------------
+
+def cargado(armar, tmp_path, **spec):
+    spec.setdefault("blocks", [{"name": "B1", "size_cad": [10.0, 4.0], "handle": "1A"},
+                               {"name": "B2", "size_cad": [2.0, 1.0], "handle": "2B"}])
+    ruta = dxf_falso(tmp_path / "obras" / "obra.dxf", **spec)
+    app = armar(elegido=ruta)
+    foto = esperar_tarea(app, app.elegir_y_cargar()["tarea"]["id"])
+    assert foto["estado"] == "terminada", foto["error"]
+    return app, ruta
+
+
+def test_la_carpeta_dice_la_ruta_del_dxf_para_el_plano(armar, tmp_path):
+    """Relativa a la carpeta del editor (el plano.json va ahí o en planos/), con «/»."""
+    app, _ = cargado(armar, tmp_path)
+    assert app.estado()["dxf"]["dxf"]["archivo_plano"] == "obras/obra.dxf"
+    app.ruta_html = tmp_path / "editor" / "editor.html"
+    assert app.archivo_para_plano(tmp_path / "data" / "x.dxf") == "../data/x.dxf"
+
+
+def test_vista_previa_de_un_bloque(armar, tmp_path):
+    app, _ = cargado(armar, tmp_path)
+    r = app.pedir_previa("B1#1")
+    assert r["tarea"]["tipo"] == "previa"
+    assert app.canal.tarea(r["tarea"]["id"]).datos == {
+        "session": "s-1", "ref": "B1#1", "long_side_px": 1500, "include_hidden_layers": None}
+    foto = esperar_tarea(app, r["tarea"]["id"])
+    assert foto["estado"] == "terminada", foto["error"]
+    previa = foto["resultado"]
+    assert previa["ref"] == "B1#1" and previa["url"] == f"/api/previas/{r['tarea']['id']}"
+    assert previa["px"] == [1500, 600] and previa["cad_a_px"][1:3] == [0.0, 0.0]
+    assert "png" not in previa  # el editor nunca ve rutas del disco
+    assert app.png_previa(r["tarea"]["id"]).startswith(b"\x89PNG")
+    # Otra vez, ya terminada: otra tarea, que el trabajador responde desde su caché.
+    otra = app.pedir_previa("B1#1")["tarea"]["id"]
+    assert otra != r["tarea"]["id"]
+    assert esperar_tarea(app, otra)["resultado"]["en_cache"] is True
+
+
+def test_dos_pedidos_del_mismo_bloque_mientras_se_hace_son_una_tarea(armar, tmp_path):
+    app, _ = cargado(armar, tmp_path, previa_demora_s=0.3)
+    r = app.pedir_previa("B1#1")
+    assert app.pedir_previa("B1#1")["tarea"]["id"] == r["tarea"]["id"]
+    assert esperar_tarea(app, r["tarea"]["id"])["estado"] == "terminada"
+
+
+def test_vista_previa_que_no_se_puede_pedir(armar, tmp_path):
+    app = armar()
+    with pytest.raises(ErrorAplicacion, match="Todavía no se cargó ningún DXF"):
+        app.pedir_previa("B1#1")
+    app, _ = cargado(armar, tmp_path)
+    for ref, codigo, motivo in ((None, 400, "Falta «ref»"),
+                                ("NO#1", 404, "no está en la carpeta")):
+        with pytest.raises(ErrorAplicacion, match=motivo) as e:
+            app.pedir_previa(ref)
+        assert e.value.estado_http == codigo
+    with pytest.raises(ErrorAplicacion) as e:
+        app.png_previa("t-99")
+    assert e.value.estado_http == 404
+    app.reiniciar()  # otra sesión: hay que volver a cargar
+    with pytest.raises(ErrorAplicacion, match="vuelva a cargarlo") as e:
+        app.pedir_previa("B1#1")
+    assert e.value.estado_http == 409
+
+
+def test_png_fuera_de_la_carpeta_de_previas_no_se_entrega(armar, tmp_path):
+    otro = tmp_path / "firmas" / "persona" / "firma.png"
+    otro.parent.mkdir(parents=True)
+    otro.write_bytes(b"\x89PNG secreto")
+    app, _ = cargado(armar, tmp_path, respuesta_previa={
+        "png": str(otro), "px": [10, 10], "bounds": {"min": [0, 0], "max": [1, 1]},
+        "cad_to_px": [10, 0, 0, -10, 0, 10], "omitted": {}, "cached": False, "seconds": 0})
+    r = app.pedir_previa("B1#1")
+    foto = esperar_tarea(app, r["tarea"]["id"])
+    assert foto["estado"] == "fallida" and "no está en la carpeta de vistas previas" in \
+        foto["error"]["mensaje"]
+    with pytest.raises(ErrorAplicacion):
+        app.png_previa(r["tarea"]["id"])
+
+
+def test_dxf_cambiado_y_volver_a_cargar(armar, tmp_path):
+    app, ruta = cargado(armar, tmp_path)
+    with pytest.raises(ErrorAplicacion, match="Todavía no se cargó"):
+        armar().recargar()
+    ruta.write_text(ruta.read_text(encoding="utf-8").replace("B2", "B3"), encoding="utf-8")
+    foto = esperar_tarea(app, app.pedir_previa("B1#1")["tarea"]["id"])
+    assert foto["estado"] == "fallida" and foto["error"]["codigo"] == "DXF_CHANGED"
+    r = app.recargar()  # con la ruta que ya conoce el servidor (el editor no manda rutas)
+    assert r["elegido"] == "obra.dxf"
+    assert app.canal.tarea(r["tarea"]["id"]).datos["dxf"] == str(ruta.resolve())
+    foto = esperar_tarea(app, r["tarea"]["id"])
+    assert [b["nombre"] for b in foto["resultado"]["bloques"]] == ["B1", "B3"]
+    assert app.estado()["dxf"]["sesion"] == "s-2"
+    foto = esperar_tarea(app, app.pedir_previa("B1#1")["tarea"]["id"])
+    assert foto["estado"] == "terminada", foto["error"]
+
+
+def test_cargar_otro_dxf_cancela_las_previas_en_cola(armar, tmp_path):
+    app, _ = cargado(armar, tmp_path, previa_demora_s=0.5)
+    primera = app.pedir_previa("B1#1")["tarea"]["id"]
+    segunda = app.pedir_previa("B2#1")["tarea"]["id"]
+    recarga = app.recargar()["tarea"]["id"]
+    assert esperar_tarea(app, segunda)["estado"] == "cancelada"  # esperaba turno: ya no sirve
+    assert esperar_tarea(app, primera)["estado"] == "cancelada"  # en curso: se le manda cancel
+    assert esperar_tarea(app, recarga)["estado"] == "terminada"
+
+
+def test_cache_de_previas_de_componedor_json(armar, tmp_path):
+    cfg = ConfigExportador(comando_falso(), tmp_path / "trabajo", cache_previas_mb=7)
+    app = AplicacionEditor(tmp_path / "editor.html", ZONA_A1, cfg, elegir=lambda i: None)
+    trabajador = app._fabrica()
+    assert trabajador.opciones == ["--preview-cache-mb", "7"]
+    assert ConfigExportador(comando_falso(), tmp_path).opciones_trabajador() == ()

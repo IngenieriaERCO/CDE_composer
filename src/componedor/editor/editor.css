@@ -267,3 +267,17 @@ main { flex: 1; display: flex; min-height: 0; }
 .aviso-dxf { border: 1px solid #fde68a; background: #fffbeb; border-radius: 4px; padding: 6px; font-size: 12px; }
 .error-dxf { border: 1px solid #fecaca; background: #fef2f2; border-radius: 4px; padding: 6px; font-size: 12px; }
 .error-dxf button { display: block; margin-top: 4px; }
+.aviso-dxf button { display: block; margin-top: 4px; }
+.bloque-dxf button { margin-top: 4px; }
+
+/* Bloques de un DXF sin exportar (etapa 2): caja exacta punteada, vista previa PNG encima. */
+.detalle.bloque .pagina { stroke: #7c3aed; stroke-width: 1.5; stroke-dasharray: 6 3; fill: rgba(124,58,237,.03); }
+.detalle.bloque.sel .pagina { stroke: var(--acento); stroke-width: 3; }
+.detalle.bloque.no-cabe .pagina { stroke: var(--muy-fuerte); stroke-width: 3; fill: rgba(220,38,38,.08); }
+.detalle.bloque .etiqueta { fill: #6d28d9; }
+.detalle .estado-bloque { fill: var(--muy-fuerte); font-size: 9px; font-weight: 700; pointer-events: none; }
+.detalle .previa-bloque { pointer-events: none; }
+.detalle .tirador { fill: #fff; stroke: var(--acento); stroke-width: 2; vector-effect: non-scaling-stroke; cursor: nesw-resize; }
+.medida.no-cabe { color: var(--muy-fuerte); font-weight: 600; }
+#hoja.vista-limpia .detalle .estado-bloque,
+#hoja.vista-limpia .detalle .tirador { display: none; }

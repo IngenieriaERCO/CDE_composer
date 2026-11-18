@@ -1,4 +1,4 @@
-# Servidor local del editor y «Cargar DXF» (etapa 1)
+# Servidor local del editor, «Cargar DXF» y vista previa (etapas 1 y 2)
 
 El editor (`editor.html`) sigue siendo un solo archivo que funciona con doble clic, sin
 servidor. Para **cargar un DXF** y ver sus bloques, el editor necesita a alguien que lea el DXF:
@@ -9,8 +9,10 @@ puede lanzar programas, `Abrir editor.bat` levanta un **servidor local** que hac
 Edge  ──HTTP (127.0.0.1, token)──>  servidor del Componedor  ──JSON por stdin/stdout──>  cde-exporter worker
 ```
 
-Etapa 1 (esta): cargar el DXF y ver la carpeta de bloques. Todavía **no** se arrastran bloques
-al plano ni se exporta (etapas 2 y 3).
+- **Etapa 1**: cargar el DXF y ver la carpeta de bloques.
+- **Etapa 2**: poner bloques en la hoja como cajas exactas, cambiarles la escala y ver la vista
+  previa PNG del trabajador (ver [editor.md §2f](editor.md#2f-cargar-dxf-con-servidor-local)).
+- Todavía **no** se exporta (etapa 3).
 
 ## Cómo se usa
 
@@ -65,6 +67,7 @@ menor: el editor escribe «página ≤ …». La caja exacta la dará el manifie
 | `comando` | sí | El comando del exportador (se busca en el PATH) o una lista `[programa, argumentos…]`. El servidor le agrega `worker --work-dir <trabajo>`. |
 | `trabajo` | sí | Carpeta del trabajador (sus temporales y caché de vistas previas) y de los registros. Se crea. Está en `data/`, fuera de git. |
 | `margen_mm` | no (5) | Margen de página con que se exportará; se manda en `load` y vale para toda la sesión del trabajador. |
+| `cache_previas_mb` | no | Tope de la caché de vistas previas del trabajador (`--preview-cache-mb`). Sin la clave, el del trabajador: 500 MB. |
 
 Sin la sección, el editor funciona igual, sin «Cargar DXF», y lo dice.
 
@@ -90,9 +93,15 @@ En la carpeta `trabajo`:
   con `file://` (Origin «null») u otro sitio reciben 403. Si viene `Sec-Fetch-Site`, debe ser
   `same-origin` (o `none` para abrir la página desde la barra de direcciones).
 - POST solo con cuerpo JSON de hasta 64 KB. Rutas desconocidas: 404. Otros métodos: 405.
-- **Ninguna ruta entrega archivos del disco** salvo el propio `editor.html`, y ninguna recibe rutas
-  ni opciones para el comando del exportador. El DXF lo elige el cuadro nativo y se valida
-  (archivo que existe, extensión `.dxf`) antes de mandarlo al trabajador.
+- **Ninguna ruta entrega archivos del disco** salvo el propio `editor.html` y el PNG de una vista
+  previa terminada. El PNG se entrega solo si está **dentro de la carpeta de vistas previas del
+  trabajador** (`<trabajo>/previews`, comprobado con la ruta resuelta), y también pide el token.
+  Ninguna ruta recibe rutas ni opciones para el comando del exportador: el DXF lo elige el
+  cuadro nativo y se valida (archivo que existe, extensión `.dxf`) antes de mandarlo al
+  trabajador. Lo único que el editor manda en un cuerpo es el `ref` de un bloque de la carpeta
+  ya cargada.
+- El PNG no se puede pedir con un `<image href>` directo (no lleva la cabecera del token): el
+  editor lo baja con `fetch` y lo muestra como `blob:`. Así el token nunca va en una dirección.
 - **Firmas**: no cambia nada. El servidor no tiene ninguna ruta hacia `firmas/` y el HTML solo
   trae los nombres de las personas. Las imágenes solo las lee `componer`, para el PDF.
 - Los nombres de bloque vienen del DXF: el editor los escribe siempre como texto, nunca como
@@ -107,8 +116,9 @@ margen de `componedor.json`, `units: null` e `include_layers: false`: la tabla d
 no se usa y así la carga ahorra 1–2 s en bloques grandes.
 
 - **Arranque perezoso**: el trabajador se lanza la primera vez que se pide «Cargar DXF», no al abrir
-  el editor. El servidor espera el mensaje `ready` hasta 30 s y comprueba la versión mayor 1 del
-  protocolo y del manifiesto.
+  el editor. El servidor espera el mensaje `ready` hasta 60 s y comprueba la versión mayor 1 del
+  protocolo y del manifiesto. (Con el exportador real, el primer arranque después de actualizarlo
+  pasó de 30 s mientras Python compilaba sus archivos; los siguientes, unos 10 s.)
 - **Job Object de Windows**: el proceso se crea suspendido, se mete en un Job con «matar al cerrar»
   y recién entonces arranca. `cde-exporter.exe` es un lanzador que arranca `python.exe`; con el
   Job, si el servidor muere (se cierra la ventana, se cae), Windows mata también a ese Python.
@@ -131,6 +141,24 @@ Si el `cde-exporter` instalado todavía no tiene la orden `worker`, el editor lo
 cde-exporter instalado no tiene la orden «worker» (es una versión sin trabajador). Actualice el
 Exportador Vectorial.»
 
+### Vista previa (`preview`, etapa 2)
+
+- El editor pide la de un bloque al agregarlo (`POST /api/previa {"ref"}`); el servidor la encola
+  con `long_side_px: 1500` e `include_hidden_layers: null` (**solo capas visibles**).
+- Dos pedidos del mismo bloque mientras se hace son **una sola tarea**. Una ya terminada no se
+  reutiliza: el trabajador la devuelve de su caché enseguida (`cached: true`) y, de paso,
+  comprueba que el DXF no cambió.
+- La respuesta se comprueba (`previa_dxf.py`): `png` dentro de `<trabajo>/previews`, `px` enteros,
+  `cad_to_px` con **b = c = 0 y a = −d** (sin giro, misma escala en X e Y) y `bounds`. Si no
+  cumple, la tarea falla con el motivo.
+- Una vista previa sirve para **cualquier escala**: el editor la reescala alrededor del centro
+  (fórmula en `editor_bloques.js`).
+- Cargar otro DXF (o volver a cargarlo) **cancela las vistas previas que esperaban turno**, y
+  también la que está en curso. Quitar un bloque del plano cancela la suya si todavía esperaba.
+- `DXF_CHANGED` (el DXF cambió en el disco) o `NO_SESSION` (el trabajador ya no lo tiene): el
+  editor muestra **Volver a cargar** (`POST /api/dxf/recargar`), que repite `load` con la ruta
+  que el servidor ya conoce.
+
 ### Lo que el Componedor exige de la respuesta de `load`
 
 `session`, `dxf.name`, `margin_mm` (número ≥ 0) y la lista `blocks`. Sin eso, la carga falla con
@@ -151,6 +179,9 @@ bloque:
 | `GET /?t=<token>` | El `editor.html` de `editor.salida`, tal cual está en el disco. |
 | `GET /api/estado` | Exportador disponible o por qué no, estado del trabajador, la carpeta del último DXF (`sesion_activa`) y la última tarea de carga. |
 | `POST /api/dxf/elegir` | Abre el cuadro nativo; si se elige un DXF, encola `load`. Responde `{elegido, tarea}`. 409 si ya hay un cuadro abierto o una carga en curso. |
+| `POST /api/dxf/recargar` | «Volver a cargar»: `load` otra vez con la ruta del último DXF elegido. 409 si no hay ninguno o ya se está cargando. |
+| `POST /api/previa` | Cuerpo `{"ref": "<ref de la carpeta>"}`: encola `preview`. Responde `{tarea}`. 409 sin DXF o con la sesión vencida; 404 si el `ref` no está en la carpeta. El resultado de la tarea trae `px`, `cad_a_px`, `caja_cad`, `omitidos`, `en_cache` y `url` (nunca la ruta del PNG). |
+| `GET /api/previas/<id>` | El PNG (`image/png`) de esa tarea de vista previa, con el token en la cabecera. 404 si no existe o ya no está en la caché. |
 | `GET /api/tareas/<id>` | Foto de la tarea: `estado` (`en_cola`, `en_curso`, `terminada`, `fallida`, `cancelada`), `avance`, `resultado`, `error` {`codigo`, `mensaje`, `consejo`}, `sin_noticias_s`. |
 | `POST /api/tareas/<id>/cancelar` | Cancela la tarea. |
 | `POST /api/trabajador/reiniciar` | Sale del estado «detenido»: el próximo pedido lanza otro trabajador. |
@@ -170,6 +201,15 @@ pruebas no dependen de `cde-exporter` ni de un DXF real. Cubren:
   `servidor`;
 - el JS en Node.
 
-Una prueba usa el `cde-exporter` real si está instalado. La verificación en Edge
-(`data/verificacion/verificar_servidor_dxf.mjs`, fuera de git) repite el recorrido completo en
-el navegador.
+Etapa 2, además:
+- `preview` en el trabajador falso: PNG transparente con una marca en un punto CAD conocido;
+- un punto CAD cae en el mismo lugar del papel por la caja y por el PNG (< medio píxel);
+- `NO_SESSION` y `DXF_CHANGED`, «Volver a cargar» y cancelar las previas en cola;
+- el PNG fuera de la carpeta de previas no se entrega;
+- la paridad del JS con Python (página, escala sugerida, regla de «cabe», lista de escalas);
+- el plano versión 3 de ida y vuelta, y `componer` con bloques pendientes.
+
+Dos pruebas usan el `cde-exporter` real si está instalado; una carga GUAMO_prueba.dxf (fuera de
+git; otra ruta con la variable `COMPONEDOR_DXF_REAL`) y pide la vista previa de un bloque. La
+verificación en Edge (`data/verificacion/verificar_servidor_dxf.mjs` y
+`verificar_bloques_dxf.mjs`, fuera de git) repite los recorridos en el navegador.

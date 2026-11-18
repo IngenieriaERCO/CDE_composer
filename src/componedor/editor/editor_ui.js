@@ -4,11 +4,17 @@
  *
  * El lienzo SVG usa como unidades los píxeles de plantilla.png (Y hacia abajo); los mm de
  * papel (Y hacia arriba) se convierten SOLO con EditorLogica.papelAPantalla/pantallaAPapel.
+ *
+ * Etapa 2: además de los detalles exportados (c.detalle, c.pos = esquina inferior izquierda),
+ * el plano puede tener BLOQUES de un DXF sin exportar (c.bloque, c.escala, c.centro): una caja
+ * exacta con centro fijo y la vista previa PNG del trabajador (editor_bloques.js; el PNG lo
+ * pide editor_panel_dxf.js). paginaDe/dibujoDe/escalaDe tratan los dos igual.
  */
 (function () {
   "use strict";
 
   const L = window.EditorLogica;
+  const B = window.EditorBloques;
   const DATOS = JSON.parse(document.getElementById("datos-editor").textContent);
   const svg = document.getElementById("hoja");
   const NS = svg.namespaceURI; // namespace del SVG en línea (sin escribir ninguna URL)
@@ -45,7 +51,7 @@
     vista: { x: 0, y: 0, ancho: ANCHO_PX, alto: ALTO_PX },
   };
   R.prellenar(estado.rotulo, PRELLENADO); // plano nuevo: los datos del proyecto quedan copiados
-  let arrastre = null; // {c, dx, dy} en mm (c: detalle) o {rosa: true, dx, dy}
+  let arrastre = null; // {c, dx, dy} en mm (c: detalle o bloque), {rosa: true, dx, dy} o {c, tirador: true}
   let paneo = null; // {x, y, vista} en px de pantalla
   let ultimasAdvertencias = [];
 
@@ -80,6 +86,29 @@
     nodoRect.setAttribute("width", r.ancho);
     nodoRect.setAttribute("height", r.alto);
     return r;
+  }
+
+  // ---------------------------------------------------------------------------------------
+  // Detalles exportados y bloques sin exportar: la misma forma para todo lo demás.
+  // ---------------------------------------------------------------------------------------
+
+  const esBloque = (c) => !!c.bloque;
+  const paginaBloque = (c) => B.paginaMm(c.bloque.tamano_m, c.escala, c.bloque.dxf.margen_mm);
+  const paginaDe = (c) => esBloque(c) ? B.rectCentrado(c.centro, paginaBloque(c)) : L.paginaEnPapel(c.detalle, c.pos);
+  const dibujoDe = (c) => esBloque(c) ? B.rectDibujo(c.centro, paginaBloque(c), c.bloque.dxf.margen_mm)
+    : L.dibujoEnPapel(c.detalle, c.pos);
+  const escalaDe = (c) => esBloque(c) ? c.escala : c.detalle.escala;
+  const estadoBloque = (c) => B.estadoCaja(c.centro, paginaBloque(c), ZONA);
+  const sugeridaDe = (c) => c.bloque.sugerida !== undefined && c.bloque.sugerida !== null ? c.bloque.sugerida
+    : B.escalaSugerida(c.bloque.tamano_m, c.bloque.dxf.margen_mm, ZONA, escalasDe(c));
+  const escalasDe = (c) => c.bloque.escalas || B.ESCALAS;
+  const P = () => window.EditorPanelDxf || null; // el panel del DXF (vista previa); null sin él
+
+  /** Estado de la vista previa de un bloque: {estado, url, datos, caja_cad, mm_por_unidad, mensaje}. */
+  function previaDe(c) {
+    const panel = P();
+    return panel ? panel.previa(c.bloque) : { estado: "sin_servidor",
+      mensaje: "Vista previa: abra el editor con «Abrir editor.bat»." };
   }
 
   let temporizadorMensaje = null;
@@ -202,10 +231,33 @@
   function colocadosParaAdvertencias() {
     return estado.colocaciones.map((c) => ({
       id: c.id,
-      pagina: L.paginaEnPapel(c.detalle, c.pos),
-      dibujo: L.dibujoEnPapel(c.detalle, c.pos),
-      tiene_fondo: c.detalle.tiene_fondo,
+      pagina: paginaDe(c),
+      dibujo: dibujoDe(c),
+      tiene_fondo: esBloque(c) ? false : c.detalle.tiene_fondo, // el exportador nuevo no pone fondo
     }));
+  }
+
+  /** Avisos de los bloques sin exportar (no caben, se salen, cuántos faltan por exportar). */
+  function advertenciasBloques() {
+    const lista = [];
+    const bloques = estado.colocaciones.filter(esBloque);
+    for (const c of bloques) {
+      const e = estadoBloque(c);
+      if (!e.cabe) {
+        const sugerida = sugeridaDe(c);
+        lista.push({ nivel: "muy_fuerte", ids: [c.id], texto: "'" + c.id + "' no cabe en el área de dibujo a " +
+          B.textoEscala(c.escala) + ": sobran " + mm1(e.exceso[0]) + " × " + mm1(e.exceso[1]) + " mm" +
+          (sugerida ? "; sugerida " + B.textoEscala(sugerida) : "") + "." });
+      } else if (!e.dentro) {
+        lista.push({ nivel: "muy_fuerte", ids: [c.id], texto: "'" + c.id +
+          "' se sale del área de dibujo: muévalo (cabe a " + B.textoEscala(c.escala) + ")." });
+      }
+    }
+    if (bloques.length) {
+      lista.push({ nivel: "aviso", ids: [], texto: bloques.length + " bloque(s) del DXF sin exportar: el plano " +
+        "se guarda como versión 3 y componer pedirá exportarlos primero." });
+    }
+    return lista;
   }
 
   /** Estado de la rosa para la lógica: {visible, rect} o null (el formato no tiene rosa). */
@@ -242,6 +294,10 @@
       const clases = ["detalle"];
       if (niveles.has(c.id)) clases.push(niveles.get(c.id));
       if (c.id === estado.seleccion) clases.push("sel");
+      if (esBloque(c)) {
+        dibujarBloque(c, clases);
+        continue;
+      }
       const g = nodoSvg("g", { class: clases.join(" "), "data-id": c.id }, capaDetalles);
       const pagina = L.paginaEnPapel(c.detalle, c.pos);
       const r = L.rectPapelAPantalla(pagina, ESCALA);
@@ -256,10 +312,51 @@
     }
   }
 
+  const TIRADOR_PX = 12;
+
+  /** Un bloque sin exportar: su caja exacta, la vista previa encima y, si está seleccionado,
+   *  el tirador de la esquina superior derecha para cambiar la escala. */
+  function dibujarBloque(c, clases) {
+    const e = estadoBloque(c);
+    clases.push("bloque");
+    if (!e.cabe || !e.dentro) clases.push("no-cabe");
+    const g = nodoSvg("g", { class: clases.join(" "), "data-id": c.id }, capaDetalles);
+    const pagina = paginaDe(c);
+    const r = L.rectPapelAPantalla(pagina, ESCALA);
+    const previa = previaDe(c);
+    if (previa.estado === "lista" && previa.caja_cad && previa.mm_por_unidad) {
+      const k = B.mmPorUnidadCad(previa.mm_por_unidad, c.escala);
+      const rect = L.rectPapelAPantalla(B.imagenEnPapel(previa.datos, B.centroCaja(previa.caja_cad), c.centro, k), ESCALA);
+      const imagen = nodoSvg("image", { x: rect.x, y: rect.y, width: rect.ancho, height: rect.alto,
+        preserveAspectRatio: "none", class: "previa-bloque" }, g);
+      imagen.setAttribute("href", previa.url);
+    }
+    rectSvg(nodoSvg("rect", { class: "pagina" }, g), pagina);
+    rectSvg(nodoSvg("rect", { class: "dibujo" }, g), dibujoDe(c));
+    nodoSvg("text", { class: "etiqueta", x: r.x + 3, y: r.y + 11 }, g).textContent =
+      c.id + " · " + B.textoEscala(c.escala) + " · vista previa (sin exportar)";
+    const estadoTexto = !e.cabe ? "no cabe: sobran " + mm1(e.exceso[0]) + " × " + mm1(e.exceso[1]) + " mm" +
+      (sugeridaDe(c) ? "; sugerida " + B.textoEscala(sugeridaDe(c)) : "")
+      : !e.dentro ? "se sale del área de dibujo"
+        : previa.estado === "pidiendo" ? "Pidiendo vista previa…"
+          : previa.estado === "lista" ? "" : previa.mensaje || "";
+    if (estadoTexto) {
+      nodoSvg("text", { class: "estado-bloque", x: r.x + 3, y: r.y + r.alto - 4 }, g).textContent = estadoTexto;
+    }
+    g.addEventListener("pointerdown", (ev) => empezarArrastre(ev, c));
+    if (c.id === estado.seleccion) {
+      const t = nodoSvg("rect", { class: "tirador", x: r.x + r.ancho - TIRADOR_PX / 2, y: r.y - TIRADOR_PX / 2,
+        width: TIRADOR_PX, height: TIRADOR_PX }, g);
+      nodoSvg("title", {}, t).textContent = "Arrastre para cambiar la escala (el centro no se mueve)";
+      t.addEventListener("pointerdown", (ev) => empezarTirador(ev, c));
+    }
+  }
+
   function actualizar() {
     // Mismos elementos que usa componer: la rosa en su posición actual (oculta: no cuenta).
     const elementos = L.elementosVisibles(DATOS.elementos_plantilla, rosaParaLogica());
-    const lista = L.advertencias(colocadosParaAdvertencias(), elementos, DATOS.advertencias);
+    const lista = L.advertencias(colocadosParaAdvertencias(), elementos, DATOS.advertencias)
+      .concat(advertenciasBloques());
     // Etiquetas «ESC: 1:N» (4.3f): las mismas que pondría componer, con sus avisos al final.
     etiquetasActuales = calcularEtiquetas(elementos);
     for (const aviso of etiquetasActuales.avisos) lista.push({ nivel: "aviso", texto: aviso, ids: [] });
@@ -303,8 +400,8 @@
   function calcularEtiquetas(elementos) {
     if (!CON_ETIQUETAS) return { textos: [], avisos: [] };
     return V.etiquetasEscala({
-      detalles: estado.colocaciones.map((c) => ({ id: c.id, dibujo_mm: L.dibujoEnPapel(c.detalle, c.pos),
-        denominador: c.detalle.escala, con_etiqueta: c.etiqueta_escala !== false })),
+      detalles: estado.colocaciones.map((c) => ({ id: c.id, dibujo_mm: dibujoDe(c),
+        denominador: escalaDe(c), con_etiqueta: c.etiqueta_escala !== false })),
       area_mm: ZONA, elementos: elementos.map((e) => [e.nombre, e.rect_mm]), fuente: FUENTE_ROTULO,
     });
   }
@@ -324,7 +421,7 @@
       return;
     }
     const rotulo = R.serializar(estado.rotulo);
-    const escalas = estado.colocaciones.map((c) => c.detalle.escala);
+    const escalas = estado.colocaciones.map(escalaDe);
     const clave = JSON.stringify([rotulo === undefined ? null : rotulo, escalas]);
     if (clave !== claveRotulo) {
       claveRotulo = clave;
@@ -403,6 +500,10 @@
         : "Haga clic en un detalle del plano para moverlo o editar su posición."));
       return;
     }
+    if (esBloque(c)) {
+      pintarPropiedadesBloque(panel, c);
+      return;
+    }
     const pagina = L.paginaEnPapel(c.detalle, c.pos);
     const dibujo = L.dibujoEnPapel(c.detalle, c.pos);
     // Se muestra exactamente lo que se guardará (0,01 mm, redondeado hacia dentro del área).
@@ -434,6 +535,84 @@
     panel.replaceChildren(...filas, botones);
   }
 
+  const numero1 = (v) => v.toFixed(3).replace(".", ",");
+
+  /** Propiedades de un bloque sin exportar: escala (selector), centro, página y vista previa. */
+  function pintarPropiedadesBloque(panel, c) {
+    const b = c.bloque;
+    const e = estadoBloque(c);
+    const sugerida = sugeridaDe(c);
+    const pagina = paginaBloque(c);
+    const titulo = nodo("div", { class: "fila" });
+    titulo.appendChild(nodo("strong", {}, c.id));
+    titulo.appendChild(nodo("span", { class: "medida" }, " · bloque «" + b.nombre + "» · sin exportar"));
+    const filas = [titulo,
+      nodo("div", { class: "medida" }, b.dxf.nombre + (b.ocurrencia > 1 || b.total_ocurrencias > 1
+        ? " · ocurrencia " + b.ocurrencia : "") + " · handle " + b.handle),
+      nodo("div", { class: "medida" }, "Tamaño real: " + numero1(b.tamano_m[0]) + " × " + numero1(b.tamano_m[1]) + " m")];
+    const fila = nodo("div", { class: "fila" });
+    fila.appendChild(nodo("label", { for: "escala-bloque" }, "Escala"));
+    const selector = nodo("select", { id: "escala-bloque" });
+    const lista = escalasDe(c).slice();
+    if (!lista.includes(c.escala)) lista.push(c.escala);
+    for (const n of lista.sort((x, y) => x - y)) {
+      const opcion = nodo("option", { value: String(n) }, B.textoEscala(n) + (n === sugerida ? " (sugerida)" : ""));
+      if (n === c.escala) opcion.selected = true;
+      selector.appendChild(opcion);
+    }
+    selector.addEventListener("change", () => cambiarEscala(c, parseFloat(selector.value)));
+    fila.appendChild(selector);
+    filas.push(fila,
+      campoCentro("Centro X (mm)", c.centro[0], 0), campoCentro("Centro Y (mm)", c.centro[1], 1),
+      nodo("div", { class: "medida" }, "Página a " + B.textoEscala(c.escala) + ": " + (b.caja_exacta ? "" : "≤ ") +
+        mm(pagina[0]) + " × " + mm(pagina[1]) + " mm (centro fijo al cambiar la escala)."),
+      nodo("div", { class: e.cabe && e.dentro ? "medida" : "medida no-cabe" }, !e.cabe
+        ? "NO CABE: sobran " + mm1(e.exceso[0]) + " × " + mm1(e.exceso[1]) + " mm" +
+          (sugerida ? "; sugerida " + B.textoEscala(sugerida) : "") + ". Se puede guardar, pero componer lo rechaza."
+        : !e.dentro ? "Se sale del área de dibujo: muévalo." : "Cabe en el área de dibujo."));
+    const previa = previaDe(c);
+    const textoPrevia = { lista: "Vista previa lista" + (previa.datos && previa.datos.en_cache ? " (de la caché)" : "") + ".",
+      pidiendo: "Pidiendo vista previa al trabajador…" }[previa.estado] || previa.mensaje || "";
+    if (textoPrevia) filas.push(nodo("div", { class: "medida" }, textoPrevia));
+    filas.push(nodo("div", { class: "medida" }, "Teclas + y − (o el tirador de la esquina) cambian la escala."));
+    const botones = nodo("div", { class: "botones" });
+    const acciones = [
+      ["Centrar", () => moverCentro(c, B.centroZona(ZONA))],
+      ["Escala sugerida", () => sugerida && cambiarEscala(c, sugerida)],
+      ["Traer al frente", () => reordenar(c, +Infinity)],
+      ["Enviar atrás", () => reordenar(c, -Infinity)],
+      ["Quitar", () => quitar(c)],
+    ];
+    if (previa.estado === "error" && P()) acciones.splice(2, 0, ["Reintentar vista previa", () => { P().reintentar(b); actualizar(); }]);
+    for (const [texto, accion] of acciones) {
+      const boton = nodo("button", { type: "button" }, texto);
+      boton.addEventListener("click", accion);
+      if (texto === "Escala sugerida") boton.disabled = !sugerida || sugerida === c.escala;
+      botones.appendChild(boton);
+    }
+    panel.replaceChildren(...filas, botones);
+  }
+
+  function campoCentro(etiqueta, valor, indice) {
+    const fila = nodo("div", { class: "fila" });
+    fila.appendChild(nodo("label", {}, etiqueta));
+    const input = nodo("input", { type: "text", inputmode: "decimal" });
+    input.value = mm(Math.round(valor * 100) / 100);
+    input.addEventListener("change", () => {
+      const numero = parseFloat(input.value.replace(",", "."));
+      const c = seleccionada();
+      if (!c || !esBloque(c) || !isFinite(numero)) {
+        pintarPropiedades();
+        return;
+      }
+      const centro = c.centro.slice();
+      centro[indice] = numero;
+      moverCentro(c, centro);
+    });
+    fila.appendChild(input);
+    return fila;
+  }
+
   function campo(etiqueta, valor, indice) {
     const fila = nodo("div", { class: "fila" });
     fila.appendChild(nodo("label", {}, etiqueta));
@@ -457,8 +636,9 @@
   function pintarListaPlano() {
     const lista = document.getElementById("lista-plano");
     lista.replaceChildren(...estado.colocaciones.map((c) => {
-      const li = nodo("li", { class: c.id === estado.seleccion ? "sel" : "" },
-        c.id + " (" + mm1(c.pos[0]) + "; " + mm1(c.pos[1]) + ")");
+      const li = nodo("li", { class: c.id === estado.seleccion ? "sel" : "" }, esBloque(c)
+        ? c.id + " (centro " + mm1(c.centro[0]) + "; " + mm1(c.centro[1]) + ") · " + B.textoEscala(c.escala) + " · sin exportar"
+        : c.id + " (" + mm1(c.pos[0]) + "; " + mm1(c.pos[1]) + ")");
       li.addEventListener("click", () => seleccionar(c.id));
       return li;
     }));
@@ -484,7 +664,7 @@
     panel: document.getElementById("panel-rotulo"),
     datos: DATOS_ROTULO,
     modelo: () => estado.rotulo,
-    escalas: () => estado.colocaciones.map((c) => c.detalle.escala),
+    escalas: () => estado.colocaciones.map(escalaDe),
     alCambiar: marcarCambios,
   });
 
@@ -625,8 +805,66 @@
     actualizar();
   }
 
+  /** El DXF de la carpeta, uno por sha256 (los bloques del mismo DXF comparten su entrada). */
+  const dxfsPorSha = new Map();
+  function dxfDe(catalogo) {
+    const sha = catalogo.dxf.sha256;
+    if (!dxfsPorSha.has(sha)) dxfsPorSha.set(sha, B.entradaDxf(catalogo));
+    return dxfsPorSha.get(sha);
+  }
+
+  /** «Agregar al plano» de un bloque de la carpeta del DXF: caja a la escala sugerida, centrada. */
+  function agregarBloque(b, catalogo) {
+    if (!b.tamano_m || !b.unidades || !b.unidades.verificadas) {
+      mensaje("'" + b.nombre + "': sin unidades verificadas no se sabe su tamaño en papel; no se puede colocar.", "error");
+      return null;
+    }
+    const escalas = catalogo.escalas || B.ESCALAS;
+    const ids = new Set(estado.colocaciones.map((c) => c.id));
+    const c = { id: L.idUnico(b.archivo || b.nombre, ids), escala: b.escala_sugerida || escalas[escalas.length - 1],
+      bloque: { dxf: dxfDe(catalogo), nombre: b.nombre, handle: b.handle, ocurrencia: b.ocurrencia,
+        total_ocurrencias: b.total_ocurrencias, tamano_m: b.tamano_m.slice(), caja_exacta: b.caja_exacta,
+        sugerida: b.escala_sugerida, escalas } };
+    let centro = B.centroZona(ZONA);
+    const ocupado = (p) => estado.colocaciones.some((x) => esBloque(x) && x.centro[0] === p[0] && x.centro[1] === p[1]);
+    for (let i = 0; i < 20 && ocupado(centro); i++) centro = [centro[0] + 10, centro[1] - 10];
+    c.centro = B.centroLimitado(centro, paginaBloque(c), ZONA);
+    estado.colocaciones.push(c);
+    estado.seleccion = c.id;
+    if (!b.escala_sugerida) mensaje("'" + b.nombre + "' no cabe ni a 1:" + escalas[escalas.length - 1] + ": queda en rojo.", "aviso");
+    marcarCambios();
+    actualizar();
+    return c.id;
+  }
+
+  /** Mueve un bloque por su centro: si cabe, la página queda completa dentro del área. */
+  function moverCentro(c, centro) {
+    const limitado = B.centroLimitado(centro, paginaBloque(c), ZONA);
+    if (limitado[0] !== c.centro[0] || limitado[1] !== c.centro[1]) {
+      c.centro = limitado;
+      marcarCambios();
+    }
+    actualizar();
+  }
+
+  /** Cambia la escala de un bloque: el CENTRO no se mueve (aunque la caja quede afuera). */
+  function cambiarEscala(c, n) {
+    if (!esBloque(c) || !(n > 0) || n === c.escala) {
+      actualizar();
+      return;
+    }
+    c.escala = n;
+    marcarCambios();
+    actualizar();
+  }
+
   /** Mueve con la regla de componer: la PÁGINA siempre queda dentro del área de dibujo. */
   function mover(c, pos) {
+    if (esBloque(c)) {
+      const p = paginaBloque(c);
+      moverCentro(c, [pos[0] + p[0] / 2, pos[1] + p[1] / 2]);
+      return;
+    }
     const limitada = L.clampAZona(pos, c.detalle.tamano_pagina_mm, ZONA);
     if (!limitada) return;
     if (limitada[0] !== c.pos[0] || limitada[1] !== c.pos[1]) {
@@ -647,6 +885,11 @@
 
   function quitar(c) {
     estado.colocaciones = estado.colocaciones.filter((x) => x !== c);
+    // La vista previa que esperaba turno ya no hace falta (si ningún otro usa ese bloque).
+    if (esBloque(c) && P() && !estado.colocaciones.some((x) => esBloque(x) &&
+        x.bloque.handle === c.bloque.handle && x.bloque.dxf.sha256 === c.bloque.dxf.sha256)) {
+      P().soltar(c.bloque);
+    }
     estado.seleccion = null;
     marcarCambios();
     actualizar();
@@ -659,7 +902,7 @@
   /** Detalles cuya página contiene el punto (mm de papel), del de ENCIMA al de abajo. */
   function detallesEnPunto(p) {
     return estado.colocaciones.filter((c) => {
-      const r = L.paginaEnPapel(c.detalle, c.pos);
+      const r = paginaDe(c);
       return p.x >= r[0] && p.x <= r[2] && p.y >= r[1] && p.y <= r[3];
     }).reverse();
   }
@@ -677,7 +920,17 @@
       c = pila[(actual + 1) % pila.length] || c;
     }
     if (estado.seleccion !== c.id) seleccionar(c.id);
-    arrastre = { c, dx: p.x - c.pos[0], dy: p.y - c.pos[1] };
+    // Un bloque se arrastra por su centro (ajustado al paso); un detalle, por su esquina.
+    const ref = esBloque(c) ? c.centro : c.pos;
+    arrastre = { c, dx: p.x - ref[0], dy: p.y - ref[1] };
+    svg.setPointerCapture(ev.pointerId);
+  }
+
+  /** El tirador de la esquina: la escala estándar que deja la esquina más cerca del puntero. */
+  function empezarTirador(ev, c) {
+    if (ev.button !== 0) return;
+    ev.stopPropagation();
+    arrastre = { c, tirador: true };
     svg.setPointerCapture(ev.pointerId);
   }
 
@@ -705,7 +958,11 @@
     if (arrastre) {
       const pos = [L.ajustarAPaso(p.x - arrastre.dx, estado.paso),
         L.ajustarAPaso(p.y - arrastre.dy, estado.paso)];
-      if (arrastre.rosa) moverRosa(pos);
+      if (arrastre.tirador) {
+        const c = arrastre.c;
+        cambiarEscala(c, B.escalaPorTirador(c.centro, [p.x, p.y], c.bloque.tamano_m, c.bloque.dxf.margen_mm, escalasDe(c)));
+      } else if (arrastre.rosa) moverRosa(pos);
+      else if (esBloque(arrastre.c)) moverCentro(arrastre.c, pos);
       else mover(arrastre.c, pos);
     } else if (paneo) {
       const caja = svg.getBoundingClientRect();
@@ -738,7 +995,9 @@
   }, { passive: false });
 
   // ---------------------------------------------------------------------------------------
-  // Teclado: flechas (paso; Shift = 10 pasos), Supr = quitar, Ctrl+S = guardar.
+  // Teclado: flechas (paso; Shift = 10 pasos), Supr = quitar, Ctrl+S = guardar; con un bloque
+  // sin exportar seleccionado, + y − cambian su escala. Nada de esto actúa si el foco está en
+  // un cuadro de texto (ni en una lista desplegable).
   // ---------------------------------------------------------------------------------------
 
   // Vista limpia: el botón la deja fija; la tecla V la muestra mientras se mantiene.
@@ -771,7 +1030,7 @@
       return;
     }
     const etiqueta = ev.target.tagName;
-    if (etiqueta === "INPUT" || etiqueta === "SELECT" || etiqueta === "TEXTAREA") return;
+    if (etiqueta === "INPUT" || etiqueta === "SELECT" || etiqueta === "TEXTAREA" || ev.target.isContentEditable) return;
     if ((ev.key === "v" || ev.key === "V") && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
       teclaV = true;
       aplicarVistaLimpia();
@@ -789,6 +1048,11 @@
     }
     const c = seleccionada();
     if (!c) return;
+    if ((ev.key === "+" || ev.key === "-") && esBloque(c) && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+      ev.preventDefault();
+      cambiarEscala(c, B.escalaVecina(c.escala, ev.key === "+" ? +1 : -1, escalasDe(c)));
+      return;
+    }
     if (movimientos[ev.key]) {
       ev.preventDefault();
       const [dx, dy] = movimientos[ev.key]; // en papel, Y hacia arriba: flecha arriba = +Y
@@ -870,11 +1134,15 @@
   function guardado(nombre, descargado) {
     estado.cambios = false;
     mostrarComando(nombre);
+    // Bloques sin exportar: se guarda igual (versión 3), con aviso; componer los pedirá.
+    const avisos = advertenciasBloques().map((a) => a.texto);
+    const extra = avisos.length ? "\n- " + avisos.join("\n- ") : "";
     if (descargado) {
       mensaje("Se descargó '" + nombre + "' en la carpeta de descargas del navegador.\n" +
-        "Muévalo a la carpeta de este editor.html antes de componer.", "ok");
+        "Muévalo a la carpeta de este editor.html antes de componer." + extra, avisos.length ? "aviso" : "ok");
     } else {
-      mensaje("Plano guardado como '" + nombre + "'. Verifique que quedó en la carpeta de este editor.html.", "ok");
+      mensaje("Plano guardado como '" + nombre + "'. Verifique que quedó en la carpeta de este editor.html." + extra,
+        avisos.length ? "aviso" : "ok");
     }
   }
 
@@ -885,6 +1153,11 @@
       return;
     }
     estado.colocaciones = resultado.colocaciones;
+    for (const c of estado.colocaciones) { // un DXF = una entrada (por sha256), como al agregar
+      if (!esBloque(c)) continue;
+      if (!dxfsPorSha.has(c.bloque.dxf.sha256)) dxfsPorSha.set(c.bloque.dxf.sha256, c.bloque.dxf);
+      c.bloque.dxf = dxfsPorSha.get(c.bloque.dxf.sha256);
+    }
     estado.seleccion = null;
     estado.rosaSeleccionada = false;
     // Sin "rosa_vientos" en el plano: visible y en su sitio (lo mismo que hace componer).
@@ -946,8 +1219,40 @@
   });
   window.addEventListener("resize", ajustarVista);
 
+  /**
+   * Una carpeta de DXF nueva (cargada o vuelta a cargar): los bloques colocados de ese mismo
+   * archivo con otro sha256 (el DXF cambió) pasan al DXF nuevo, con su tamaño actualizado.
+   */
+  function catalogoCambiado(catalogo) {
+    if (!catalogo) return;
+    const nuevo = dxfDe(catalogo);
+    let cambiados = 0;
+    for (const c of estado.colocaciones) {
+      const d = esBloque(c) ? c.bloque.dxf : null;
+      if (!d || d === nuevo || d.archivo !== nuevo.archivo || d.sha256 === nuevo.sha256) continue;
+      const b = catalogo.bloques.find((x) => x.handle === c.bloque.handle);
+      if (nuevo.id === null) nuevo.id = d.id; // el plano sigue nombrándolo igual
+      c.bloque.dxf = nuevo;
+      c.original = null; // cambió su DXF: al guardar se escribe con los datos nuevos
+      if (b && b.tamano_m) Object.assign(c.bloque, { tamano_m: b.tamano_m.slice(), caja_exacta: b.caja_exacta,
+        sugerida: b.escala_sugerida });
+      cambiados++;
+    }
+    if (cambiados) {
+      marcarCambios();
+      mensaje(cambiados + " bloque(s) del plano pasan al DXF que se volvió a cargar (cambió desde que se colocaron).", "aviso");
+    }
+    actualizar();
+  }
+
+  window.EditorUI = { agregarBloque, catalogoCambiado, refrescar: () => actualizar() };
+
   // Para la verificación automática del reporte (no la usa la interfaz).
   window.EditorPrueba = { estado, agregar: (id) => agregar(CATALOGO.find((d) => d.id === id)),
+    cambiarEscala: (id, n) => cambiarEscala(estado.colocaciones.find((c) => c.id === id), n),
+    moverCentro: (id, centro) => moverCentro(estado.colocaciones.find((c) => c.id === id), centro),
+    seleccionar, caja: (id) => paginaDe(estado.colocaciones.find((c) => c.id === id)),
+    previa: (id) => previaDe(estado.colocaciones.find((c) => c.id === id)),
     mover: (id, pos) => mover(estado.colocaciones.find((c) => c.id === id), pos),
     texto: textoPlano, advertencias: () => ultimasAdvertencias,
     moverRosa, mostrarRosa, restaurarRosa, abrir,

@@ -219,7 +219,7 @@ def test_leer_plano(entorno):
         "ok": {"version": 1, "formato": "../formato.json", "detalles": [
             {"id": "x", "manifiesto": "../input/a.manifest.json", "posicion_mm": [30, 40]},
             {"id": "c", "manifiesto": "..\\input\\a.manifest.json", "centrar": True}]},
-        "version": {"version": 3, "detalles": [
+        "version": {"version": 9, "detalles": [
             {"id": "x", "manifiesto": "../input/a.manifest.json", "posicion_mm": [30, 40]}]},
         "desconocido": {"version": 1, "detalles": [
             {"id": "x", "manifiesto": "../input/otro.manifest.json", "posicion_mm": [30, 40]}]},
@@ -243,7 +243,7 @@ def test_leer_plano(entorno):
     assert [c["pos"] for c in r["ok"]["colocaciones"]] == [
         [30, 40], list(posicion_centrada((260.0, 120.0), tuple(AREA)))]
     assert r["version"]["errores"] == [
-        "version: versión 3 no soportada; el editor entiende las versiones 1 y 2."]
+        "version: versión 9 no soportada; el editor entiende las versiones 1, 2 y 3."]
     assert "no está en el catálogo del editor" in r["desconocido"]["errores"][0]
     assert "el paquete 'malo' está rechazado" in r["rechazado"]["errores"][0]
     assert "'x' está repetido" in r["repetido"]["errores"][0]

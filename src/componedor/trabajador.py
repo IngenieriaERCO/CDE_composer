@@ -34,7 +34,7 @@ from componedor.proceso_windows import ProcesoEnJob, cerrar_job, lanzar_en_job
 
 PROTOCOLO = "1.0"
 MAYOR = "1"
-ESPERA_READY_S = 30.0
+ESPERA_READY_S = 60.0  # arranque en frío del exportador real: >30 s la primera vez (compila .pyc)
 ESPERA_CONTROL_S = 10.0  # cancel y status se responden enseguida (punto 4 del contrato)
 ESPERA_CIERRE_S = 5.0
 ARCHIVO_REGISTRO = "trabajador.log"  # stderr del trabajador
@@ -96,8 +96,9 @@ class Trabajador:
     """Un proceso `cde-exporter worker` vivo. Uso: `iniciar()`, `pedir(...)`, `cerrar()`."""
 
     def __init__(self, comando: Sequence[str], carpeta_trabajo: Path | str,
-                 espera_ready_s: float = ESPERA_READY_S):
+                 espera_ready_s: float = ESPERA_READY_S, opciones: Sequence[str] = ()):
         self.comando = list(comando)
+        self.opciones = list(opciones)  # después de `worker --work-dir …` (--preview-cache-mb)
         self.carpeta = Path(carpeta_trabajo).resolve()
         self.espera_ready_s = espera_ready_s
         self.listo: dict | None = None  # data del mensaje ready
@@ -124,7 +125,8 @@ class Trabajador:
 
     def iniciar(self) -> dict:
         """Lanza el proceso y espera `ready`. Devuelve su `data` (versiones)."""
-        argv = resolver_comando(self.comando) + ["worker", "--work-dir", str(self.carpeta)]
+        argv = (resolver_comando(self.comando) + ["worker", "--work-dir", str(self.carpeta)]
+                + self.opciones)
         self.carpeta.mkdir(parents=True, exist_ok=True)
         # Abierto mientras viva el proceso (es su stderr); lo cierra _matar.
         self._registro = open(self.ruta_registro, "ab")  # noqa: SIM115

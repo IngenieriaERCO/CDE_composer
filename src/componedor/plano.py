@@ -1,4 +1,4 @@
-"""Lectura y validación del plano.json (versiones 1 y 2): qué detalles van en la hoja y dónde.
+"""Lectura y validación del plano.json (versiones 1, 2 y 3): qué detalles van en la hoja y dónde.
 
 Formato: docs/formato_plano.md. Todas las rutas son relativas a la carpeta del plano.json.
 Las posiciones van en mm de papel (origen en la esquina inferior izquierda de la hoja, Y
@@ -13,6 +13,10 @@ Versión 2 (subfase 4.1) = versión 1 más, todo opcional:
   - en cada detalle, "etiqueta_escala": false para no poner su etiqueta "ESC: 1:N".
 La versión 1 sigue siendo válida (sin esas claves).
 
+Versión 3 (etapa 2 de la integración con el exportador) = versión 2 más la lista "dxf" y, en
+"detalles", bloques de un DXF todavía SIN exportar ("origen" + "centro_mm", sin "manifiesto"):
+ver plano_dxf.py. Se lee igual, pero `componer` no la compone hasta que estén exportados.
+
 El plano.json lo escribe el editor HTML, pero el componedor SIEMPRE lo revalida: el editor
 nunca es la fuente de la verdad. Los campos desconocidos se rechazan (un error de tipeo como
 "centar" no debe pasar en silencio). Todos los problemas se juntan en un solo
@@ -24,11 +28,19 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
-VERSIONES_SOPORTADAS = (1, 2)
+from componedor.plano_dxf import (
+    BloquePendiente,
+    DxfPlano,
+    leer_lista_dxf,
+    leer_pendiente,
+)
+
+VERSIONES_SOPORTADAS = (1, 2, 3)
 CLAVES_PLANO = {"version", "formato", "plantilla", "detalles"}
 CLAVES_DETALLE = {"id", "manifiesto", "posicion_mm", "centrar"}
 CLAVES_PLANO_V2 = CLAVES_PLANO | {"rotulo", "rosa_vientos"}
 CLAVES_DETALLE_V2 = CLAVES_DETALLE | {"etiqueta_escala"}
+CLAVES_PLANO_V3 = CLAVES_PLANO_V2 | {"dxf"}
 CLAVES_ROSA = {"visible", "posicion_mm"}
 
 
@@ -60,6 +72,8 @@ class Plano:
     detalles: tuple[DetallePlano, ...]  # en orden de apilado (el último queda encima)
     rotulo: dict | None = None  # versión 2: valores del rótulo (los valida componer)
     rosa: RosaPlano | None = None  # versión 2: None = la rosa como viene (visible, en su sitio)
+    dxf: tuple[DxfPlano, ...] = ()  # versión 3: los DXF de los bloques pendientes
+    pendientes: tuple[BloquePendiente, ...] = ()  # versión 3: bloques sin exportar
 
     @property
     def carpeta(self) -> Path:
@@ -85,11 +99,14 @@ def leer_plano(ruta: Path | str) -> Plano:
 
     errores: list[str] = []
     carpeta = ruta.parent
-    v2 = datos.get("version") == 2
-    validas = CLAVES_PLANO_V2 if v2 else CLAVES_PLANO
+    v3 = datos.get("version") == 3
+    v2 = datos.get("version") == 2 or v3  # la versión 3 incluye todo lo de la 2
+    validas = CLAVES_PLANO_V3 if v3 else CLAVES_PLANO_V2 if v2 else CLAVES_PLANO
 
     for clave in sorted(set(datos) - validas):
-        if clave in CLAVES_PLANO_V2:
+        if clave == "dxf":
+            errores.append("dxf: solo existe en la versión 3 del plano (use \"version\": 3)")
+        elif clave in CLAVES_PLANO_V2:
             errores.append(f"{clave}: solo existe en la versión 2 del plano (use \"version\": 2)")
         else:
             errores.append(f"{clave}: campo no reconocido (campos válidos: "
@@ -102,12 +119,13 @@ def leer_plano(ruta: Path | str) -> Plano:
         errores.append(f"version: se esperaba un número entero; tiene {_tipo(version)}")
     elif version not in VERSIONES_SOPORTADAS:
         errores.append(f"version: versión {version} no soportada; el componedor entiende las "
-                       f"versiones {' y '.join(map(str, VERSIONES_SOPORTADAS))}")
+                       f"versiones 1, 2 y 3")
 
     formato = _ruta(datos, "formato", carpeta, errores, obligatoria=True)
     plantilla = _ruta(datos, "plantilla", carpeta, errores, obligatoria=False)
 
-    detalles = []
+    dxfs = leer_lista_dxf(datos["dxf"], carpeta, errores) if v3 and "dxf" in datos else {}
+    detalles, pendientes = [], []
     lista = datos.get("detalles")
     if "detalles" not in datos:
         errores.append("detalles: falta el campo")
@@ -118,7 +136,10 @@ def leer_plano(ruta: Path | str) -> Plano:
     else:
         vistos: dict[str, int] = {}
         for i, item in enumerate(lista):
-            detalle = _detalle(item, f"detalles[{i}]", carpeta, errores, v2)
+            if v3 and isinstance(item, dict) and "origen" in item:
+                detalle = leer_pendiente(item, f"detalles[{i}]", dxfs, errores)
+            else:
+                detalle = _detalle(item, f"detalles[{i}]", carpeta, errores, v2)
             # El id repetido se informa aunque el detalle tenga otros problemas.
             ident = item.get("id") if isinstance(item, dict) else None
             if isinstance(ident, str) and ident.strip():
@@ -127,7 +148,9 @@ def leer_plano(ruta: Path | str) -> Plano:
                                    f"detalles[{vistos[ident]}]); cada id debe ser único")
                     continue
                 vistos[ident] = i
-            if detalle is not None:
+            if isinstance(detalle, BloquePendiente):
+                pendientes.append(detalle)
+            elif detalle is not None:
                 detalles.append(detalle)
 
     rotulo = None
@@ -144,7 +167,8 @@ def leer_plano(ruta: Path | str) -> Plano:
             f"El plano '{ruta}' no es válido ({n} {'problema' if n == 1 else 'problemas'}):\n"
             + "\n".join(f"- {e}" for e in errores)
         )
-    return Plano(ruta, version, formato, plantilla, tuple(detalles), rotulo, rosa)
+    return Plano(ruta, version, formato, plantilla, tuple(detalles), rotulo, rosa,
+                 tuple(dxfs.values()), tuple(pendientes))
 
 
 def _rosa(valor, errores: list[str]) -> RosaPlano | None:

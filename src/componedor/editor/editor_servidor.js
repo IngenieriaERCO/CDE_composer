@@ -7,7 +7,9 @@
  * todo sigue igual que antes. Con «Abrir editor.bat» la página llega desde 127.0.0.1 con el
  * token en la dirección (?t=…); cada pedido a la API lo manda en la cabecera
  * X-Componedor-Token. El editor nunca manda rutas de archivos: el DXF lo elige el cuadro
- * nativo que abre el servidor.
+ * nativo que abre el servidor; para la vista previa (etapa 2) solo manda el `ref` de un bloque
+ * de la carpeta ya cargada, y el PNG lo baja con el token en la cabecera (por eso no puede ir
+ * en un <image href> directo: se convierte en un blob).
  */
 (function (raiz, fabrica) {
   "use strict";
@@ -41,11 +43,11 @@
 
   /** Cliente de la API. `fetchFn` es window.fetch (o uno falso en las pruebas). */
   function crearCliente(conexion, fetchFn) {
-    async function pedir(metodo, ruta) {
+    async function pedir(metodo, ruta, cuerpo, comoBlob) {
       const opciones = { method: metodo, cache: "no-store", headers: { [CABECERA]: conexion.token } };
       if (metodo === "POST") {
         opciones.headers["Content-Type"] = "application/json";
-        opciones.body = "{}";
+        opciones.body = JSON.stringify(cuerpo || {});
       }
       let r;
       try {
@@ -53,6 +55,7 @@
       } catch (e) {
         throw new ErrorServidor(SIN_CONEXION, 0);
       }
+      if (comoBlob && r.ok) return r.blob();
       let datos = null;
       try {
         datos = await r.json();
@@ -66,6 +69,10 @@
     return {
       estado: () => pedir("GET", "/api/estado"),
       elegirDxf: () => pedir("POST", "/api/dxf/elegir"),
+      recargarDxf: () => pedir("POST", "/api/dxf/recargar"),
+      previa: (ref) => pedir("POST", "/api/previa", { ref }),
+      // El PNG de una vista previa terminada (url: la que dio la tarea, /api/previas/<id>).
+      png: (url) => pedir("GET", url, null, true),
       tarea: (id) => pedir("GET", tarea(id)),
       cancelar: (id) => pedir("POST", tarea(id) + "/cancelar"),
       reiniciar: () => pedir("POST", "/api/trabajador/reiniciar"),
