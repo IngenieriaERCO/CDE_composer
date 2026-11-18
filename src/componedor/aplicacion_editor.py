@@ -206,15 +206,19 @@ class AplicacionEditor:
         tarea = canal.encolar(
             "cargar_dxf", "load",
             # Sin tabla de capas: la carpeta no la usa todavía (ahorra 1–2 s en bloques grandes).
+            # Los anónimos *U se ofrecen desde ese número de entidades visibles (el umbral lo
+            # manda el Componedor; se configura en componedor.json).
             {"dxf": str(ruta), "units": None, "margin_mm": self.config.margen_mm,
-             "include_layers": False},
+             "include_layers": False,
+             "anonymous_min_entities": self.config.anonimos_min_entidades},
             procesar=lambda data, t: self._al_cargar(data, t, ruta, firma))
         self._tarea_carga = tarea.id
         return tarea.foto()
 
     def _al_cargar(self, data: dict, tarea: Tarea, ruta: Path,
                    firma: tuple[int, int] | None = None) -> dict:
-        catalogo = catalogo_dxf(data, self.zona)  # RespuestaInvalida es ValueError
+        catalogo = catalogo_dxf(data, self.zona,  # RespuestaInvalida es ValueError
+                                anonimos_min=self.config.anonimos_min_entidades)
         catalogo["dxf"]["archivo_plano"] = self.archivo_para_plano(ruta)
         self.dxf, self._generacion_dxf = catalogo, tarea.generacion
         self._firma_dxf = firma
@@ -247,7 +251,8 @@ class AplicacionEditor:
         if not dxf["sesion_activa"]:
             raise ErrorAplicacion(409, "El trabajador se reinició desde que se cargó el DXF: "
                                        "vuelva a cargarlo («Volver a cargar»).")
-        if not any(b["ref"] == ref for b in dxf["bloques"]):
+        bloque = next((b for b in dxf["bloques"] if b["ref"] == ref), None)
+        if bloque is None:
             raise ErrorAplicacion(404, f"El bloque «{ref}» no está en la carpeta del DXF "
                                        f"cargado.")
         clave = (dxf["sesion"], ref)
@@ -256,7 +261,7 @@ class AplicacionEditor:
             if previa is not None and previa.estado in (EN_COLA, EN_CURSO):
                 return {"tarea": previa.foto()}
             tarea = self.canal.encolar(
-                "previa", "preview", pedido_previa(dxf["sesion"], ref),
+                "previa", "preview", pedido_previa(dxf["sesion"], bloque["handle"]),
                 procesar=lambda data, t: self._al_previar(data, t, ref))
             self._previa_por_ref[clave] = tarea.id
         return {"tarea": tarea.foto()}
@@ -355,7 +360,8 @@ class AplicacionEditor:
             tarea = self._asegurar_canal().encolar(
                 "exportar", "export",
                 {"session": dxf["sesion"], "output_dir": str(preparacion.resolve()),
-                 "jobs": [{"job": "j1", "ref": b["ref"], "scale": f"1:{n:g}",
+                 # Por el handle solo (no el ref, que en un *U cambia entre sesiones).
+                 "jobs": [{"job": "j1", "handle": b["handle"], "scale": f"1:{n:g}",
                            "package": paquete}],
                  "options": dict(self.OPCIONES_EXPORT)},
                 procesar=lambda data, t: self._al_exportar(data, t, p, pedido, carpeta,

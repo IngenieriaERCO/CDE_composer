@@ -149,6 +149,83 @@ def test_textos_de_la_carpeta():
                  "512 bytes", "20 KB", "2,74 GB", "tamaño desconocido", "unidades desconocidas"]
 
 
+def _anonimo(handle, capa="I1.M1.PV1", visibles=250, nombre="*U76"):
+    return bloque(nombre, ref=f"{nombre}#1", handle=handle, layer=capa, anonymous=True,
+                  label=f"{capa}_{handle}", visible_entities=visibles,
+                  file_stem=f"{capa}_{handle}")
+
+
+def _carpeta_con_anonimos(omitidos=0, umbral=100):
+    pequenos = [{"name": f"*U{i}", "anonymous": True, "visible_entities": 5} for i in range(omitidos)]
+    return catalogo_dxf(respuesta(bloque("Viga", anonymous=False, label="Viga"),
+                                  _anonimo("12900", visibles=12345),
+                                  _anonimo("12A0", capa="Tablas Cálculo", nombre="*U80"),
+                                  _anonimo("12900B", capa="I1.M2.PV1", nombre="*U81"),
+                                  omitted=pequenos),
+                        ZONA_A1, anonimos_min=umbral)
+
+
+def test_textos_de_un_anonimo():
+    carpeta = _carpeta_con_anonimos()
+    r = js("""return entrada.bloques.map((b) => [D.nombreBloque(b), D.lineasBloque(b)]);""", carpeta)
+    assert r[0] == ["Viga", ["capa 0", "10,000 × 4,000 m · unidades: m (verificadas)",
+                             "Escala sugerida 1:20 · página 510,0 × 210,0 mm"]]
+    # Se muestra por la etiqueta (capa + handle); el *U y las entidades visibles, en la línea.
+    assert r[1] == ["I1.M1.PV1_12900", ["bloque anónimo *U76 · 12 345 entidades visibles",
+                                        "10,000 × 4,000 m · unidades: m (verificadas)",
+                                        "Escala sugerida 1:20 · página 510,0 × 210,0 mm"]]
+    assert js("return [D.nombreBloque({nombre: '*U1'}), D.nombreBloque(null)];") == ["*U1", "?"]
+
+
+def test_separar_y_resumen_con_anonimos():
+    carpeta = _carpeta_con_anonimos()
+    r = js("""const s = D.separarBloques(entrada);
+              return [s.nombrados.map(D.nombreBloque), s.anonimos.map(D.nombreBloque),
+                      D.resumenDxf(entrada), D.separarBloques(null)];""", carpeta)
+    assert r == [["Viga"], ["I1.M1.PV1_12900", "Tablas Cálculo_12A0", "I1.M2.PV1_12900B"],
+                 "1 bloque · 3 anónimos", {"nombrados": [], "anonimos": []}]
+
+
+@pytest.mark.parametrize("filtro, esperados", [
+    ("", ["I1.M1.PV1_12900", "Tablas Cálculo_12A0", "I1.M2.PV1_12900B"]),
+    ("   ", ["I1.M1.PV1_12900", "Tablas Cálculo_12A0", "I1.M2.PV1_12900B"]),
+    ("12900", ["I1.M1.PV1_12900", "I1.M2.PV1_12900B"]),
+    ("pv1 m2", ["I1.M2.PV1_12900B"]),          # todas las palabras, en cualquier orden
+    ("CALCULO", ["Tablas Cálculo_12A0"]),      # sin mayúsculas ni tildes
+    ("*u80", ["Tablas Cálculo_12A0"]),         # también por el *U
+    ("12a0", ["Tablas Cálculo_12A0"]),         # por el handle
+    ("mesa", []),
+])
+def test_filtro_de_anonimos(filtro, esperados):
+    carpeta = _carpeta_con_anonimos()
+    r = js("""return D.filtrarBloques(D.separarBloques(entrada.c).anonimos, entrada.f)
+                .map(D.nombreBloque);""", {"c": carpeta, "f": filtro})
+    assert r == esperados
+
+
+def test_textos_de_la_subseccion_de_anonimos():
+    carpeta = _carpeta_con_anonimos(omitidos=3318)
+    t = js("return [D.textosAnonimos(entrada), D.textosAnonimos(entrada, 2, 2), "
+           "D.textosAnonimos(entrada, 3, 1), D.LIMITE_TARJETAS];", carpeta)
+    assert t[0]["titulo"] == "Anónimos (opcionales) (3)"
+    assert t[0]["explicacion"].startswith(
+        "Bloques anónimos (*U) del Model Space con 100 entidades visibles o más")
+    assert t[0]["pequenos"] == ("Otros 3 318 anónimos más pequeños no se ofrecen (menos de "
+                                "100 entidades visibles): etiquetas, cotas y piezas que AutoCAD o "
+                                "Civil 3D crean por montones.")
+    assert t[0]["mostrando"] is None
+    assert t[1]["mostrando"] == "Mostrando 2 de 2 que coinciden (3 en total)."
+    assert t[2]["mostrando"] == "Mostrando 1 de 3: escriba en el filtro para encontrar los demás."
+    assert t[3] == 200
+    # Uno solo pequeño, y sin umbral conocido.
+    carpeta = _carpeta_con_anonimos(omitidos=1, umbral=None)
+    t = js("return D.textosAnonimos(entrada);", carpeta)
+    assert t["pequenos"].startswith("Otro anónimo más pequeño no se ofrece: etiquetas")
+    assert "que el exportador ofrece" in t["explicacion"]
+    # Sin anónimos pequeños: no hay texto.
+    assert js("return D.textosAnonimos(entrada).pequenos;", _carpeta_con_anonimos()) is None
+
+
 def test_texto_del_avance_y_del_error():
     r = js("""return [
       D.textoAvance({estado: "en_cola", avance: {}}),
@@ -187,7 +264,8 @@ def test_editor_html_trae_el_boton_y_los_js_del_dxf(tmp_path):
     for funcion in ("function detectar", "function lineasBloque", "function tarjetaBloque",
                     "function paginaMm", "function dibujarBloque", "function pedirPrevia",
                     "function pedidosExportar", "function aplicarExportado",
-                    "function seccionExportar"):
+                    "function seccionExportar", "function seccionAnonimos",
+                    "function filtrarBloques", "function pintarMiniatura"):
         assert funcion in html
     # editor_bloques.js va antes que la lógica (que lo usa para el plano versión 3).
     assert html.index("function paginaMm") < html.index("function serializarPlano")

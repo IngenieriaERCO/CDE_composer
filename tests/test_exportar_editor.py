@@ -2,6 +2,7 @@
 pedido, caché de paquetes publicados, paquetes viejos a _para_borrar, verificación, colocación
 por el centro CAD, DXF_CHANGED, cancelar y detener a la fuerza."""
 
+import json
 import time
 
 import pytest
@@ -62,7 +63,7 @@ def test_exportar_un_bloque(armar, tmp_path):
     salida = tmp_path / "data" / "input" / "dxf" / "GUAMO_prueba"
     # El trabajador publica en una carpeta de preparación (el viejo no se toca hasta el final).
     assert datos == {"session": "s-1", "output_dir": str((salida / ".componedor-nuevo-1").resolve()),
-                     "jobs": [{"job": "j1", "ref": "BLOQUE1#1", "scale": "1:5000",
+                     "jobs": [{"job": "j1", "handle": "50CA", "scale": "1:5000",
                                "package": "BLOQUE1_1-5000"}],
                      "options": {"solids": "footprint", "omit_unsupported": True,
                                  "overwrite": False, "write_summary": False}}
@@ -81,6 +82,58 @@ def test_exportar_un_bloque(armar, tmp_path):
     assert d["tiene_fondo"] is False and d["miniatura"]["data_url"].startswith("data:image/png;base64,")
     assert sorted(p.name for p in salida.iterdir()) == [
         "BLOQUE1_1-5000.manifest.json", "BLOQUE1_1-5000.pdf", "BLOQUE1_1-5000.txt"]  # sin la preparación
+
+
+def test_exportar_un_bloque_anonimo(armar, tmp_path):
+    """Un *U ofrecido se exporta como cualquier bloque: por su ref y con su etiqueta (capa +
+    handle) como nombre de paquete; el detalle queda por el centro CAD."""
+    anonimo = {"name": "*U76", "anonimo": True, "layer": "I1.M1.PV1", "handle": "12900",
+               "size_cad": [10.0, 4.0], "min": [300.0, 400.0], "visible_entities": 250}
+    app, _, carpeta = armar(blocks=[*BLOQUES, anonimo])
+    b = carpeta["bloques"][-1]
+    assert (b["anonimo"], b["etiqueta"], b["archivo"], b["ref"]) == (
+        True, "I1.M1.PV1_12900", "I1.M1.PV1_12900", "*U76#1")
+    (foto,) = app.exportar([pedido(carpeta, "I1.M1.PV1_12900", "12900", 50, (300.0, 300.0))])[
+        "tareas"]
+    assert app.canal.tarea(foto["id"]).datos["jobs"] == [
+        {"job": "j1", "handle": "12900", "scale": "1:50", "package": "I1.M1.PV1_12900_1-50"}]
+    foto = esperar(app, foto["id"])
+    assert foto["estado"] == "terminada", foto["error"]
+    r = foto["resultado"]
+    assert r["paquete"] == "I1.M1.PV1_12900_1-50" and r["en_cache"] is False
+    # Página a 1:50: 10 m → 200 + 10 mm, 4 m → 80 + 10 mm, centrada en (300, 300).
+    assert r["posicion_mm"] == pytest.approx([300 - 105, 300 - 45])
+    assert (tmp_path / "data" / "input" / "dxf" / "GUAMO_prueba"
+            / "I1.M1.PV1_12900_1-50.manifest.json").is_file()
+    # La segunda vez, de la caché (identificado por handle, no por el *U que AutoCAD renumera).
+    (otra,) = app.exportar([pedido(carpeta, "I1.M1.PV1_12900", "12900", 50)])["tareas"]
+    assert otra["estado"] == "terminada" and otra["resultado"]["en_cache"] is True
+
+
+def test_un_anonimo_renumerado_por_autocad_se_sigue_pidiendo_por_su_handle(armar, tmp_path):
+    """AutoCAD guarda y el *U76 pasa a ser *U80 (mismo INSERT, mismo handle): tras volver a
+    cargar, la vista previa y la exportación del bloque puesto antes salen por el handle, y el
+    paquete se llama igual (capa + handle)."""
+    anonimo = {"name": "*U76", "anonimo": True, "layer": "I1.M1.PV1", "handle": "12900",
+               "size_cad": [10.0, 4.0], "min": [300.0, 400.0], "visible_entities": 250}
+    app, ruta, carpeta = armar(blocks=[anonimo])
+    assert carpeta["bloques"][0]["ref"] == "*U76#1"
+    spec = json.loads(ruta.read_text(encoding="utf-8"))
+    spec["blocks"][0]["name"] = "*U80"
+    ruta.write_text(json.dumps(spec), encoding="utf-8")
+    nueva = esperar(app, app.recargar()["tarea"]["id"])["resultado"]
+    (b,) = nueva["bloques"]
+    assert (b["ref"], b["handle"], b["etiqueta"]) == ("*U80#1", "12900", "I1.M1.PV1_12900")
+    previa = app.pedir_previa(b["ref"])["tarea"]
+    assert app.canal.tarea(previa["id"]).datos["handle"] == "12900"
+    assert "ref" not in app.canal.tarea(previa["id"]).datos
+    assert esperar(app, previa["id"])["estado"] == "terminada"
+    (foto,) = app.exportar([pedido(nueva, "I1.M1.PV1_12900", "12900", 50)])["tareas"]
+    assert app.canal.tarea(foto["id"]).datos["jobs"] == [
+        {"job": "j1", "handle": "12900", "scale": "1:50", "package": "I1.M1.PV1_12900_1-50"}]
+    foto = esperar(app, foto["id"])
+    assert foto["estado"] == "terminada", foto["error"]
+    assert foto["resultado"]["paquete"] == "I1.M1.PV1_12900_1-50"
 
 
 def test_avance_de_la_exportacion(armar):

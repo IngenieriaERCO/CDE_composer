@@ -77,7 +77,9 @@ La sección `exportador` es opcional: sin ella el editor funciona igual, pero si
 `trabajo`, la carpeta del trabajador (se crea); `margen_mm`, el margen de página con que se
 exportará (por defecto 5 mm); `cache_previas_mb` (opcional), el tope de la caché de vistas previas
 del trabajador (por defecto, el suyo: 500 MB); `paquetes` (opcional, `data/input/dxf`), dónde
-publica «Exportar»; `para_borrar` (opcional, `_para_borrar`), adónde se mueven los paquetes viejos.
+publica «Exportar»; `para_borrar` (opcional, `_para_borrar`), adónde se mueven los paquetes viejos;
+`anonimos_min_entidades` (opcional, 100), cuántas entidades visibles debe dibujar un bloque
+anónimo `*U` para ofrecerlo en «Anónimos (opcionales)».
 Ver [docs/servidor_editor.md](docs/servidor_editor.md).
 
 ## Comandos

@@ -313,7 +313,26 @@ una vez, con barra de avance y **Cancelar**, y arriba de «Detalles disponibles�
 - notas: caja aproximada («página ≤ …»), sólidos 3D que la vista previa no mostrará, capas
   apagadas o congeladas, unidades sin verificar o que no cabe ni a 1:10000.
 
-Al final, «No exportables» (bloques anónimos, XREF…). Recargar la página no pierde la carpeta.
+Cada tarjeta tiene **Ver vista previa**: la vista previa del bloque (solo capas visibles), en
+pequeño dentro de la tarjeta, para reconocerlo antes de agregarlo. Es la misma que después usa
+la caja en la hoja (no se pide dos veces). **Ocultar vista previa** la quita.
+
+Debajo de los bloques con nombre, **«Anónimos (opcionales) (N)»**, cerrada por defecto: los
+bloques anónimos `*U` del Model Space que dibujan muchas entidades (por defecto 100 o más,
+`exportador.anonimos_min_entidades` en `componedor.json`), como las mesas de paneles de PVcase o
+las tablas de Civil 3D.
+
+- Se nombran por **capa + handle** (`I1.M1.PV1_12900`), porque AutoCAD renumera los `*U` al
+  guardar y el handle no cambia; la tarjeta dice el `*U` y cuántas entidades visibles dibuja.
+- **Filtro**: muestra los que tienen todas las palabras escritas en su capa, handle o `*U`, sin
+  distinguir mayúsculas ni tildes («pv1 m2»). Se muestran 200 a la vez; el filtro encuentra el
+  resto.
+- Se agregan, escalan y exportan como cualquier bloque; el paquete se llama como la etiqueta
+  (`I1.M1.PV1_12900_1-50`).
+- Los anónimos más pequeños (cotas, etiquetas, piezas de Civil 3D, a veces miles) no se ofrecen
+  ni se listan: solo se dice cuántos son.
+
+Al final, «No exportables» (XREF, sin definición…). Recargar la página no pierde la carpeta.
 
 Sin servidor, el botón aparece desactivado y explica cómo abrirlo. Si el `cde-exporter`
 instalado no tiene la orden `worker`, el editor lo dice.

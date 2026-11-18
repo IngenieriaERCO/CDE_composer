@@ -13,6 +13,15 @@ inventario (`colocar.exceso_de_tamano`). La página es la del contrato del traba
 
 Si la caja del bloque no es exacta (`bounds.exact = false`: bloques anidados girados), la
 página real puede salir algo menor: la sugerida es prudente y se dice en una nota.
+
+Bloques anónimos (`*U` del Model Space, p. ej. mesas de PVcase o tablas de Civil 3D): el
+trabajador ofrece en `blocks` los que dibujan al menos `anonymous_min_entities` entidades
+visibles (umbral que manda el Componedor en `load`), con `anonymous: true`, `label` (capa +
+handle del INSERT: AutoCAD renumera los `*U` al guardar y el handle no cambia) y
+`visible_entities`. Aquí pasan a `anonimo`, `etiqueta` y `entidades_visibles`; la etiqueta es
+el nombre que se muestra (y el `file_stem`, el del paquete). Los anónimos más pequeños llegan
+en `omitted` con `anonymous: true`: pueden ser miles, así que no se listan uno por uno, solo
+se cuentan (`anonimos_omitidos`).
 """
 
 import math
@@ -108,6 +117,10 @@ def _notas(b: dict, unidades: dict, tamano_m, exacta: bool, sugerida: int | None
     return notas
 
 
+def _entero(v) -> int | None:
+    return int(v) if _numero(v) and v >= 0 and float(v).is_integer() else None
+
+
 def _bloque(b, margen_mm: float, zona: RectMM, zona_nombre: str) -> dict:
     """Una entrada de la carpeta; ValueError con el motivo si no se puede usar."""
     if not isinstance(b, dict):
@@ -127,8 +140,13 @@ def _bloque(b, margen_mm: float, zona: RectMM, zona_nombre: str) -> dict:
         raise ValueError("«size_m» debe ser [ancho, alto] en m, o null")
     unidades = _unidades(b.get("units"))
     sugerida = (escala_sugerida(tamano_m, margen_mm, zona) if tamano_m is not None else None)
+    anonimo = b.get("anonymous") is True
     return {
         "ref": b["ref"], "nombre": b["name"], "handle": b["handle"],
+        # Lo que se muestra: el nombre, o capa + handle en un anónimo (*U76 no dice nada).
+        "etiqueta": _texto(b.get("label")) or b["name"],
+        "anonimo": anonimo,
+        "entidades_visibles": _entero(b.get("visible_entities")),
         "ocurrencia": b["occurrence"], "total_ocurrencias": b["total_occurrences"],
         "capa": _texto(b.get("layer")),
         "tamano_m": list(tamano_m) if tamano_m else None,
@@ -145,8 +163,29 @@ def _bloque(b, margen_mm: float, zona: RectMM, zona_nombre: str) -> dict:
     }
 
 
-def catalogo_dxf(datos: dict, zona: RectMM, zona_nombre: str = "el área de dibujo") -> dict:
-    """La carpeta del DXF para el editor, a partir del `data` de `load`."""
+def _omitidos(datos: dict) -> tuple[list[dict], dict]:
+    """(los no exportables que se listan, resumen de los anónimos pequeños)."""
+    omitidos, cantidad, mayor = [], 0, None
+    for o in datos.get("omitted") or []:
+        if not isinstance(o, dict):
+            continue
+        if o.get("anonymous") is True:
+            cantidad += 1
+            visibles = _entero(o.get("visible_entities"))
+            if visibles is not None and (mayor is None or visibles > mayor):
+                mayor = visibles
+            continue
+        omitidos.append({"nombre": str(o.get("name", "?")), "ocurrencia": o.get("occurrence"),
+                         "total_ocurrencias": o.get("total_occurrences"),
+                         "motivo": str(o.get("reason", ""))})
+    return omitidos, {"cantidad": cantidad, "max_entidades_visibles": mayor}
+
+
+def catalogo_dxf(datos: dict, zona: RectMM, zona_nombre: str = "el área de dibujo",
+                 anonimos_min: int | None = None) -> dict:
+    """La carpeta del DXF para el editor, a partir del `data` de `load`. `anonimos_min` es el
+    umbral que se pidió en `load`; si la respuesta trae el que se usó
+    (`anonymous_min_entities`), vale ese (para explicarlo en la subsección de anónimos)."""
     if not isinstance(datos, dict):
         raise RespuestaInvalida("la respuesta de «load» no es un objeto")
     dxf = datos.get("dxf")
@@ -167,10 +206,10 @@ def catalogo_dxf(datos: dict, zona: RectMM, zona_nombre: str = "el área de dibu
             nombre = b.get("name") if isinstance(b, dict) else None
             problemas.append(f"bloque {i}" + (f" («{nombre}»)" if nombre else "")
                              + f": {e}; se omite.")
-    omitidos = [{"nombre": str(o.get("name", "?")), "ocurrencia": o.get("occurrence"),
-                 "total_ocurrencias": o.get("total_occurrences"),
-                 "motivo": str(o.get("reason", ""))}
-                for o in datos.get("omitted") or [] if isinstance(o, dict)]
+    omitidos, anonimos_omitidos = _omitidos(datos)
+    # El umbral que de verdad usó el trabajador (lo devuelve load); si no lo dice, el pedido.
+    usado = _entero(datos.get("anonymous_min_entities"))
+    anonimos_min = usado if usado is not None else anonimos_min
     avisos = [str(n.get("message")) for n in datos.get("notices") or []
               if isinstance(n, dict) and n.get("message")]
     return {
@@ -188,6 +227,8 @@ def catalogo_dxf(datos: dict, zona: RectMM, zona_nombre: str = "el área de dibu
         "escalas": list(ESCALAS_ESTANDAR),
         "bloques": bloques,
         "omitidos": omitidos,
+        "anonimos_min_entidades": anonimos_min,
+        "anonimos_omitidos": anonimos_omitidos,
         "avisos": avisos,
         "problemas": problemas,
     }

@@ -1844,6 +1844,98 @@ Verificación en Edge todo OK:
   al volver atrás; «Ver detalle»;
 - las de las etapas 1, 2 y 3 (con el exportador real), ajustadas a la lista nueva.
 
+### Bloques anónimos en la carpeta del DXF (2026-11-18, sin commit)
+
+El Exportador ofrece en `load` los `*U` del Model Space que dibujan muchas entidades (mesas de
+PVcase, tablas de Civil 3D), con `anonymous`, `label` (capa + handle del INSERT, que es el nombre
+que se muestra y el del paquete) y `visible_entities`; los pequeños van a `omitted` con
+`anonymous: true`.
+
+Decisiones del usuario (2026-11-18):
+1. el umbral lo manda el Componedor en `load` (`anonymous_min_entities`), configurable en
+   `componedor.json` → `exportador.anonimos_min_entidades` (100 por defecto);
+2. «Ver vista previa» en cada tarjeta;
+3. sin el campo `origin`.
+
+**Qué se hizo**
+- **Configuración** (`configuracion.py`, `componedor.json`): `exportador.anonimos_min_entidades`,
+  entero ≥ 1, 100 por defecto. `aplicacion_editor` lo manda en `load` como
+  `anonymous_min_entities`.
+- **Carpeta** (`bloques_dxf.py`): cada bloque lleva `anonimo`, `etiqueta` (= `label`, o el nombre
+  si falta) y `entidades_visibles`. Los anónimos de `omitted` no se listan (pueden ser miles: en
+  Plano_completo, 3 318): solo `anonimos_omitidos` = {cantidad, máximo de entidades visibles}.
+  `anonimos_min_entidades` va en la carpeta para explicarlo.
+- **Editor**:
+  - `editor_dxf.js` (lógica pura): `nombreBloque`, `separarBloques`, `filtrarBloques` (todas las
+    palabras, en etiqueta, `*U`, capa o handle, sin mayúsculas ni tildes), `textosAnonimos` y la
+    línea del anónimo («bloque anónimo *U76 · 1 250 entidades visibles»); el resumen dice
+    «3 bloques · 4 anónimos».
+  - `editor_panel_dxf.js`: subsección **«Anónimos (opcionales) (N)»**, cerrada por defecto, con
+    la explicación, cuántos pequeños no se ofrecen, el filtro y las tarjetas (hasta 200 a la
+    vez). Abierta/cerrada y el filtro se conservan al repintar, y el filtro no pierde el foco
+    con el avance de una exportación.
+  - **Ver vista previa** en cada tarjeta (también las de bloques con nombre): la misma vista
+    previa que después usa la caja en la hoja (misma caché por sha256 + handle), en pequeño;
+    «Ocultar vista previa» la quita.
+  - `editor_ui.js`: Propiedades y mensajes muestran la etiqueta («bloque «I1.M1.PV1_12900»» y
+    «anónimo *U76 · handle 12900»). El plano.json no la guarda (guarda el `*U` y el handle, como
+    antes): al abrir un plano se toma de la carpeta cargada por el handle.
+  - Agregar, escalar y exportar: sin cambios, como cualquier bloque; el paquete se llama como la
+    etiqueta (`I1.M1.PV1_12900_1-50`) y el manifiesto guarda el `*U`.
+- **Trabajador falso**: bloques con `"anonimo": true` y `visible_entities`; aplica
+  `anonymous_min_entities` (BAD_REQUEST si no es entero ≥ 1); todos los bloques traen
+  `anonymous`, `label` y `visible_entities`.
+- Documentación: `editor.md` §2f, `servidor_editor.md`, README.
+
+**Con el Exportador en 92c2c37** («Fase 4b: bloques anónimos *U»):
+- `load` lee `anonymous_min_entities` (manda sobre `CDE_ANON_MIN_ENTITIES`) y devuelve el umbral
+  usado; la carpeta muestra ese (el de la configuración queda de respaldo). El Exportador admite
+  0; nuestra configuración pide ≥ 1 a propósito (con 0 se ofrecerían todos los `*U`, a miles).
+- `preview` y `export` aceptan **solo `handle`**, porque el `ref` de un `*U` cambia entre
+  sesiones. Antes, el servidor traducía el handle del editor al `ref` de la sesión y mandaba
+  `ref` (no fallaba, porque el `ref` salía de la carpeta vigente). Ahora `previa_dxf.pedido_previa`
+  y los `jobs` de `export` llevan el `handle` solo. El trabajador falso lo acepta igual que el real
+  (sin distinguir mayúsculas; NOT_EXPORTABLE, REFERENCE_NOT_FOUND, BAD_REQUEST si está repetido) y
+  devuelve el umbral usado. Prueba nueva: un `*U76` que pasa a `*U80` al guardar se sigue
+  previsualizando y exportando por su handle, y el paquete se llama igual.
+- **Ensayo con el real**, PRGD-26-1377-GEN-PL-101_1_V0.dxf (158 MB), por `AplicacionEditor`:
+  - umbral 100: `load` en 16 s y la respuesta trae `anonymous_min_entities: 100`; **3 de 3**
+    anónimos (las mesas `I1.M1.PV1_12900`, `I1.M1.PV2_12962` e `I1.M2.PV4_129C4`, `*U76/78/80`,
+    312 entidades visibles cada una, 34,88 × 7,23 m, sugerida 1:75);
+  - umbral 300: lo devuelve y siguen las 3 (312 ≥ 300). Con 313: 0 ofrecidos y 3 pequeños
+    contados (máximo 312), lo que muestra que el umbral sí filtra;
+  - vista previa de `I1.M1.PV1_12900` pedida con `{"handle": "12900"}`: 1500 × 327 px en 0,5 s;
+  - exportación a 1:75 con `{"handle": "12900"}`: paquete `I1.M1.PV1_12900_1-75` en 1,5 s,
+    verificado por el Componedor (página 475,04 × 106,38 mm, cabe) y puesto por el centro CAD;
+    el manifiesto guarda `*U76`, el handle 12900 y la escala física garantizada.
+  - Hallazgo: en una carpeta de salida muy profunda, la exportación falla con «No such file or
+    directory». La ruta del temporal del Exportador (`.componedor-nuevo-1\.cde-tmp-…\
+    .<paquete>.<32 hex>.tmp.dxf`) pasa de 260 caracteres (límite de rutas de Windows). Con
+    `data/input/dxf/` queda en unos 190, sin problema. Para el Exportador: dar un mensaje claro
+    o acortar sus temporales.
+
+**Pruebas**: **1131** pasan y 1 se salta (la larga con el real). Nuevas: el umbral en la
+configuración (válidos e inválidos), la carpeta con anónimos (etiqueta, campos raros, 3 318
+pequeños contados y no listados), el umbral de punta a punta con el falso (100, 50 y 300),
+exportar un anónimo (paquete con la etiqueta, caché) y en Node los textos, la separación y el
+filtro. ruff: los mismos 173 hallazgos.
+
+**Verificación en Edge** (`data/verificacion/verificar_anonimos.mjs`, fuera de git, trabajador
+falso): todo OK.
+- Subsección cerrada con sus tarjetas ocultas; «Otros 3 anónimos más pequeños…»; «No
+  exportables» sin los `*U` pequeños.
+- Filtro: «pv1», «pv1 m2», «CALCULO», «12a00», sin coincidencias; conserva el foco.
+- «Ver vista previa»: «Pidiendo vista previa…», la imagen como `blob:` (alto ≤ 180 px),
+  ocultar y volver a ver.
+- Agregar a 1:20, escalar a 1:50 con el centro fijo, guardar y reabrir la versión 3 (igual y
+  nombrado por la etiqueta).
+- Exportar dos anónimos: `I1.M1.PV1_12900_1-50` y `C-TABLAS_2F10_1-20`, puestos por el centro
+  CAD y en «Detalles disponibles».
+- Sin errores de JavaScript.
+
+`verificar_bloques_dxf.mjs` se ajustó (cada tarjeta tiene ahora dos botones); las de las etapas
+1, 2 y 3 siguen todo OK con el falso.
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

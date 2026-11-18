@@ -146,7 +146,8 @@ def test_componedor_json_del_repositorio():
     assert (k.formato, k.resultados) == (c.formato, RAIZ / "resultados")
     x = leer_config_exportador(RAIZ / "componedor.json")
     assert x == ConfigExportador(("cde-exporter",), RAIZ / "data" / "cache_exportador", 5.0,
-                                 None, RAIZ / "data" / "input" / "dxf", RAIZ / "_para_borrar")
+                                 None, RAIZ / "data" / "input" / "dxf", RAIZ / "_para_borrar",
+                                 100)
 
 
 # --- sección exportador («Cargar DXF») ----------------------------------------------------------
@@ -180,6 +181,15 @@ def test_exportador_completo_y_por_defecto(entorno):
     assert leer_config_editor(ruta).paquetes == entorno / "input"
 
 
+def test_umbral_de_bloques_anonimos(entorno):
+    """exportador.anonimos_min_entidades: 100 por defecto; va en load (anonymous_min_entities)."""
+    ruta = _config(entorno, EDITOR, COMPONER, exportador={"comando": "c", "trabajo": "w"})
+    assert leer_config_exportador(ruta).anonimos_min_entidades == 100
+    ruta = _config(entorno, EDITOR, COMPONER, exportador={"comando": "c", "trabajo": "w",
+                                                          "anonimos_min_entidades": 40})
+    assert leer_config_exportador(ruta).anonimos_min_entidades == 40
+
+
 @pytest.mark.parametrize("seccion, mensaje", [
     ("x", '"exportador" debe ser un objeto'),
     ({"comando": "", "trabajo": "w"}, "exportador.comando: se esperaba el comando"),
@@ -192,6 +202,14 @@ def test_exportador_completo_y_por_defecto(entorno):
     ({"comando": "c", "trabajo": "w", "cache_previas_mb": 2.5}, "exportador.cache_previas_mb"),
     ({"comando": "c", "trabajo": "w", "paquetes": ""}, "exportador.paquetes: se esperaba una ruta"),
     ({"comando": "c", "trabajo": "w", "para_borrar": 3}, "exportador.para_borrar: se esperaba"),
+    ({"comando": "c", "trabajo": "w", "anonimos_min_entidades": 0},
+     "exportador.anonimos_min_entidades: se esperaba un entero ≥ 1"),
+    ({"comando": "c", "trabajo": "w", "anonimos_min_entidades": 50.5},
+     "exportador.anonimos_min_entidades"),
+    ({"comando": "c", "trabajo": "w", "anonimos_min_entidades": True},
+     "exportador.anonimos_min_entidades"),
+    ({"comando": "c", "trabajo": "w", "anonimos_min_entidades": None},
+     "exportador.anonimos_min_entidades"),
 ])
 def test_exportador_invalido(entorno, seccion, mensaje):
     with pytest.raises(ConfigInvalida, match=mensaje):

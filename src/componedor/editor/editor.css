@@ -269,6 +269,15 @@ main { flex: 1; display: flex; min-height: 0; }
 .error-dxf button { display: block; margin-top: 4px; }
 .aviso-dxf button { display: block; margin-top: 4px; }
 .bloque-dxf button { margin-top: 4px; }
+.bloque-dxf .botones { display: flex; flex-wrap: wrap; gap: 4px; }
+.bloque-dxf.anonimo { border-style: dashed; }
+.miniatura-dxf { margin-top: 4px; border: 1px solid #e5e7eb; border-radius: 4px; background: #fff;
+  min-height: 24px; display: flex; align-items: center; justify-content: center; padding: 2px; }
+.miniatura-dxf img { display: block; max-width: 100%; max-height: 180px; object-fit: contain; }
+.anonimos-dxf { margin-top: 8px; border-top: 1px solid var(--borde); padding-top: 6px; }
+.anonimos-dxf > summary { cursor: pointer; font-weight: 600; }
+.anonimos-dxf > .dato { margin-top: 4px; }
+.anonimos-dxf input[type="search"] { width: 100%; box-sizing: border-box; margin-top: 6px; }
 
 /* Bloques de un DXF sin exportar (etapa 2): caja exacta punteada, vista previa PNG encima. */
 .detalle.bloque .pagina { stroke: #7c3aed; stroke-width: 1.5; stroke-dasharray: 6 3; fill: rgba(124,58,237,.03); }

@@ -30,7 +30,12 @@ Edge  ──HTTP (127.0.0.1, token)──>  servidor del Componedor  ──JSON 
    - notas en naranja: caja aproximada, sólidos 3D, objetos proxy, imágenes, capas apagadas o
      congeladas, unidades sin verificar o que no cabe ni a 1:10000.
 
-   Al final, «No exportables» (bloques anónimos, XREF…) y los avisos del trabajador.
+   Debajo, **«Anónimos (opcionales) (N)»**, cerrada: los bloques anónimos `*U` (mesas de
+   PVcase, tablas de Civil 3D…) con `anonimos_min_entidades` entidades visibles o más, con un
+   filtro por capa o handle; los más pequeños solo se cuentan. Cada tarjeta, con o sin nombre,
+   tiene **Ver vista previa**.
+
+   Al final, «No exportables» (XREF, sin definición…) y los avisos del trabajador.
 
 Si el servidor no arranca, `Abrir editor.bat` abre el editor sin servidor, como antes. Con doble
 clic en `editor.html` también se abre sin servidor: el botón «Cargar DXF» aparece desactivado y
@@ -60,7 +65,8 @@ menor: el editor escribe «página ≤ …». La caja exacta la dará el manifie
 ## Configuración (`componedor.json`)
 
 ```json
-"exportador": {"comando": "cde-exporter", "trabajo": "data/cache_exportador", "margen_mm": 5}
+"exportador": {"comando": "cde-exporter", "trabajo": "data/cache_exportador", "margen_mm": 5,
+               "anonimos_min_entidades": 100}
 ```
 
 | Clave | Obligatoria | Qué es |
@@ -71,6 +77,7 @@ menor: el editor escribe «página ≤ …». La caja exacta la dará el manifie
 | `cache_previas_mb` | no | Tope de la caché de vistas previas del trabajador (`--preview-cache-mb`). Sin la clave, el del trabajador: 500 MB. |
 | `paquetes` | no (`data/input/dxf`) | Dónde «Exportar» publica: `<paquetes>/<nombre del DXF>/`. Al generar el editor se miran también las subcarpetas de `editor.paquetes`, así que con el valor por defecto los paquetes exportados aparecen en «Detalles disponibles». |
 | `para_borrar` | no (`_para_borrar`) | Adónde se **mueven** (nunca se borran) los paquetes viejos que «Exportar» reemplaza. |
+| `anonimos_min_entidades` | no (100) | Entero ≥ 1. Los bloques anónimos `*U` del Model Space que dibujan al menos esas entidades visibles se ofrecen en «Anónimos (opcionales)»; los más pequeños solo se cuentan. Se manda en `load` como `anonymous_min_entities`. |
 
 Sin la sección, el editor funciona igual, sin «Cargar DXF», y lo dice.
 
@@ -148,6 +155,9 @@ Exportador Vectorial.»
 
 - El editor pide la de un bloque al agregarlo (`POST /api/previa {"ref"}`); el servidor la encola
   con `long_side_px: 1500` e `include_hidden_layers: null` (**solo capas visibles**).
+- Al trabajador, `preview` y `export` van con el **`handle` solo** del bloque (sin `ref` ni
+  `block`): el `ref` de un anónimo (`*U76#1`) puede cambiar entre sesiones porque AutoCAD renumera
+  los `*U` al guardar, y el handle no.
 - Dos pedidos del mismo bloque mientras se hace son **una sola tarea**. Una ya terminada no se
   reutiliza: el trabajador la devuelve de su caché enseguida (`cached: true`) y, de paso,
   comprueba que el DXF no cambió.

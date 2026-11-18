@@ -29,8 +29,8 @@ def respuesta(carpeta, **cambios):
 
 
 def test_pedido_solo_capas_visibles():
-    assert pedido_previa("s-1", "BLOQUE1#1") == {
-        "session": "s-1", "ref": "BLOQUE1#1", "long_side_px": LADO_PX,
+    assert pedido_previa("s-1", "50CA") == {
+        "session": "s-1", "handle": "50CA", "long_side_px": LADO_PX,
         "include_hidden_layers": None}
     assert LADO_PX == 1500
 

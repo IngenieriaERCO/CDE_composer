@@ -14,6 +14,7 @@
   "exportador": {
     "comando": "cde-exporter",
     "trabajo": "data/cache_exportador",
-    "margen_mm": 5
+    "margen_mm": 5,
+    "anonimos_min_entidades": 100
   }
 }

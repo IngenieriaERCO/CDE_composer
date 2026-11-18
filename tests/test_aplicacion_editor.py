@@ -25,8 +25,9 @@ def esperar_tarea(app, id_tarea, segundos=20):
 def armar(tmp_path):
     creadas = []
 
-    def armar(elegido=None, comando=None, config=True):
-        cfg = ConfigExportador(comando or comando_falso(), tmp_path / "trabajo") if config else None
+    def armar(elegido=None, comando=None, config=True, anonimos=100):
+        cfg = (ConfigExportador(comando or comando_falso(), tmp_path / "trabajo",
+                                anonimos_min_entidades=anonimos) if config else None)
         app = AplicacionEditor(tmp_path / "editor.html", ZONA_A1, cfg,
                                elegir=lambda inicial: elegido(inicial) if callable(elegido)
                                else elegido)
@@ -48,6 +49,40 @@ def test_sin_seccion_exportador(armar):
     assert error.value.estado_http == 409 and error.value.mensaje == SIN_SECCION
 
 
+ANONIMOS = [
+    {"name": "Viga", "size_cad": [10.0, 4.0], "handle": "1A1", "visible_entities": 12},
+    {"name": "*U76", "anonimo": True, "layer": "I1.M1.PV1", "handle": "12900",
+     "size_cad": [10.0, 4.0], "visible_entities": 250},
+    {"name": "*U80", "anonimo": True, "layer": "TABLAS", "handle": "13A0",
+     "size_cad": [6.0, 3.0], "visible_entities": 60},
+    {"name": "*U81", "anonimo": True, "layer": "COTAS", "handle": "13B0",
+     "visible_entities": 3},
+]
+
+
+@pytest.mark.parametrize("umbral, ofrecidos, pequenos, mayor", [
+    (100, ["Viga", "I1.M1.PV1_12900"], 2, 60),
+    (50, ["Viga", "I1.M1.PV1_12900", "TABLAS_13A0"], 1, 3),
+    (300, ["Viga"], 3, 250),
+])
+def test_el_umbral_de_anonimos_sale_de_la_configuracion(armar, tmp_path, umbral, ofrecidos,
+                                                        pequenos, mayor):
+    """El Componedor manda anonymous_min_entities (componedor.json); el trabajador ofrece los
+    *U que llegan al umbral y deja los demás en omitted, que la carpeta solo cuenta."""
+    ruta = dxf_falso(tmp_path / "PRGD.dxf", blocks=ANONIMOS,
+                     omitted=[{"name": "XR", "occurrence": 1, "total_occurrences": 1,
+                               "handle": "F", "reason": "XREF"}])
+    app = armar(elegido=ruta, anonimos=umbral)
+    tarea = app.elegir_y_cargar()["tarea"]
+    assert app.canal.tarea(tarea["id"]).datos["anonymous_min_entities"] == umbral
+    carpeta = esperar_tarea(app, tarea["id"])["resultado"]
+    assert [b["etiqueta"] for b in carpeta["bloques"]] == ofrecidos
+    assert [b["anonimo"] for b in carpeta["bloques"]] == [False] + [True] * (len(ofrecidos) - 1)
+    assert carpeta["anonimos_min_entidades"] == umbral
+    assert carpeta["anonimos_omitidos"] == {"cantidad": pequenos, "max_entidades_visibles": mayor}
+    assert [o["nombre"] for o in carpeta["omitidos"]] == ["XR"]  # los *U pequeños no se listan
+
+
 def test_comando_que_no_existe(armar):
     app = armar(comando=("no-existe-xyz",))
     assert not app.estado()["exportador"]["disponible"]
@@ -63,9 +98,11 @@ def test_cargar_un_dxf_hasta_la_carpeta(armar, tmp_path):
     assert app.estado()["exportador"]["disponible"] is True
     r = app.elegir_y_cargar()
     assert r["elegido"] == "GUAMO.dxf" and r["tarea"]["tipo"] == "cargar_dxf"
-    # Lo que se pide a load: la ruta validada, el margen de la sesión y sin tabla de capas.
+    # Lo que se pide a load: la ruta validada, el margen de la sesión, sin tabla de capas y el
+    # umbral de los anónimos (100 por defecto).
     assert app.canal.tarea(r["tarea"]["id"]).datos == {
-        "dxf": str(ruta.resolve()), "units": None, "margin_mm": 5.0, "include_layers": False}
+        "dxf": str(ruta.resolve()), "units": None, "margin_mm": 5.0, "include_layers": False,
+        "anonymous_min_entities": 100}
     foto = esperar_tarea(app, r["tarea"]["id"])
     assert foto["estado"] == "terminada", foto["error"]
     carpeta = foto["resultado"]
@@ -184,8 +221,9 @@ def test_vista_previa_de_un_bloque(armar, tmp_path):
     app, _ = cargado(armar, tmp_path)
     r = app.pedir_previa("B1#1")
     assert r["tarea"]["tipo"] == "previa"
+    # Al trabajador va el handle solo (el ref de un *U cambia entre sesiones).
     assert app.canal.tarea(r["tarea"]["id"]).datos == {
-        "session": "s-1", "ref": "B1#1", "long_side_px": 1500, "include_hidden_layers": None}
+        "session": "s-1", "handle": "1A", "long_side_px": 1500, "include_hidden_layers": None}
     foto = esperar_tarea(app, r["tarea"]["id"])
     assert foto["estado"] == "terminada", foto["error"]
     previa = foto["resultado"]

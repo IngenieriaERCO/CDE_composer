@@ -25,8 +25,12 @@ Esquema (versión 1):
                                                 clave, el del trabajador: 500)
         "paquetes": "data/input/dxf",          (opcional: dónde «Exportar» publica los
                                                 paquetes, en <paquetes>/<dxf>/; ese valor)
-        "para_borrar": "_para_borrar"          (opcional: adónde se MUEVEN los paquetes viejos
+        "para_borrar": "_para_borrar",         (opcional: adónde se MUEVEN los paquetes viejos
                                                 que se reemplazan; ese valor)
+        "anonimos_min_entidades": 100          (opcional: los bloques anónimos *U que dibujan
+                                                al menos esas entidades visibles se ofrecen
+                                                en «Anónimos (opcionales)» de la carpeta; va
+                                                en load como anonymous_min_entities; 100)
       }
     }
 
@@ -83,6 +87,7 @@ class ConfigExportador:
     cache_previas_mb: int | None = None  # --preview-cache-mb; None: el del trabajador
     paquetes: Path | None = None  # «Exportar»: <paquetes>/<dxf>/ (None: no se puede exportar)
     para_borrar: Path | None = None  # adónde se mueven los paquetes viejos
+    anonimos_min_entidades: int = 100  # load: anonymous_min_entities
 
     def opciones_trabajador(self) -> tuple[str, ...]:
         """Lo que va después de `worker --work-dir <trabajo>`."""
@@ -92,10 +97,11 @@ class ConfigExportador:
 
 
 CLAVES_EXPORTADOR = ("comando", "trabajo", "margen_mm", "cache_previas_mb", "paquetes",
-                     "para_borrar")
+                     "para_borrar", "anonimos_min_entidades")
 PAQUETES_POR_DEFECTO = "data/input/dxf"
 PARA_BORRAR_POR_DEFECTO = "_para_borrar"
 MARGEN_MM_POR_DEFECTO = 5.0
+ANONIMOS_MIN_POR_DEFECTO = 100
 
 
 def leer_config_editor(ruta: Path | str, verificar_rutas: bool = True) -> ConfigEditor:
@@ -145,11 +151,16 @@ def leer_config_exportador(ruta: Path | str) -> ConfigExportador | None:
                      ruta.parent, problemas)
     para_borrar = _ruta(seccion.get("para_borrar", PARA_BORRAR_POR_DEFECTO),
                         "exportador.para_borrar", True, ruta.parent, problemas)
+    anonimos = seccion.get("anonimos_min_entidades", ANONIMOS_MIN_POR_DEFECTO)
+    if isinstance(anonimos, bool) or not isinstance(anonimos, int) or anonimos < 1:
+        problemas.append("exportador.anonimos_min_entidades: se esperaba un entero ≥ 1 (entidades "
+                         "visibles que debe dibujar un bloque anónimo para ofrecerlo).")
     if problemas:
         raise ConfigInvalida(f"El archivo de configuración '{ruta}' tiene "
                              f"{len(problemas)} problema(s):\n"
                              + "\n".join(f"- {p}" for p in problemas))
-    return ConfigExportador(comando, trabajo, float(margen), cache, paquetes, para_borrar)
+    return ConfigExportador(comando, trabajo, float(margen), cache, paquetes, para_borrar,
+                            anonimos)
 
 
 def _leer_seccion(ruta: Path | str, nombre: str, verificar_rutas: bool) -> dict[str, Path | None]:

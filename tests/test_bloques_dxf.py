@@ -69,7 +69,8 @@ def test_catalogo_de_un_bloque():
                              "estado": "declaradas en el DXF y coherentes", "avisos": []}
     assert c["escalas"] == list(ESCALAS_ESTANDAR)
     (b,) = c["bloques"]
-    assert b == {"ref": "B1#1", "nombre": "B1", "handle": "1A", "ocurrencia": 1,
+    assert b == {"ref": "B1#1", "nombre": "B1", "etiqueta": "B1", "anonimo": False,
+                 "entidades_visibles": None, "handle": "1A", "ocurrencia": 1,
                  "total_ocurrencias": 1, "capa": "0", "tamano_m": [10.0, 4.0],
                  "unidades": c["unidades"], "caja_exacta": True,
                  "caja_cad": {"min": [0.0, 0.0], "max": [10.0, 4.0]}, "escala_sugerida": 20,
@@ -120,6 +121,65 @@ def test_ocurrencias_omitidos_y_avisos():
     assert c["omitidos"] == [{"nombre": "*U1", "ocurrencia": 1, "total_ocurrencias": 1,
                               "motivo": "bloque anónimo"}]
     assert c["avisos"] == ["Copia reducida."] and c["dxf"]["copia_reducida"] is True
+    assert c["anonimos_omitidos"] == {"cantidad": 0, "max_entidades_visibles": None}
+    assert c["anonimos_min_entidades"] is None
+
+
+def anonimo(handle="12900", visibles=250, **cambios):
+    """Un *U ofrecido, como lo describe el contrato (§3.1): label = capa + handle."""
+    b = bloque("*U76", ref="*U76#1", handle=handle, layer="I1.M1.PV1", anonymous=True,
+               label=f"I1.M1.PV1_{handle}", visible_entities=visibles,
+               file_stem=f"I1.M1.PV1_{handle}")
+    b.update(cambios)
+    return b
+
+
+def test_bloques_anonimos_con_etiqueta_y_entidades_visibles():
+    c = catalogo_dxf(respuesta(bloque("B1", anonymous=False, label="B1", visible_entities=12),
+                               anonimo()), ZONA_A1, anonimos_min=100)
+    nombrado, anon = c["bloques"]
+    assert (nombrado["anonimo"], nombrado["etiqueta"], nombrado["entidades_visibles"]) == (
+        False, "B1", 12)
+    assert (anon["anonimo"], anon["nombre"], anon["etiqueta"], anon["entidades_visibles"],
+            anon["archivo"], anon["handle"]) == (
+        True, "*U76", "I1.M1.PV1_12900", 250, "I1.M1.PV1_12900", "12900")
+    # Se agregan y escalan como cualquier bloque: misma escala sugerida y página.
+    assert anon["escala_sugerida"] == nombrado["escala_sugerida"] == 20
+    assert c["anonimos_min_entidades"] == 100
+    # Si load dice el umbral que usó, vale ese (no el pedido).
+    usado = catalogo_dxf(respuesta(anonimo(), anonymous_min_entities=300), ZONA_A1,
+                         anonimos_min=100)
+    assert usado["anonimos_min_entidades"] == 300
+
+
+@pytest.mark.parametrize("cambios, etiqueta, visibles", [
+    ({"label": ""}, "*U76", 250),            # sin etiqueta: el nombre
+    ({"label": None}, "*U76", 250),
+    ({"anonymous": "si"}, "I1.M1.PV1_12900", 250),  # solo true cuenta como anónimo
+    ({"visible_entities": -1}, "I1.M1.PV1_12900", None),
+    ({"visible_entities": 2.5}, "I1.M1.PV1_12900", None),
+    ({"visible_entities": True}, "I1.M1.PV1_12900", None),
+])
+def test_anonimo_con_campos_raros_no_tumba_la_carpeta(cambios, etiqueta, visibles):
+    (b,) = catalogo_dxf(respuesta(anonimo(**cambios)), ZONA_A1)["bloques"]
+    assert b["etiqueta"] == etiqueta and b["entidades_visibles"] == visibles
+    assert b["anonimo"] is (cambios.get("anonymous", True) is True)
+
+
+def test_anonimos_pequenos_se_cuentan_y_no_se_listan():
+    """Pueden ser miles (Plano_completo: 3 318): «No exportables» solo lleva los demás."""
+    pequenos = [{"name": f"*U{i}", "occurrence": 1, "total_occurrences": 1, "handle": f"{i:X}",
+                 "anonymous": True, "visible_entities": i, "reason": "bloque anónimo pequeño"}
+                for i in range(1, 3319)]
+    xref = {"name": "XR", "occurrence": 1, "total_occurrences": 1, "handle": "F",
+            "reason": "XREF"}
+    c = catalogo_dxf(respuesta(omitted=[*pequenos, xref, "basura"]), ZONA_A1)
+    assert c["omitidos"] == [{"nombre": "XR", "ocurrencia": 1, "total_ocurrencias": 1,
+                              "motivo": "XREF"}]
+    assert c["anonimos_omitidos"] == {"cantidad": 3318, "max_entidades_visibles": 3318}
+    sin_conteo = [{"name": "*U1", "anonymous": True}]
+    assert catalogo_dxf(respuesta(omitted=sin_conteo), ZONA_A1)["anonimos_omitidos"] == {
+        "cantidad": 1, "max_entidades_visibles": None}
 
 
 @pytest.mark.parametrize("cambio, motivo", [

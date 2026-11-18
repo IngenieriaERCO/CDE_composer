@@ -553,10 +553,11 @@
     const pagina = paginaBloque(c);
     const titulo = nodo("div", { class: "fila" });
     titulo.appendChild(nodo("strong", {}, c.id));
-    titulo.appendChild(nodo("span", { class: "medida" }, " · bloque «" + b.nombre + "» · sin exportar"));
+    const etiqueta = etiquetaDe(b); // un anónimo se muestra por capa + handle, no por su *U
+    titulo.appendChild(nodo("span", { class: "medida" }, " · bloque «" + etiqueta + "» · sin exportar"));
     const filas = [titulo,
-      nodo("div", { class: "medida" }, b.dxf.nombre + (b.ocurrencia > 1 || b.total_ocurrencias > 1
-        ? " · ocurrencia " + b.ocurrencia : "") + " · handle " + b.handle),
+      nodo("div", { class: "medida" }, b.dxf.nombre + (etiqueta !== b.nombre ? " · anónimo " + b.nombre : "") +
+        (b.ocurrencia > 1 || b.total_ocurrencias > 1 ? " · ocurrencia " + b.ocurrencia : "") + " · handle " + b.handle),
       nodo("div", { class: "medida" }, "Tamaño real: " + numero1(b.tamano_m[0]) + " × " + numero1(b.tamano_m[1]) + " m")];
     const fila = nodo("div", { class: "fila" });
     fila.appendChild(nodo("label", { for: "escala-bloque" }, "Escala"));
@@ -825,6 +826,19 @@
     actualizar();
   }
 
+  /**
+   * El nombre que se muestra de un bloque: su etiqueta (capa + handle en un anónimo). El
+   * plano.json no la guarda (solo el *U y el handle): al abrir un plano se busca por handle en
+   * la carpeta cargada, si es la del mismo DXF; si no, el nombre.
+   */
+  let ultimoCatalogo = null;
+  function etiquetaDe(b) {
+    if (b.etiqueta) return b.etiqueta;
+    const c = ultimoCatalogo;
+    const x = c && c.dxf.sha256 === b.dxf.sha256 ? c.bloques.find((y) => y.handle === b.handle) : null;
+    return (x && x.etiqueta) || b.nombre;
+  }
+
   /** El DXF de la carpeta, uno por sha256 (los bloques del mismo DXF comparten su entrada). */
   const dxfsPorSha = new Map();
   function dxfDe(catalogo) {
@@ -835,14 +849,15 @@
 
   /** «Agregar al plano» de un bloque de la carpeta del DXF: caja a la escala sugerida, centrada. */
   function agregarBloque(b, catalogo) {
+    const etiqueta = b.etiqueta || b.nombre;
     if (!b.tamano_m || !b.unidades || !b.unidades.verificadas) {
-      mensaje("'" + b.nombre + "': sin unidades verificadas no se sabe su tamaño en papel; no se puede colocar.", "error");
+      mensaje("'" + etiqueta + "': sin unidades verificadas no se sabe su tamaño en papel; no se puede colocar.", "error");
       return null;
     }
     const escalas = catalogo.escalas || B.ESCALAS;
     const ids = new Set(estado.colocaciones.map((c) => c.id));
     const c = { id: L.idUnico(b.archivo || b.nombre, ids), escala: b.escala_sugerida || escalas[escalas.length - 1],
-      bloque: { dxf: dxfDe(catalogo), nombre: b.nombre, handle: b.handle, ocurrencia: b.ocurrencia,
+      bloque: { dxf: dxfDe(catalogo), nombre: b.nombre, etiqueta, handle: b.handle, ocurrencia: b.ocurrencia,
         total_ocurrencias: b.total_ocurrencias, tamano_m: b.tamano_m.slice(), caja_exacta: b.caja_exacta,
         sugerida: b.escala_sugerida, escalas } };
     let centro = B.centroZona(ZONA);
@@ -851,7 +866,7 @@
     c.centro = B.centroLimitado(centro, paginaBloque(c), ZONA);
     estado.colocaciones.push(c);
     estado.seleccion = c.id;
-    if (!b.escala_sugerida) mensaje("'" + b.nombre + "' no cabe ni a 1:" + escalas[escalas.length - 1] + ": queda en rojo.", "aviso");
+    if (!b.escala_sugerida) mensaje("'" + etiqueta + "' no cabe ni a 1:" + escalas[escalas.length - 1] + ": queda en rojo.", "aviso");
     marcarCambios();
     actualizar();
     return c.id;
@@ -1273,6 +1288,7 @@
   function catalogoCambiado(catalogo) {
     if (!catalogo) return;
     const nuevo = dxfDe(catalogo);
+    ultimoCatalogo = catalogo;
     let cambiados = 0;
     for (const c of estado.colocaciones) {
       const d = esBloque(c) ? c.bloque.dxf : null;

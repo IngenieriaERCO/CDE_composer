@@ -24,9 +24,13 @@ class PreviaInvalida(ValueError):
     """La respuesta de `preview` no se puede usar (mensaje en español)."""
 
 
-def pedido_previa(sesion: str, ref: str) -> dict:
-    """`data` del pedido `preview`: solo capas visibles (decisión de la etapa 2)."""
-    return {"session": sesion, "ref": ref, "long_side_px": LADO_PX,
+def pedido_previa(sesion: str, handle: str) -> dict:
+    """`data` del pedido `preview`: solo capas visibles (decisión de la etapa 2).
+
+    El bloque va por su HANDLE (el del INSERT), solo, sin `block` ni `ref`: el `ref` de un *U
+    (`*U76#1`) puede cambiar entre sesiones porque AutoCAD renumera los *U al guardar, y el
+    handle no (contrato del trabajador, §3.1 y §4)."""
+    return {"session": sesion, "handle": handle, "long_side_px": LADO_PX,
             "include_hidden_layers": None}
 
 

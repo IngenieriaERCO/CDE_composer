@@ -20,6 +20,12 @@
  *   soltar(bloque)  → ya no hace falta (se quitó del plano): cancela la que esperaba turno.
  *   reintentar(bloque) → olvida un error para volver a pedirla.
  * Una vista previa es la de un DXF (sha256) y un handle: sirve a cualquier escala.
+ *
+ * Bloques anónimos (*U que ofrece el trabajador): subsección «Anónimos (opcionales) (N)»,
+ * cerrada por defecto, con un filtro por texto y las mismas tarjetas (nombre = etiqueta, capa +
+ * handle). Cada tarjeta tiene «Ver vista previa»: la misma vista previa del bloque (la que
+ * después usa la caja en la hoja), en pequeño dentro de la tarjeta, para reconocerlo antes de
+ * agregarlo.
  */
 (function () {
   "use strict";
@@ -34,7 +40,9 @@
   const LATIDO_MS = 60000;
 
   const vista = { estado: null, tarea: null, error: null, ocupado: false, recargar: null,
-    exportacion: { trabajos: [], omitidos: [], pidiendo: false } };
+    exportacion: { trabajos: [], omitidos: [], pidiendo: false },
+    anonimos: { abierto: false, filtro: "" }, // la subsección se recuerda entre repintados
+    miniaturas: new Set() }; // "sha256|handle" de las tarjetas con «Ver vista previa» abierta
   const previas = new Map(); // "sha256|handle" → estado de su vista previa
   window.EditorPruebaDxf = { vista, conexion, previas };
   const UI = () => window.EditorUI || null;
@@ -80,8 +88,8 @@
   }
 
   function tarjetaBloque(b, catalogo) {
-    const t = nodo("div", { class: "bloque-dxf", "data-ref": b.ref });
-    t.appendChild(nodo("div", { class: "nombre" }, b.nombre));
+    const t = nodo("div", { class: "bloque-dxf" + (b.anonimo ? " anonimo" : ""), "data-ref": b.ref });
+    t.appendChild(nodo("div", { class: "nombre" }, D.nombreBloque(b)));
     for (const linea of D.lineasBloque(b)) t.appendChild(nodo("div", { class: "dato" }, linea));
     if (b.notas.length) t.appendChild(lista(b.notas, "notas-bloque"));
     const agregar = nodo("button", { type: "button" }, "Agregar al plano");
@@ -90,8 +98,92 @@
     agregar.title = usable ? "Caja exacta a la escala sugerida, en el centro del área de dibujo"
       : "Sin unidades verificadas no se sabe su tamaño en papel.";
     agregar.addEventListener("click", () => UI() && UI().agregarBloque(b, catalogo));
-    t.appendChild(agregar);
+    const botones = nodo("div", { class: "botones" });
+    botones.appendChild(agregar);
+    const k = catalogo.dxf.sha256 + "|" + b.handle;
+    const ver = nodo("button", { type: "button", class: "ver-previa" },
+      vista.miniaturas.has(k) ? "Ocultar vista previa" : "Ver vista previa");
+    ver.title = "La vista previa del bloque (solo capas visibles), para reconocerlo antes de agregarlo";
+    ver.addEventListener("click", () => {
+      if (vista.miniaturas.has(k)) vista.miniaturas.delete(k);
+      else {
+        vista.miniaturas.add(k);
+        reintentar({ dxf: catalogo.dxf, handle: b.handle }); // si había fallado, se vuelve a pedir
+      }
+      pintar();
+    });
+    botones.appendChild(ver);
+    t.appendChild(botones);
+    if (vista.miniaturas.has(k)) {
+      const m = nodo("div", { class: "miniatura-dxf", "data-previa": k });
+      pintarMiniatura(m, { dxf: catalogo.dxf, handle: b.handle });
+      t.appendChild(m);
+    }
     return t;
+  }
+
+  /** La vista previa dentro de la tarjeta: la imagen, o en qué va / por qué no hay. */
+  function pintarMiniatura(caja, b) {
+    const e = previa(b);
+    if (e.estado === "lista" && e.url) {
+      const img = nodo("img", { src: e.url, alt: "Vista previa (solo capas visibles)" });
+      caja.replaceChildren(img);
+    } else {
+      caja.replaceChildren(nodo("div", { class: "dato" },
+        e.estado === "pidiendo" ? "Pidiendo vista previa…" : e.mensaje || "Sin vista previa."));
+    }
+  }
+
+  /** Las miniaturas abiertas, después de que llega (o falla) una vista previa. */
+  function pintarMiniaturas() {
+    const catalogo = vista.estado && vista.estado.dxf;
+    if (!catalogo) return;
+    for (const caja of panel.querySelectorAll(".miniatura-dxf")) {
+      const handle = caja.getAttribute("data-previa").split("|")[1];
+      pintarMiniatura(caja, { dxf: catalogo.dxf, handle });
+    }
+  }
+
+  /** Las tarjetas de los anónimos que pasan el filtro (hasta D.LIMITE_TARJETAS). */
+  function pintarAnonimos(contenedor, catalogo) {
+    const { anonimos } = D.separarBloques(catalogo);
+    const encontrados = D.filtrarBloques(anonimos, vista.anonimos.filtro);
+    const mostrados = encontrados.slice(0, D.LIMITE_TARJETAS);
+    const textos = D.textosAnonimos(catalogo, encontrados.length, mostrados.length);
+    const hijos = [];
+    if (textos.mostrando) hijos.push(nodo("div", { class: "dato mostrando" }, textos.mostrando));
+    for (const b of mostrados) hijos.push(tarjetaBloque(b, catalogo));
+    if (!encontrados.length && anonimos.length) {
+      hijos.push(nodo("div", { class: "vacio" }, "Ningún anónimo coincide con el filtro."));
+    }
+    contenedor.replaceChildren(...hijos);
+  }
+
+  /** «Anónimos (opcionales) (N)»: cerrada por defecto; null si no hay ninguno ni pequeños. */
+  function seccionAnonimos(catalogo) {
+    const { anonimos } = D.separarBloques(catalogo);
+    const textos = D.textosAnonimos(catalogo);
+    if (!anonimos.length && !textos.pequenos) return null;
+    const s = nodo("details", { class: "anonimos-dxf" });
+    if (vista.anonimos.abierto) s.open = true;
+    s.addEventListener("toggle", () => { vista.anonimos.abierto = s.open; });
+    s.appendChild(nodo("summary", {}, textos.titulo));
+    s.appendChild(nodo("div", { class: "dato" }, textos.explicacion));
+    if (textos.pequenos) s.appendChild(nodo("div", { class: "dato" }, textos.pequenos));
+    if (anonimos.length) {
+      const filtro = nodo("input", { type: "search", id: "filtro-anonimos", autocomplete: "off",
+        placeholder: "Filtrar por capa o handle", "aria-label": "Filtrar los bloques anónimos" });
+      filtro.value = vista.anonimos.filtro;
+      const tarjetas = nodo("div", { class: "bloques-dxf" });
+      filtro.addEventListener("input", () => {
+        vista.anonimos.filtro = filtro.value;
+        pintarAnonimos(tarjetas, catalogo); // solo las tarjetas: el cuadro conserva el foco
+      });
+      s.appendChild(filtro);
+      pintarAnonimos(tarjetas, catalogo);
+      s.appendChild(tarjetas);
+    }
+    return s;
   }
 
   function carpeta(catalogo) {
@@ -114,9 +206,15 @@
     if (catalogo.avisos.length) c.appendChild(lista(catalogo.avisos, "avisos-dxf"));
     if (catalogo.problemas.length) c.appendChild(lista(catalogo.problemas, "problemas-dxf"));
     const bloques = nodo("div", { class: "bloques-dxf" });
-    for (const b of catalogo.bloques) bloques.appendChild(tarjetaBloque(b, catalogo));
-    if (!catalogo.bloques.length) bloques.appendChild(nodo("div", { class: "vacio" }, "Ningún bloque exportable."));
+    const { nombrados, anonimos } = D.separarBloques(catalogo);
+    for (const b of nombrados) bloques.appendChild(tarjetaBloque(b, catalogo));
+    if (!nombrados.length) {
+      bloques.appendChild(nodo("div", { class: "vacio" }, anonimos.length
+        ? "Ningún bloque con nombre: vea «Anónimos (opcionales)»." : "Ningún bloque exportable."));
+    }
     c.appendChild(bloques);
+    const seccion = seccionAnonimos(catalogo);
+    if (seccion) c.appendChild(seccion);
     if (catalogo.omitidos.length) {
       const o = nodo("details", { class: "omitidos-dxf" });
       o.appendChild(nodo("summary", {}, "No exportables (" + catalogo.omitidos.length + ")"));
@@ -162,7 +260,17 @@
       hijos.push(cajaError(vista.tarea, vista.tarea.estado === "cancelada" ? "aviso-dxf" : "error-dxf"));
     }
     if (e && e.dxf) hijos.push(carpeta(e.dxf));
+    // Repintar no debe quitarle el foco al filtro de anónimos mientras se escribe.
+    const activo = document.activeElement;
+    const enFiltro = activo && activo.id === "filtro-anonimos" ? [activo.selectionStart, activo.selectionEnd] : null;
     panel.replaceChildren(...hijos);
+    if (enFiltro) {
+      const nuevo = document.getElementById("filtro-anonimos");
+      if (nuevo) {
+        nuevo.focus();
+        nuevo.setSelectionRange(enFiltro[0], enFiltro[1]);
+      }
+    }
     pintarExportar();
     panel.hidden = !hijos.length;
   }
@@ -197,7 +305,10 @@
   // ---------------------------------------------------------------------------------------
 
   const clave = (b) => b.dxf.sha256 + "|" + b.handle;
-  const avisarUI = () => UI() && UI().refrescar();
+  const avisarUI = () => {
+    pintarMiniaturas();
+    if (UI()) UI().refrescar();
+  };
 
   function previa(b) {
     const k = clave(b);

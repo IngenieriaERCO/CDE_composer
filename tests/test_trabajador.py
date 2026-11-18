@@ -232,6 +232,22 @@ def test_preview_png_transparente_con_la_marca_donde_dice_la_matriz(trabajador, 
     assert previar(trabajador, sesion, "B#1")["cached"] is True
 
 
+def test_preview_por_handle_solo_como_el_contrato(trabajador, tmp_path):
+    """El falso acepta el handle solo (sin block), como el real desde 92c2c37: sin distinguir
+    mayúsculas; NOT_EXPORTABLE si es de omitted y REFERENCE_NOT_FOUND si no existe."""
+    ruta = dxf_falso(tmp_path / "a.dxf", blocks=[
+        {"name": "*U76", "anonimo": True, "layer": "PV", "handle": "12A00", "visible_entities": 500},
+        {"name": "*U77", "anonimo": True, "layer": "COTAS", "handle": "3F", "visible_entities": 2}])
+    sesion = cargar(trabajador, ruta)["session"]
+    pedir = lambda handle: trabajador.pedir("preview", {
+        "session": sesion, "handle": handle, "long_side_px": 300, "include_hidden_layers": None})
+    assert pedir("12a00")["px"][0] == 300
+    for handle, codigo in (("3F", "NOT_EXPORTABLE"), ("FFFF", "REFERENCE_NOT_FOUND")):
+        with pytest.raises(ErrorTrabajador) as e:
+            pedir(handle)
+        assert e.value.codigo == codigo
+
+
 def test_preview_sin_sesion_o_con_el_dxf_cambiado(trabajador, tmp_path):
     ruta = dxf_falso(tmp_path / "a.dxf")
     with pytest.raises(ErrorTrabajador) as e:
@@ -288,7 +304,7 @@ def test_cde_exporter_real_con_guamo(tmp_path):
         # El bloque más chico (la vista previa más rápida).
         b = min(carpeta["bloques"], key=lambda x: (x["entidades"] or 0))
         try:
-            r = t.pedir("preview", pedido_previa(carpeta["sesion"], b["ref"]), espera_s=300)
+            r = t.pedir("preview", pedido_previa(carpeta["sesion"], b["handle"]), espera_s=300)
         except ErrorTrabajador as e:
             if e.codigo == "UNKNOWN_COMMAND":
                 pytest.skip("el trabajador real todavía no tiene «preview» (etapa 2 del "
@@ -318,6 +334,6 @@ def test_cde_exporter_real_con_guamo(tmp_path):
         assert x0 - 2 * un_px <= min(xs) and max(xs) <= x1 + 2 * un_px
         assert y0 - 2 * un_px <= min(ys) and max(ys) <= y1 + 2 * un_px
         # La segunda vez sale de la caché.
-        assert t.pedir("preview", pedido_previa(carpeta["sesion"], b["ref"]))["cached"] is True
+        assert t.pedir("preview", pedido_previa(carpeta["sesion"], b["handle"]))["cached"] is True
     finally:
         t.cerrar()

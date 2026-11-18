@@ -4,6 +4,10 @@
  *
  * Los números llegan del servidor (bloques_dxf.py ya calculó tamaño, escala sugerida, página y
  * notas); aquí solo se escriben en español, con coma decimal.
+ *
+ * Bloques anónimos (*U ofrecidos por el trabajador): van aparte, en «Anónimos (opcionales)»,
+ * con su etiqueta (capa + handle) como nombre y un filtro por texto (separarBloques,
+ * filtrarBloques, textosAnonimos).
  */
 (function (raiz, fabrica) {
   "use strict";
@@ -32,6 +36,7 @@
     verificar: "Verificando el paquete (Componedor)",
   };
   const SIN_NOTICIAS_S = 30;
+  const LIMITE_TARJETAS = 200; // anónimos que se muestran a la vez (el filtro encuentra el resto)
 
   const numero = (v, decimales) => v.toFixed(decimales).replace(".", ",");
 
@@ -67,22 +72,96 @@
       numero(p[0], 1) + " × " + numero(p[1], 1) + " mm";
   }
 
+  /** El nombre que se muestra: la etiqueta (capa + handle en un anónimo) o el nombre. */
+  function nombreBloque(b) {
+    return (b && (b.etiqueta || b.nombre)) || "?";
+  }
+
+  /** "1 234" (miles con espacio fino, como en los planos). */
+  function entero(n) {
+    return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, "\u202f");
+  }
+
   /** Las líneas de la tarjeta de un bloque, en orden (sin las notas). */
   function lineasBloque(b) {
     const lineas = [];
-    const ocurrencia = textoOcurrencia(b);
-    const capa = b.capa ? "capa " + b.capa : "";
-    if (ocurrencia || capa) lineas.push([ocurrencia, capa].filter(Boolean).join(" · "));
+    if (b.anonimo) {
+      // La etiqueta ya dice capa y handle: aquí el *U (cambia al guardar en AutoCAD) y su tamaño.
+      const visibles = typeof b.entidades_visibles === "number"
+        ? " · " + entero(b.entidades_visibles) + " entidades visibles" : "";
+      lineas.push("bloque anónimo " + b.nombre + visibles);
+    } else {
+      const ocurrencia = textoOcurrencia(b);
+      const capa = b.capa ? "capa " + b.capa : "";
+      if (ocurrencia || capa) lineas.push([ocurrencia, capa].filter(Boolean).join(" · "));
+    }
     lineas.push(textoTamano(b) + " · " + textoUnidades(b.unidades));
     const escala = textoEscala(b);
     if (escala) lineas.push(escala);
     return lineas;
   }
 
-  /** "GUAMO.dxf · 65 bloques" (el nombre va aparte, en negrita). */
+  /** {nombrados, anonimos}: los bloques de la carpeta, en el orden del DXF. */
+  function separarBloques(catalogo) {
+    const bloques = (catalogo && catalogo.bloques) || [];
+    return { nombrados: bloques.filter((b) => !b.anonimo), anonimos: bloques.filter((b) => b.anonimo) };
+  }
+
+  /** Minúsculas y sin tildes, para comparar. */
+  const normal = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+  /**
+   * Los bloques que contienen TODAS las palabras del filtro en su etiqueta, nombre, capa o
+   * handle (sin distinguir mayúsculas ni tildes). Sin filtro, todos.
+   */
+  function filtrarBloques(bloques, texto) {
+    const palabras = normal(texto).split(/\s+/).filter(Boolean);
+    if (!palabras.length) return bloques.slice();
+    return bloques.filter((b) => {
+      const donde = normal([b.etiqueta, b.nombre, b.capa, b.handle].join(" "));
+      return palabras.every((p) => donde.includes(p));
+    });
+  }
+
+  /**
+   * Textos de la subsección de anónimos: {titulo, explicacion, pequenos, mostrando}.
+   * `pequenos` (null si no hay) cuenta los que no se ofrecen; `mostrando` (null si se ven
+   * todos) dice cuántos se muestran con el filtro o el límite.
+   */
+  function textosAnonimos(catalogo, encontrados, mostrados) {
+    const { anonimos } = separarBloques(catalogo);
+    const umbral = catalogo.anonimos_min_entidades;
+    const desde = typeof umbral === "number" ? "con " + entero(umbral) + " entidades visibles o más" :
+      "que el exportador ofrece";
+    const omitidos = catalogo.anonimos_omitidos || { cantidad: 0 };
+    let pequenos = null;
+    if (omitidos.cantidad > 0) {
+      pequenos = (omitidos.cantidad === 1 ? "Otro anónimo más pequeño no se ofrece" :
+        "Otros " + entero(omitidos.cantidad) + " anónimos más pequeños no se ofrecen") +
+        (typeof umbral === "number" ? " (menos de " + entero(umbral) + " entidades visibles)" : "") +
+        ": etiquetas, cotas y piezas que AutoCAD o Civil 3D crean por montones.";
+    }
+    let mostrando = null;
+    if (encontrados !== undefined && (encontrados < anonimos.length || mostrados < encontrados)) {
+      mostrando = "Mostrando " + entero(mostrados) + " de " + entero(encontrados) +
+        (encontrados < anonimos.length ? " que coinciden (" + entero(anonimos.length) + " en total)" : "") +
+        (mostrados < encontrados ? ": escriba en el filtro para encontrar los demás." : ".");
+    }
+    return {
+      titulo: "Anónimos (opcionales) (" + anonimos.length + ")",
+      explicacion: "Bloques anónimos (*U) del Model Space " + desde + ", como las mesas de paneles de " +
+        "PVcase o las tablas de Civil 3D. Se nombran por capa y handle, porque AutoCAD renumera los *U " +
+        "al guardar. Se agregan, escalan y exportan como cualquier bloque.",
+      pequenos, mostrando,
+    };
+  }
+
+  /** "GUAMO.dxf · 65 bloques" (el nombre va aparte, en negrita); "· 3 anónimos" si hay. */
   function resumenDxf(catalogo) {
-    const n = catalogo.bloques.length;
-    return n + (n === 1 ? " bloque" : " bloques");
+    const { nombrados, anonimos } = separarBloques(catalogo);
+    const n = nombrados.length;
+    return n + (n === 1 ? " bloque" : " bloques") +
+      (anonimos.length ? " · " + anonimos.length + (anonimos.length === 1 ? " anónimo" : " anónimos") : "");
   }
 
   function detalleDxf(catalogo) {
@@ -118,6 +197,7 @@
     return e.detalle + (e.registro ? "\n\nRegistro del trabajador: " + e.registro : "");
   }
 
-  return { ETAPAS, SIN_NOTICIAS_S, textoDetalle, tamanoArchivo, textoUnidades, textoTamano, textoOcurrencia,
-    textoEscala, lineasBloque, resumenDxf, detalleDxf, textoAvance, textoError };
+  return { ETAPAS, SIN_NOTICIAS_S, LIMITE_TARJETAS, textoDetalle, tamanoArchivo, textoUnidades, textoTamano,
+    textoOcurrencia, textoEscala, nombreBloque, lineasBloque, separarBloques, filtrarBloques, textosAnonimos,
+    resumenDxf, detalleDxf, textoAvance, textoError };
 });

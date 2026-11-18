@@ -116,7 +116,8 @@ def test_la_vista_previa_cae_sobre_la_caja(tmp_path):
     t.iniciar()
     try:
         carga = t.pedir("load", {"dxf": str(ruta), "units": None, "margin_mm": 5.0})
-        previa = leer_previa(t.pedir("preview", pedido_previa(carga["session"], "B#1")),
+        previa = leer_previa(t.pedir("preview", pedido_previa(carga["session"],
+                                                               carga["blocks"][0]["handle"])),
                              tmp_path / "trabajo" / "previews")
     finally:
         t.cerrar()

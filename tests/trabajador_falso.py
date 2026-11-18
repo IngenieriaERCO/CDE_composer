@@ -11,6 +11,14 @@ usan las etapas 1 a 3 (`load`, `preview`, `export`, `status`, `cancel`, `close`)
   (sin acentos, solo A–Z, a–z, 0–9, «.», «-», «_», 60 caracteres como mucho con sufijo de hash).
 - `load`: `units` y `margin_mm` valen para la sesión; `include_layers: false` deja `layers`
   vacío (§3); cada bloque trae `bounds_with_hidden` (null si no tiene nada oculto, §3.1).
+- Bloques anónimos (§3.1): todos los bloques traen `anonymous`, `label` y `visible_entities`.
+  Un bloque del «DXF» con `"anonimo": true` (nombre `*U…`) se ofrece si dibuja al menos
+  `anonymous_min_entities` entidades visibles (opción de `load`, 100 por defecto; entero ≥ 1
+  o BAD_REQUEST), con `label` = capa + «_» + handle y ese `file_stem`; si no, va a `omitted`
+  con `anonymous: true` y `visible_entities`.
+- `preview` y `export` aceptan el bloque por `ref` o por `handle` solo (§4; el del INSERT, sin
+  distinguir mayúsculas): NOT_EXPORTABLE si es de `omitted`, REFERENCE_NOT_FOUND si no existe,
+  BAD_REQUEST si está repetido. `load` devuelve el umbral usado (`anonymous_min_entities`).
 - `preview` (§4): PNG transparente hecho con PyMuPDF, con un cuadrito negro de 5 × 5 px centrado
   en el punto CAD `marca` del bloque (por defecto el centro de su caja), para que las pruebas
   comprueben que el PNG cae donde debe. `cad_to_px` sin giro y a = −d; caché en
@@ -39,7 +47,8 @@ El «DXF» es un JSON con lo que debe responder `load` y cómo portarse:
      "dejar_temporal": false,           # deja una carpeta .cde-tmp-* en la salida
      "error_interno": null,             # ["TypeError", "mensaje"]: INTERNAL en load, como el real
      "export_error_interno": null}      # lo mismo en export
-y en cada bloque, para preview: "marca": [x, y] (punto CAD) y "bounds_previa": {"min", "max"}
+y en cada bloque: "anonimo": true y "visible_entities": n (por defecto "entities"); para
+preview: "marca": [x, y] (punto CAD) y "bounds_previa": {"min", "max"}
 (la caja de lo dibujado; por defecto la de load); para export: "bounds_exacta" (la caja exacta,
 si la de load es aproximada), "falla_export": "mensaje" (EXPORT_FAILED en ese trabajo) y
 "escala_no_garantizada": true.
@@ -79,6 +88,22 @@ def nombre_paquete(nombre: str) -> str:
         return limpio
     sufijo = hashlib.sha256(nombre.encode()).hexdigest()[:6]
     return limpio[:MAX_PAQUETE - 7] + "_" + sufijo
+
+
+def filtrar_anonimos(spec: dict, umbral: int) -> dict:
+    """Los anónimos con menos de `umbral` entidades visibles pasan de `blocks` a `omitted`."""
+    ofrecidos, omitidos = [], list(spec.get("omitted", []))
+    for b in spec.get("blocks", []):
+        visibles = b.get("visible_entities", b.get("entities", 10))
+        if b.get("anonimo") is True and visibles < umbral:
+            omitidos.append({"name": b["name"], "occurrence": 1, "total_occurrences": 1,
+                             "handle": b.get("handle", "0"), "anonymous": True,
+                             "visible_entities": visibles,
+                             "reason": f"bloque anónimo con {visibles} entidades visibles "
+                                       f"(se ofrecen desde {umbral})"})
+        else:
+            ofrecidos.append(b)
+    return {**spec, "blocks": ofrecidos, "omitted": omitidos}
 
 
 class Falso:
@@ -194,6 +219,11 @@ class Falso:
         except (UnicodeDecodeError, json.JSONDecodeError):
             self.error(id_, "DXF_INVALID", f"«{ruta.name}» no es un DXF que se pueda leer.")
             return
+        umbral = datos.get("anonymous_min_entities", 100)
+        if isinstance(umbral, bool) or not isinstance(umbral, int) or umbral < 1:
+            self.error(id_, "BAD_REQUEST", "«anonymous_min_entities» debe ser un entero ≥ 1.")
+            return
+        spec = filtrar_anonimos(spec, umbral)
         demora = float(spec.get("demora_s", 0))
         for i, etapa in enumerate(ETAPAS[:int(spec.get("pasos", 4))], start=1):
             self.etapa = etapa
@@ -249,10 +279,10 @@ class Falso:
             self.error(id_, "DXF_CHANGED", f"El DXF «{c['ruta'].name}» cambió desde que se cargó.",
                        "Vuelva a cargarlo.", {"dxf": str(c["ruta"])})
             return
-        if datos.get("ref") not in c["bloques"]:
-            self.error(id_, "REFERENCE_NOT_FOUND", f"No existe la referencia «{datos.get('ref')}».")
+        ref = self._referencia(id_, c, datos)
+        if ref is None:
             return
-        bloque, spec_bloque = c["bloques"][datos["ref"]]
+        bloque, spec_bloque = c["bloques"][ref]
         demora = float(c["spec"].get("previa_demora_s", 0))
         for i, etapa in enumerate(ETAPAS_PREVIA, start=1):
             self.etapa = etapa
@@ -275,6 +305,34 @@ class Falso:
             bloque, spec_bloque, int(datos.get("long_side_px") or 1500), c["huella"]))
 
     # --- export ---------------------------------------------------------------------------------
+
+    def _referencia(self, id_, c, datos) -> str | None:
+        """El ref del bloque pedido por `ref`, o por `handle` solo (sin `block`, §4): sin
+        distinguir mayúsculas; NOT_EXPORTABLE si es de `omitted`, REFERENCE_NOT_FOUND si no
+        existe, BAD_REQUEST si está repetido. None si ya respondió con el error."""
+        if datos.get("ref") is not None:
+            if datos["ref"] in c["bloques"]:
+                return datos["ref"]
+            self.error(id_, "REFERENCE_NOT_FOUND", f"No existe la referencia «{datos['ref']}».")
+            return None
+        handle = datos.get("handle")
+        if "block" in datos or not isinstance(handle, str) or not handle:
+            self.error(id_, "BAD_REQUEST", "Falta «ref», o «block» con «occurrence» o «handle».")
+            return None
+        refs = [r for r, (b, _) in c["bloques"].items() if b["handle"].upper() == handle.upper()]
+        if len(refs) == 1:
+            return refs[0]
+        if refs:
+            self.error(id_, "BAD_REQUEST", f"El handle «{handle}» está repetido en el DXF.",
+                       None, {"refs": refs})
+        elif any(str(o.get("handle", "")).upper() == handle.upper()
+                 for o in c["spec"].get("omitted", [])):
+            self.error(id_, "NOT_EXPORTABLE", f"La referencia con handle «{handle}» no se puede "
+                       "exportar.")
+        else:
+            self.error(id_, "REFERENCE_NOT_FOUND", f"No existe una referencia con handle "
+                       f"«{handle}».")
+        return None
 
     def _sesion_o_error(self, id_, datos) -> dict | None:
         c = self.cargado
@@ -322,9 +380,10 @@ class Falso:
                 self.error(id_, "OUTPUT_INVALID", f"Paquete repetido: «{paquete}».")
                 return
             vistos.add(paquete)
-            if t.get("ref") not in c["bloques"]:
-                self.error(id_, "REFERENCE_NOT_FOUND", f"No existe la referencia «{t.get('ref')}».")
+            ref = self._referencia(id_, c, t)
+            if ref is None:
                 return
+            t["ref"] = ref  # lo demás del falso sigue por ref
             m = re.match(r"^1:(\d+(?:\.\d+)?)$", str(t.get("scale", "")))
             if not m or float(m.group(1)) <= 0:
                 self.error(id_, "BAD_REQUEST", f"Escala no válida: «{t.get('scale')}».")
@@ -503,9 +562,13 @@ class Falso:
             x0, y0 = b.get("min", [1000.0, 2000.0])
             mm = unidades["millimeters_per_unit"] if unidades["verified"] else None
             u = {**unidades, **b.get("units", {})}
+            handle = b.get("handle", f"{0x1A0 + len(bloques):X}")
+            anonimo = b.get("anonimo") is True
+            etiqueta = f"{b.get('layer', '0')}_{handle}" if anonimo else b["name"]
             bloques.append({
                 "ref": f"{b['name']}#{ocurrencia}", "name": b["name"],
-                "handle": b.get("handle", f"{0x1A0 + len(bloques):X}"),
+                "handle": handle, "anonymous": anonimo, "label": etiqueta,
+                "visible_entities": b.get("visible_entities", b.get("entities", 10)),
                 "occurrence": ocurrencia,
                 "total_occurrences": total, "layer": b.get("layer", "0"),
                 "insert": {"point": [0.0, 0.0, 0.0], "rotation_deg": 0.0, "scale": [1, 1, 1]},
@@ -521,7 +584,8 @@ class Falso:
                              "hatches": 0, "images": 0, **b.get("contains", {})},
                 "hidden_layer_entities": b.get("hidden_layer_entities", 0),
                 "file_stem": b.get("file_stem") or nombre_paquete(
-                    b["name"] + (f"_{ocurrencia:03d}" if total > 1 else ""))})
+                    etiqueta if anonimo
+                    else b["name"] + (f"_{ocurrencia:03d}" if total > 1 else ""))})
         return {
             "session": f"s-{self.sesion}",
             "dxf": {"name": ruta.name, "path": str(ruta), "bytes": len(contenido),
@@ -530,6 +594,7 @@ class Falso:
                     "sha256": hashlib.sha256(contenido).hexdigest(), "dxf_version": "AC1032",
                     "read_seconds": 0.01, "source_copy": None},
             "units": unidades, "margin_mm": float(datos.get("margin_mm", 5.0)),
+            "anonymous_min_entities": datos.get("anonymous_min_entities", 100),
             "blocks": bloques, "omitted": spec.get("omitted", []),
             "layers": ([{"name": "0", "color": {"aci": 7, "rgb": "#000000"},
                          "effective_colors": [], "lineweight_mm": None,
