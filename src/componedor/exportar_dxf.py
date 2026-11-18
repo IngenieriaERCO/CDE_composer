@@ -183,3 +183,46 @@ def posicion_por_centro(ruta_manifiesto: Path, centro_cad: tuple[float, float],
     px = a * centro_cad[0] + c * centro_cad[1] + e
     py = b * centro_cad[0] + d * centro_cad[1] + f
     return (centro_mm[0] - px, centro_mm[1] - (pagina[1] - py))
+
+
+# --- preparación: el paquete viejo no se toca hasta que el nuevo esté publicado y verificado --
+
+PREFIJO_PREPARACION = ".componedor-nuevo-"  # la ignora localizar_paquetes (paquete.es_temporal)
+
+
+def carpeta_de_preparacion(carpeta: Path, id_tarea: str) -> Path:
+    """Donde el trabajador publica el paquete nuevo (dentro de la carpeta del DXF: mismo disco,
+    así mover a su lugar es atómico)."""
+    preparacion = Path(carpeta) / f"{PREFIJO_PREPARACION}{id_tarea}"
+    preparacion.mkdir(parents=True, exist_ok=True)
+    return preparacion
+
+
+def instalar(preparacion: Path, carpeta: Path, paquete: str, raiz: Path,
+             para_borrar: Path) -> tuple[Path, list[Path]]:
+    """El paquete nuevo (ya verificado en `preparacion`) a su lugar: primero el viejo a
+    `_para_borrar`, luego los archivos nuevos (el manifiesto el último). (manifiesto, movidos)."""
+    movidos = mover_a_para_borrar(archivos_del_paquete(carpeta, paquete), raiz, para_borrar)
+    for ext in (".pdf", ".txt", ".manifest.json"):
+        origen = Path(preparacion) / f"{paquete}{ext}"
+        if origen.exists():
+            origen.replace(Path(carpeta) / f"{paquete}{ext}")
+    limpiar_preparacion(preparacion, raiz, para_borrar)
+    return Path(carpeta) / f"{paquete}.manifest.json", movidos
+
+
+def limpiar_preparacion(preparacion: Path, raiz: Path, para_borrar: Path) -> list[Path]:
+    """Deja la carpeta de preparación como si no hubiera existido: lo publicado que no se usó
+    (p. ej. un paquete que no pasó la verificación) se MUEVE a `_para_borrar`; las carpetas
+    vacías se quitan. Las `.cde-tmp-*` del trabajador se respetan (puede estar usándolas)."""
+    preparacion = Path(preparacion)
+    if not preparacion.is_dir():
+        return []
+    sueltos = [f for f in preparacion.iterdir() if f.is_file()]
+    movidos = mover_a_para_borrar(sueltos, raiz, para_borrar) if sueltos else []
+    for sub in sorted(preparacion.rglob("*"), key=lambda p: len(p.parts), reverse=True):
+        if sub.is_dir() and not any(sub.iterdir()):
+            sub.rmdir()
+    if not any(preparacion.iterdir()):
+        preparacion.rmdir()
+    return movidos

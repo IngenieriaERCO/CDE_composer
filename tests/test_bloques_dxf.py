@@ -46,10 +46,12 @@ def test_pagina_con_la_formula_del_contrato():
 
 
 @pytest.mark.parametrize("tamano, esperada", [
-    ((10.0, 4.0), 50),            # 210 x 90 mm a 1:50
+    ((10.0, 4.0), 20),            # 510 x 210 mm a 1:20 (a 1:10 serían 1010 mm)
     ((31.0, 4.0), 50),            # 630 mm de ancho: cabe justo en 639,7
-    ((32.0, 4.0), 100),           # a 1:50 serían 650 mm: no cabe
-    ((957.18, 1350.019), 5000),   # BLOQUE1 de GUAMO: a 1:2500 el alto sería 550 > 548,6
+    ((32.0, 4.0), 75),            # a 1:50 serían 650 mm: no cabe; a 1:75, 436,7
+    ((957.18, 1350.019), 3000),   # BLOQUE1 de GUAMO: a 1:2500 el alto sería 550 > 548,6;
+    #                               a 1:3000, 329 x 460 mm (antes la lista saltaba a 1:5000)
+    ((0.398, 0.768), 5),          # un pilar: a 1:5, 89,6 x 163,6 mm
     ((200000.0, 1.0), None),      # ni a 1:10000
 ])
 def test_escala_sugerida(tamano, esperada):
@@ -70,8 +72,8 @@ def test_catalogo_de_un_bloque():
     assert b == {"ref": "B1#1", "nombre": "B1", "handle": "1A", "ocurrencia": 1,
                  "total_ocurrencias": 1, "capa": "0", "tamano_m": [10.0, 4.0],
                  "unidades": c["unidades"], "caja_exacta": True,
-                 "caja_cad": {"min": [0.0, 0.0], "max": [10.0, 4.0]}, "escala_sugerida": 50,
-                 "pagina_sugerida_mm": [210.0, 90.0], "entidades": 12, "archivo": "B1",
+                 "caja_cad": {"min": [0.0, 0.0], "max": [10.0, 4.0]}, "escala_sugerida": 20,
+                 "pagina_sugerida_mm": [510.0, 210.0], "entidades": 12, "archivo": "B1",
                  "notas": []}
     assert c["omitidos"] == [] and c["avisos"] == [] and c["problemas"] == []
 

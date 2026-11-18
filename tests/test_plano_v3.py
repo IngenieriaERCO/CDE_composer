@@ -119,7 +119,8 @@ def test_id_repetido_entre_pendiente_y_exportado(tmp_path):
 
 
 def test_leer_escala():
-    assert leer_escala("1:2000") == 2000.0 and leer_escala("1:12.5") == 12.5
+    assert leer_escala("1:2000") == 2000.0 and leer_escala("1:3500") == 3500.0  # a mano
+    assert leer_escala("1:12.5") is None and leer_escala("1:100001") is None
     assert leer_escala("1:0") is None and leer_escala("2:50") is None
     assert leer_escala(50) is None
 

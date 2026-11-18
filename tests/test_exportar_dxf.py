@@ -171,3 +171,18 @@ def test_export_comprueba_antes_de_empezar(tmp_path):
     # Quedó una carpeta .cde-tmp-* (publicación como la del exportador): se ignora.
     assert any(p.name.startswith(".cde-tmp-") for p in salida.iterdir())
     assert [p.prefijo for p in localizar_paquetes(tmp_path, recursivo=True)] == ["BLOQUE1_1-5000"]
+
+
+def test_limpiar_la_preparacion(tmp_path):
+    from componedor.exportar_dxf import carpeta_de_preparacion, limpiar_preparacion
+
+    carpeta = tmp_path / "paquetes" / "GUAMO"
+    prep = carpeta_de_preparacion(carpeta, "7")
+    assert prep.name == ".componedor-nuevo-7"
+    crear_paquete_real(prep, "a_medias")  # publicado pero no usado
+    (prep / ".cde-tmp-99").mkdir()  # del trabajador: vacía, se quita
+    assert [p.prefijo for p in localizar_paquetes(tmp_path, recursivo=True)] == []  # se ignora
+    movidos = limpiar_preparacion(prep, tmp_path / "paquetes", tmp_path / "_para_borrar")
+    assert sorted(m.name for m in movidos) == ["a_medias.manifest.json", "a_medias.pdf"]
+    assert not prep.exists()
+    assert limpiar_preparacion(prep, tmp_path, tmp_path / "_para_borrar") == []  # ya no está

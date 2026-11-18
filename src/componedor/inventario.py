@@ -16,7 +16,15 @@ from componedor.importador import evaluar_paquete, texto_motivo
 from componedor.paquete import localizar_paquetes
 
 ACEPTADO, RECHAZADO = "aceptado", "rechazado"
-ESCALAS_ESTANDAR = (50, 100, 200, 250, 500, 750, 1000, 1500, 2000, 2500, 5000, 10000)
+# Escalas normalizadas de ingeniería, de mayor a menor detalle. La sugerida es la PRIMERA con la
+# que la página cabe (la más grande posible). Igual que ESCALAS en editor/editor_bloques.js.
+ESCALAS_ESTANDAR = (5, 10, 20, 25, 50, 75, 100, 200, 250, 500, 750, 1000, 1500, 2000, 2500,
+                    3000, 4000, 5000, 7500, 10000)
+ESCALA_MAXIMA = 100000  # una escala escrita a mano: entero de 1 a este valor
+
+
+def es_normalizada(n: float) -> bool:
+    return n in ESCALAS_ESTANDAR
 
 
 @dataclass

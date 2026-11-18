@@ -293,3 +293,8 @@ main { flex: 1; display: flex; min-height: 0; }
 .trabajo-exportar.cancelada { border-color: #fde68a; background: #fffbeb; }
 .exportar-dxf .botones { display: flex; gap: 4px; flex-wrap: wrap; }
 .exportar-dxf button.peligro { color: var(--muy-fuerte); border-color: var(--muy-fuerte); }
+.medida.aviso-escala { color: var(--aviso); font-weight: 600; }
+.detalle-error { margin-top: 4px; }
+.detalle-error summary { cursor: pointer; color: var(--suave); }
+.detalle-error pre { white-space: pre-wrap; word-break: break-word; font-size: 11px; max-height: 200px;
+  overflow: auto; background: #fff; border: 1px solid #e5e7eb; padding: 4px; margin: 4px 0 0; }

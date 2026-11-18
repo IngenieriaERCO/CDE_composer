@@ -36,7 +36,9 @@ El «DXF» es un JSON con lo que debe responder `load` y cómo portarse:
      "respuesta_previa": null,          # reemplaza la respuesta de preview
      "export_demora_s": 0.0,            # espera en cada etapa de export
      "export_no_cancelable_s": 0,       # un paso de export que no mira la cancelación
-     "dejar_temporal": false}           # deja una carpeta .cde-tmp-* en la salida
+     "dejar_temporal": false,           # deja una carpeta .cde-tmp-* en la salida
+     "error_interno": null,             # ["TypeError", "mensaje"]: INTERNAL en load, como el real
+     "export_error_interno": null}      # lo mismo en export
 y en cada bloque, para preview: "marca": [x, y] (punto CAD) y "bounds_previa": {"min", "max"}
 (la caja de lo dibujado; por defecto la de load); para export: "bounds_exacta" (la caja exacta,
 si la de load es aproximada), "falla_export": "mensaje" (EXPORT_FAILED en ese trabajo) y
@@ -215,6 +217,9 @@ class Falso:
                                   "stage": etapa, "stage_index": i, "stage_total": len(ETAPAS),
                                   "percent": 100.0 * i / len(ETAPAS),
                                   "message": f"Etapa {etapa} de «{ruta.name}»"}})
+        if spec.get("error_interno"):
+            self.interno(id_, spec["error_interno"])
+            return
         if spec.get("respuesta") is not None:
             self.responder(id_, "load", spec["respuesta"])
             return
@@ -330,6 +335,9 @@ class Falso:
                         self.error(id_, "OUTPUT_EXISTS", f"Ya existe «{paquete}{ext}».",
                                    None, {"file": str(salida / (paquete + ext))})
                         return
+        if c["spec"].get("export_error_interno"):
+            self.interno(id_, c["spec"]["export_error_interno"])
+            return
         resultados = []
         demora = float(c["spec"].get("export_demora_s", 0))
         total = len(ETAPAS_EXPORT) * len(trabajos)
@@ -374,6 +382,13 @@ class Falso:
             "output_dir": str(salida), "jobs": resultados, "summary": None,
             "totals": {"published": publicados, "failed": len(resultados) - publicados,
                        "cancelled": 0}})
+
+    def interno(self, id_, falla):
+        """El error INTERNAL del trabajador real: texto de Python y el consejo de repetir."""
+        tipo, texto = falla
+        self.error(id_, "INTERNAL", f"Error inesperado del exportador ({tipo}): {texto}",
+                   "Repita el pedido; si vuelve a fallar, guarde el registro de stderr.",
+                   {"type": tipo})
 
     def publicar(self, salida, t, bloque, spec_bloque, c):
         import pymupdf

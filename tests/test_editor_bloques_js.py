@@ -68,7 +68,7 @@ def test_escala_vecina_texto_y_lectura():
                       B.escalaVecina(10000, -1), B.escalaVecina(300, +1), B.escalaVecina(300, -1),
                       B.textoEscala(2000), B.leerEscala("1:2000"), B.leerEscala("1:0"),
                       B.leerEscala("1/50"), B.leerEscala("1:12.5")];""")
-    assert r == [50, 200, 50, 10000, 250, 500, "1:2000", 2000, None, None, 12.5]
+    assert r == [75, 200, 25, 10000, 250, 500, "1:2000", 2000, None, None, None]
 
 
 # --- la caja en la hoja ---------------------------------------------------------------------------
@@ -300,3 +300,52 @@ def test_que_bloques_se_piden_al_exportar():
     assert sin[:2] == ["cargue «GUAMO_prueba.dxf» con «Cargar DXF»",
                        "vuelva a cargar el DXF («Volver a cargar»)"]
     assert sin[2] == pytest.approx([241.832, 156.9981])
+
+
+# --- escalas escritas a mano y «Ajustar a la hoja» -----------------------------------------------
+
+def test_escala_escrita():
+    r = js("""return ["1:3500", "3500", " 1 : 3500 ", "1:3000", "1", "100000",
+                      "0", "100001", "1:12.5", "abc", "", "-50", "1/50"].map((t) => B.leerEscalaEscrita(t));""")
+    assert r[:6] == [{"n": 3500, "aviso": "escala no normalizada"}] * 3 + [
+        {"n": 3000, "aviso": None}, {"n": 1, "aviso": "escala no normalizada"},
+        {"n": 100000, "aviso": "escala no normalizada"}]
+    for x in r[6:]:
+        assert x == {"error": "Escala no válida: escriba 1:N o N, con N entero de 1 a 100000 "
+                              "(por ejemplo 1:3500)."}
+
+
+def test_teclas_desde_una_escala_escrita():
+    r = js("return [B.escalaVecina(3500, +1), B.escalaVecina(3500, -1), B.escalaVecina(3, +1), "
+           "B.escalaVecina(3, -1), B.escalaVecina(50000, +1)];")
+    assert r == [3000, 4000, 3, 5, 10000]  # a la anterior o siguiente de la lista
+
+
+def test_ajustar_a_la_hoja_es_la_exacta_mas_grande():
+    """N entero más chico con el que cabe (contra Python: a N cabe y a N − 1 no)."""
+    casos = [(957.18, 1350.019), (10.0, 4.0), (31.0, 4.0), (0.398, 0.768), (5000.0, 10.0)]
+    r = js("return entrada.casos.map((t) => B.escalaAjustada(t, 5, entrada.zona));",
+           {"casos": casos, "zona": ZONA_A1})
+    assert r[0] == 2507  # BLOQUE1: más grande que 1:3000, la normalizada
+    for t, n in zip(casos, r):
+        assert exceso_de_tamano(pagina_mm(t, n, 5.0), ZONA_A1) == (0.0, 0.0)
+        if n > 1:
+            assert exceso_de_tamano(pagina_mm(t, n - 1, 5.0), ZONA_A1) != (0.0, 0.0)
+    assert js("return B.escalaAjustada([1e9, 1], 5, entrada);", ZONA_A1) is None
+
+
+def test_escala_no_normalizada_en_el_plano_v3(entorno_editor):
+    carpeta, datos = entorno_editor
+    texto = js("""
+      const dxf = B.entradaDxf(entrada.catalogo);
+      const c = Object.assign(entrada.c, {bloque: Object.assign(entrada.c.bloque, {dxf})});
+      return L.serializarPlano([c], entrada.datos);""", {
+        "catalogo": CATALOGO, "datos": datos,
+        "c": colocado("BLOQUE1", "BLOQUE1", "50CA", 3500, (342.55, 297.0), (957.18, 1350.019))})
+    assert json.loads(texto)["detalles"][0]["origen"]["escala"] == "1:3500"  # tal cual
+    ruta = carpeta / "editor" / "plano.json"
+    ruta.write_text(texto, encoding="utf-8")
+    assert leer_plano(ruta).pendientes[0].escala == 3500.0
+    r = js("return L.leerPlano(entrada.texto, entrada.datos).colocaciones[0].escala;",
+           {"texto": texto, "datos": datos})
+    assert r == 3500

@@ -426,7 +426,8 @@ exporten, el plano.json los guarda así:
   - `origen.dxf`: el `id` de su DXF en la lista.
   - `origen.bloque`, `origen.handle` (el del INSERT, hexadecimal en mayúsculas) y
     `origen.ocurrencia` (1, 2… si el bloque se repite): qué referencia es.
-  - `origen.escala`: `"1:N"`.
+  - `origen.escala`: `"1:N"`, con N entero de 1 a 100000. Puede no ser normalizada (el usuario
+    la escribió a mano, p. ej. `"1:3500"`): se usa tal cual.
   - `origen.tamano_m`: `[ancho, alto]` real en m. Con él y la escala sale la página:
     **página_mm = tamaño_m × 1000 ÷ N + 2 × margen_mm** por eje (fórmula del contrato del
     trabajador).

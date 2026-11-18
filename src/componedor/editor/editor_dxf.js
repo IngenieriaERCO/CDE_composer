@@ -111,6 +111,13 @@
     return [e.mensaje || "La tarea no terminó.", e.consejo].filter(Boolean).join(" ");
   }
 
-  return { ETAPAS, SIN_NOTICIAS_S, tamanoArchivo, textoUnidades, textoTamano, textoOcurrencia,
+  /** El texto técnico de un error (para «Ver detalle») y dónde está el registro; null si no hay. */
+  function textoDetalle(foto) {
+    const e = (foto && foto.error) || {};
+    if (!e.detalle) return null;
+    return e.detalle + (e.registro ? "\n\nRegistro del trabajador: " + e.registro : "");
+  }
+
+  return { ETAPAS, SIN_NOTICIAS_S, textoDetalle, tamanoArchivo, textoUnidades, textoTamano, textoOcurrencia,
     textoEscala, lineasBloque, resumenDxf, detalleDxf, textoAvance, textoError };
 });

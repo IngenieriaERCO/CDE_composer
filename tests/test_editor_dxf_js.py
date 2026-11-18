@@ -134,8 +134,8 @@ def test_textos_de_un_bloque():
     r = js("return entrada.bloques.map(D.lineasBloque);", carpeta)
     assert r[0] == ["ocurrencia 2 de 3 · capa ESTRUCTURA",
                     "10,000 × 4,000 m · unidades: m (verificadas)",
-                    "Escala sugerida 1:50 · página 210,0 × 90,0 mm"]
-    assert r[1][-1] == "Escala sugerida 1:50 · página ≤ 210,0 × 90,0 mm"  # caja aproximada
+                    "Escala sugerida 1:20 · página 510,0 × 210,0 mm"]
+    assert r[1][-1] == "Escala sugerida 1:20 · página ≤ 510,0 × 210,0 mm"  # caja aproximada
     assert r[2] == ["capa 0", "tamaño real desconocido · unidades: m, sin verificar"]
     assert r[3] == ["capa 0", "200000,000 × 1,000 m · unidades: m (verificadas)"]  # sin escala
 
@@ -158,12 +158,16 @@ def test_texto_del_avance_y_del_error():
       D.textoAvance({estado: "en_curso", avance: {stage: "read", percent: 20}, sin_noticias_s: 45.2}),
       D.textoError({error: {mensaje: "No existe el DXF.", consejo: "Revise la ruta."}}),
       D.textoError({error: {mensaje: "Cancelado.", consejo: null}}),
-      D.textoError({})];""")
+      D.textoError({}),
+      D.textoDetalle({error: {mensaje: "x", detalle: "TypeError: …", registro: "data/cache_exportador/trabajador.log"}}),
+      D.textoDetalle({error: {mensaje: "x", detalle: null}})];""")
     assert r[0] == "En espera"
     assert r[1] == "Leyendo el DXF — 42 %"
     assert r[2] == "Dibujando 61 200 de 156 749 — 3 % (cancelando…)"
     assert r[3].startswith("Leyendo el DXF — 20 % · sin noticias del trabajador hace 45 s")
-    assert r[4:] == ["No existe el DXF. Revise la ruta.", "Cancelado.", "La tarea no terminó."]
+    assert r[4:7] == ["No existe el DXF. Revise la ruta.", "Cancelado.", "La tarea no terminó."]
+    assert r[7] == "TypeError: …\n\nRegistro del trabajador: data/cache_exportador/trabajador.log"
+    assert r[8] is None
 
 
 # --- editor.html ----------------------------------------------------------------------------------

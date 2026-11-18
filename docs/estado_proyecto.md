@@ -1731,7 +1731,7 @@ ruff: los mismos 173 hallazgos de `HEAD`.
 - Etapa 3: «Exportar» (con `nombres_paquete` e ignorar `.cde-tmp-*` en `localizar_paquetes`).
 - Probar el cuadro nativo a mano (sigue de la etapa 1).
 
-### Integración con el exportador — Etapa 3: «Exportar» ✅ (2026-11-18, sin commit)
+### Integración con el exportador — Etapa 3: «Exportar» ✅ (2026-11-18, commit 099055a)
 
 **Qué se hizo**
 - **Exportar** (`aplicacion_editor.py`, `exportar_dxf.py`, `POST /api/exportar`):
@@ -1795,6 +1795,54 @@ Las de las etapas 1 y 2 siguen todo OK.
 **Pendiente**
 - Etapa 4: componer desde el editor.
 - Probar el cuadro nativo a mano (sigue de la etapa 1).
+
+### Ajustes tras la etapa 3 (2026-11-18, sin commit)
+
+Repositorios reorganizados por Alan: `CDE_Composer` (este) y `CDE_Extractor` (el exportador);
+se trabaja en `dev` (commit 8e03b55: reglas de Git en CLAUDE.md).
+
+1. **Escalas** (`inventario.ESCALAS_ESTANDAR` = `editor_bloques.ESCALAS`, con prueba de paridad):
+   - Causa: la lista saltaba de 1:2500 a 1:5000. BLOQUE1 de GUAMO no cabe a 1:2500 (sobran
+     1,4 mm de alto), así que la sugerida salía 1:5000.
+   - La lista nueva tiene 20 escalas: 1:5, 10, 20, 25, 50, 75, 100, 200, 250, 500, 750, 1000,
+     1500, 2000, 2500, 3000, 4000, 5000, 7500 y 10000. La sugerida es la primera que cabe: para
+     BLOQUE1, 1:3000 (329 × 460 mm).
+   - Escala **escrita a mano** («1:3500» o «3500»): entero de 1 a 100000; si no es normalizada,
+     aviso «escala no normalizada»; + y − pasan a la vecina de la lista; se guarda tal cual en
+     la versión 3; la usan el paquete (`_1-3500`), la caché y el rótulo.
+   - **Ajustar a la hoja**: la escala exacta más grande que cabe (BLOQUE1: 1:2507).
+   - En la versión 3 la escala debe ser entera (antes se admitían decimales, que el editor nunca
+     escribía).
+2. **Rótulo con «342,55» y «297,00»**:
+   - Causa: la **restauración de formularios del navegador**. Al volver a la página (atrás en el
+     historial) pone los valores guardados en los cuadros por orden, y los de «Centro X / Y» del
+     bloque seleccionado caían en «No. PLANO» y «HOJA», sin avisar al editor: se veían, pero no
+     estaban en el modelo.
+   - Corrección: `editor_sin_autorrelleno.js` (se carga primero) pone `autocomplete="off"` en
+     todos los cuadros, también en los que se crean después.
+   - De paso, las flechas con un bloque seleccionado daban un error de JavaScript: arreglado.
+3. **Errores claros** (`mensajes_trabajador.py`):
+   - `INTERNAL`, `DXF_INVALID` y los errores por trabajo de `export` muestran un mensaje para el
+     usuario; el texto técnico y la ruta del registro van en «Ver detalle»;
+   - sin «Repita el pedido» cuando el error es determinista.
+4. **Paquetes viejos**:
+   - el trabajador publica en una carpeta de preparación (`.componedor-nuevo-<n>`);
+   - el viejo se mueve a `_para_borrar/` solo después de publicar y verificar el nuevo;
+   - si se cancela o falla, el viejo queda donde estaba.
+5. **Tiempo**:
+   - BLOQUE1 a 1:3000 con el exportador real y el equipo en reposo: `export` 182,7 s (el
+     Exportador midió 166 s). Por etapa: extract 53,1 · analyze 48,1 · draw 3,0 · pdf 67,2 ·
+     checks 11,2 · publish 0,1 s.
+   - `load`: 13,1 s (lectura 3,7 s); arranque del trabajador: 5,7 s.
+   - Los 9,5 min del día anterior: un ensayo propio colgado desde el 17-11 gastaba CPU
+     (detenido) y corrían pruebas a la vez.
+6. **Documento para Alan**: [instalacion_y_uso.md](instalacion_y_uso.md).
+
+**Pruebas**: **1101** pasan y 1 se salta (la larga con el real). ruff: los mismos 173 hallazgos.
+Verificación en Edge todo OK:
+- `verificar_rotulo_bloques.mjs` (nuevo): el rótulo no cambia por acciones sobre un bloque ni
+  al volver atrás; «Ver detalle»;
+- las de las etapas 1, 2 y 3 (con el exportador real), ajustadas a la lista nueva.
 
 ### Pendiente en la Fase 4 (al 2026-11-11)
 

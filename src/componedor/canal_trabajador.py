@@ -27,6 +27,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from componedor.mensajes_trabajador import para_el_usuario
 from componedor.trabajador import (
     ErrorTrabajador,
     Trabajador,
@@ -47,9 +48,11 @@ SIN_INICIAR, ARRANCANDO, LISTO, OCUPADO, DETENIDO = (
 class FalloDeTarea(ValueError):
     """Lo lanza `procesar` para que la tarea falle con SU código (p. ej. EXPORT_FAILED)."""
 
-    def __init__(self, codigo: str, mensaje: str, consejo: str | None = None):
+    def __init__(self, codigo: str, mensaje: str, consejo: str | None = None,
+                 detalle: str | None = None, registro: str | None = None):
         super().__init__(mensaje)
         self.codigo, self.mensaje, self.consejo = codigo, mensaje, consejo
+        self.detalle, self.registro = detalle, registro
 
 
 @dataclass
@@ -62,7 +65,7 @@ class Tarea:
     estado: str = EN_COLA
     avance: dict = field(default_factory=dict)  # percent, stage, message
     resultado: Any = None
-    error: dict | None = None  # {codigo, mensaje, consejo}
+    error: dict | None = None  # {codigo, mensaje, consejo, detalle, registro}
     id_pedido: str | None = None
     generacion: int | None = None  # del trabajador que la atendió
     ultima_noticia: float = field(default_factory=time.monotonic)
@@ -235,8 +238,10 @@ class Canal:
                     continue
                 if e.codigo == "CANCELLED":
                     self._terminar_cancelada(tarea, e.mensaje)
-                else:
-                    self._fallar(tarea, e.codigo, e.mensaje, e.consejo)
+                else:  # mensaje claro; el texto técnico, en «detalle» (mensajes_trabajador)
+                    tarea.error = para_el_usuario(tarea.tipo, e.codigo, e.mensaje, e.consejo,
+                                                  e.detalles, trabajador.ruta_registro)
+                    tarea.estado = FALLIDA
                 with self._cv:
                     self._estado, self._caidas = LISTO, 0
                 return
@@ -247,7 +252,7 @@ class Canal:
         try:
             tarea.resultado = tarea.procesar(data, tarea) if tarea.procesar else data
         except FalloDeTarea as e:
-            self._fallar(tarea, e.codigo, e.mensaje, e.consejo)
+            self._fallar(tarea, e.codigo, e.mensaje, e.consejo, e.detalle, e.registro)
         except ValueError as e:
             self._fallar(tarea, "RESPUESTA_INVALIDA",
                          f"La respuesta del trabajador no se puede usar: {e}",
@@ -324,8 +329,10 @@ class Canal:
 
     # --- terminar ------------------------------------------------------------------------------
 
-    def _fallar(self, tarea: Tarea, codigo: str, mensaje: str, consejo: str | None) -> None:
-        tarea.error = {"codigo": codigo, "mensaje": mensaje, "consejo": consejo}
+    def _fallar(self, tarea: Tarea, codigo: str, mensaje: str, consejo: str | None,
+                detalle: str | None = None, registro: str | None = None) -> None:
+        tarea.error = {"codigo": codigo, "mensaje": mensaje, "consejo": consejo,
+                       "detalle": detalle, "registro": registro}
         tarea.estado = FALLIDA
 
     def _terminar_cancelada(self, tarea: Tarea, mensaje: str) -> None:

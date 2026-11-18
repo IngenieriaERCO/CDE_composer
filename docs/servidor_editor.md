@@ -177,11 +177,18 @@ Exportador Vectorial.»
     contrato), 409 «vuelva a cargarlo», también para lo que saldría de la caché;
   - **caché**: si el paquete ya está publicado y es el de este bloque (SHA-256 del DXF, handle,
     escala y margen) y pasa `importar_paquete`, se usa sin exportar (la tarea nace terminada);
-  - si en su lugar hay otro (otra versión del DXF, a medio publicar…), sus archivos se
-    **mueven** a `_para_borrar/paquetes_<fecha>/…` y recién entonces se exporta.
+  - el trabajador publica en una **carpeta de preparación** dentro de la del DXF
+    (`.componedor-nuevo-<n>`, que `localizar_paquetes` ignora): el paquete viejo, si hay, no
+    se toca todavía.
 - **Después**: el paquete pasa por `importar_paquete` (completo, íntegro, coherente, escala
   física garantizada) y además tiene que ser el pedido (los mismos cuatro datos y una página que
-  no pase de la caja del editor). Si no, la tarea falla con `PAQUETE_NO_VALIDO` y no se usa.
+  no pase de la caja del editor).
+  - Si pasa: el paquete viejo (otra versión del DXF, a medio publicar…) se **mueve** a
+    `_para_borrar/paquetes_<fecha>/…` y el nuevo pasa a su lugar (mover dentro del mismo disco;
+    el manifiesto el último).
+  - Si no pasa: `PAQUETE_NO_VALIDO`; el nuevo va a `_para_borrar/` y el viejo queda en su lugar.
+  - Si el trabajo se cancela o falla: el viejo queda en su lugar; la carpeta de preparación se
+    quita (lo que hubiera publicado va a `_para_borrar/`).
 - **Colocación por el centro CAD**: el punto CAD del centro de la caja de `load` va al
   `centro_mm` del plano: `posición = centro − (px, alto − py)`, con `(px, py) = cad_to_page · C`.
   El resultado trae `desde_centro_mm` para colocar cualquier copia del bloque.
@@ -193,6 +200,16 @@ Exportador Vectorial.»
   «Volver a cargar».
 - Las carpetas `.cde-tmp-*` que el exportador usa (o deja) en la salida se ignoran al buscar
   paquetes (`localizar_paquetes`).
+
+### Errores para el usuario
+
+`mensajes_trabajador.py` convierte los errores del trabajador que traen texto técnico de Python
+(`INTERNAL`, `DXF_INVALID`, y los de un trabajo de `export`: `EXPORT_FAILED`,
+`VALIDATION_FAILED`, `CRITICAL_NOTICE`) en un mensaje claro según lo que se hacía (cargar,
+vista previa, exportar). El texto técnico queda en `error.detalle` y la ruta del registro en
+`error.registro`, para el botón «Ver detalle» del editor. El consejo «Repita el pedido» se quita
+cuando el error es determinista (el mismo DXF falla igual); se deja solo si la causa puede pasar
+(memoria, disco).
 
 ### Lo que el Componedor exige de la respuesta de `load`
 
@@ -220,7 +237,7 @@ bloque:
 | `POST /api/trabajador/detener` | «Detener a la fuerza». `{detenido}`. |
 | `GET /api/exportados` | Las entradas de catálogo de lo exportado en esta sesión del servidor (para el editor que se recarga). |
 | `GET /api/previas/<id>` | El PNG (`image/png`) de esa tarea de vista previa, con el token en la cabecera. 404 si no existe o ya no está en la caché. |
-| `GET /api/tareas/<id>` | Foto de la tarea: `estado` (`en_cola`, `en_curso`, `terminada`, `fallida`, `cancelada`), `avance`, `resultado`, `error` {`codigo`, `mensaje`, `consejo`}, `sin_noticias_s`. |
+| `GET /api/tareas/<id>` | Foto de la tarea: `estado` (`en_cola`, `en_curso`, `terminada`, `fallida`, `cancelada`), `avance`, `resultado`, `error` {`codigo`, `mensaje`, `consejo`, `detalle`, `registro`}, `sin_noticias_s`. |
 | `POST /api/tareas/<id>/cancelar` | Cancela la tarea. |
 | `POST /api/trabajador/reiniciar` | Sale del estado «detenido»: el próximo pedido lanza otro trabajador. |
 | `POST /api/latido` | Señal del editor (cada minuto). Cualquier pedido de la API también cuenta. |

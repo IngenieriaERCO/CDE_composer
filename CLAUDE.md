@@ -3,7 +3,7 @@
 ## Qué es este proyecto
 
 Aplicación en Python que arma planos físicos exactos (por ahora A1) a partir de los
-detalles vectoriales que entrega el **Exportador Vectorial** (repositorio `cde-extractor`, antes CDE_manager).
+detalles vectoriales que entrega el **Exportador Vectorial** (repositorio `CDE_Extractor`, antes CDE_manager).
 Hace lo que hoy se hace a mano en AutoCAD (Layout + ventanas gráficas + rótulo + plot a PDF),
 pero sin abrir CAD.
 
@@ -39,8 +39,8 @@ lee sus paquetes de salida (PDF + manifiesto JSON).
 
 ## Git (desde el 2026-11-18)
 
-Repositorios: el Componedor es `cde-composer` (GitHub `IngenieriaERCO/CDE_Composer`); el
-exportador sigue en el suyo, renombrado `cde-extractor`. En los dos `main` está protegido.
+Repositorios: el Componedor es `CDE_Composer` (GitHub `IngenieriaERCO/CDE_Composer`); el
+exportador sigue en el suyo, renombrado `CDE_Extractor`. En los dos `main` está protegido.
 
 - **Trabajar en la rama `dev`.** Nunca en `main`.
 - **Nunca hacer push a `main`.**

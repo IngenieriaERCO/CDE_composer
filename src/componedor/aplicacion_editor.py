@@ -11,14 +11,17 @@ ruta que el servidor ya conoce (si el DXF cambió o el trabajador se reinició).
 
 Etapa 3: «Exportar». Cada bloque es UN pedido `export` con un solo trabajo (se cancela o se
 detiene por separado). Antes de pedirlo: si el paquete ya está publicado y es el de este bloque,
-se usa (caché); si en su lugar hay otro, se mueve a `_para_borrar/`. Después: se verifica el
-paquete (`exportar_dxf.verificar`) y se calcula su posición por el centro CAD. «Detener a la
+se usa (caché). El trabajador publica en una carpeta de preparación: solo si el paquete nuevo
+se publicó y pasó la verificación (`exportar_dxf.verificar`), el viejo se mueve a
+`_para_borrar/` y el nuevo pasa a su lugar; si se cancela o falla, el viejo queda donde estaba.
+Después se calcula su posición por el centro CAD. «Detener a la
 fuerza» cierra el trabajador sin esperar (`Canal.detener`).
 
 Datos: aquí no pasa nada de `firmas/` (el editor ya trae solo los nombres) y la única ruta que
 se carga es la que eligió el cuadro; el editor nunca manda rutas.
 """
 
+import itertools
 import os
 import threading
 import time
@@ -27,7 +30,14 @@ from pathlib import Path
 from typing import ClassVar
 
 from componedor.bloques_dxf import catalogo_dxf, pagina_mm
-from componedor.canal_trabajador import EN_COLA, EN_CURSO, Canal, FalloDeTarea, Tarea
+from componedor.canal_trabajador import (
+    EN_COLA,
+    EN_CURSO,
+    FINALES,
+    Canal,
+    FalloDeTarea,
+    Tarea,
+)
 from componedor.colocar import exceso_de_tamano
 from componedor.configuracion import ConfigExportador
 from componedor.detalle_exportado import detalle_para_editor, ruta_para_el_editor
@@ -35,23 +45,31 @@ from componedor.dialogo_dxf import DxfInvalido, elegir_dxf, validar_dxf
 from componedor.exportar_dxf import (
     PaqueteNoValido,
     Pedido,
-    archivos_del_paquete,
+    carpeta_de_preparacion,
     carpeta_del_dxf,
     de_la_cache,
-    mover_a_para_borrar,
+    instalar,
+    limpiar_preparacion,
     nombre_del_paquete,
     posicion_por_centro,
     verificar,
 )
 from componedor.formato import RectMM
 from componedor.importador import importar_paquete
+from componedor.inventario import ESCALA_MAXIMA
+from componedor.mensajes_trabajador import para_el_usuario
 from componedor.previa_dxf import (
     CARPETA_PREVIAS,
     leer_previa,
     pedido_previa,
     png_dentro,
 )
-from componedor.trabajador import Trabajador, TrabajadorNoDisponible, resolver_comando
+from componedor.trabajador import (
+    ARCHIVO_REGISTRO,
+    Trabajador,
+    TrabajadorNoDisponible,
+    resolver_comando,
+)
 
 SIN_SECCION = ("componedor.json no tiene la sección «exportador»: el editor funciona, pero sin "
                "«Cargar DXF».")
@@ -97,6 +115,8 @@ class AplicacionEditor:
         self._exportacion: dict[tuple[str, str, float], str] = {}  # (sha, handle, N) → tarea
         self._exportados: dict[str, dict] = {}  # manifiesto (para el editor) → entrada de catálogo
         self._firma_dxf: tuple[int, int] | None = None  # (bytes, fecha) del DXF al cargarlo (§9)
+        self._preparaciones: dict[str, Path] = {}  # tarea de exportar → su carpeta de preparación
+        self._n_preparacion = itertools.count(1)
         self.carpeta_inicial: Path | None = None
         self.ultimo_latido = time.monotonic()
         self._dialogo = threading.Lock()
@@ -292,9 +312,11 @@ class AplicacionEditor:
         ident = b.get("id")
         n, centro = b.get("escala"), b.get("centro_mm")
         if not (isinstance(ident, str) and ident and isinstance(n, (int, float))
-                and not isinstance(n, bool) and n > 0 and isinstance(centro, list)
+                and not isinstance(n, bool) and n == int(n) and 1 <= n <= ESCALA_MAXIMA
+                and isinstance(centro, list)
                 and len(centro) == 2 and all(isinstance(v, (int, float)) for v in centro)):
-            raise ErrorAplicacion(400, "Cada bloque lleva id, handle, sha256, escala y centro_mm.")
+            raise ErrorAplicacion(400, "Cada bloque lleva id, handle, sha256, escala (entero de 1 "
+                                       "a 100000) y centro_mm.")
         if b.get("sha256") != dxf["dxf"]["sha256"]:
             raise ErrorAplicacion(409, f"'{ident}' es de otro DXF (o de otra versión de este): "
                                        f"cargue ese DXF para exportarlo.")
@@ -328,21 +350,22 @@ class AplicacionEditor:
                 resultado = self._resultado(manifiesto, p, importar_paquete(manifiesto),
                                             en_cache=True, movidos=[])
                 return self._asegurar_canal().terminada_sin_trabajador("exportar", resultado).foto()
-            viejos = archivos_del_paquete(carpeta, paquete)
-            movidos = (mover_a_para_borrar(viejos, self.config.paquetes, self.config.para_borrar)
-                       if viejos else [])
+            # El viejo (si hay) no se toca todavía: el nuevo se publica aparte.
+            preparacion = carpeta_de_preparacion(carpeta, str(next(self._n_preparacion)))
             tarea = self._asegurar_canal().encolar(
                 "exportar", "export",
-                {"session": dxf["sesion"], "output_dir": str(carpeta.resolve()),
+                {"session": dxf["sesion"], "output_dir": str(preparacion.resolve()),
                  "jobs": [{"job": "j1", "ref": b["ref"], "scale": f"1:{n:g}",
                            "package": paquete}],
                  "options": dict(self.OPCIONES_EXPORT)},
-                procesar=lambda data, t: self._al_exportar(data, t, p, pedido, movidos))
+                procesar=lambda data, t: self._al_exportar(data, t, p, pedido, carpeta,
+                                                           preparacion, paquete))
             self._exportacion[clave] = tarea.id
+            self._preparaciones[tarea.id] = preparacion
         return tarea.foto()
 
-    def _al_exportar(self, data: dict, tarea: Tarea, p: dict, pedido: Pedido,
-                     movidos: list) -> dict:
+    def _al_exportar(self, data: dict, tarea: Tarea, p: dict, pedido: Pedido, carpeta: Path,
+                     preparacion: Path, paquete: str) -> dict:
         trabajos = data.get("jobs") if isinstance(data, dict) else None
         if not (isinstance(trabajos, list) and len(trabajos) == 1
                 and isinstance(trabajos[0], dict)):
@@ -350,21 +373,29 @@ class AplicacionEditor:
         t = trabajos[0]
         if t.get("status") != "published":
             error = t.get("error") if isinstance(t.get("error"), dict) else {}
-            raise FalloDeTarea(str(error.get("code") or "EXPORT_FAILED"),
-                               f"No se exportó '{p['id']}': {error.get('message') or t.get('status')}",
-                               "Revise el registro del trabajador (trabajador.log).")
+            u = para_el_usuario("exportar", str(error.get("code") or "EXPORT_FAILED"),
+                                str(error.get("message") or t.get("status")), None,
+                                error.get("details"), self.config.trabajo / ARCHIVO_REGISTRO)
+            raise FalloDeTarea(u["codigo"], f"'{p['id']}': {u['mensaje']}", u["consejo"],
+                               u["detalle"], u["registro"])
         manifiesto = (t.get("package") or {}).get("manifest")
         if not isinstance(manifiesto, str):
             raise ValueError("el trabajo publicado no trae «package.manifest»")  # noqa: TRY004
         tarea.avance = {"percent": 100.0, "stage": "verificar",
                         "message": "Verificando el paquete (integridad y coherencia)…"}
         try:
-            aceptado = verificar(manifiesto, pedido)
+            verificar(manifiesto, pedido)  # en la preparación: el viejo sigue en su lugar
         except PaqueteNoValido as e:
             raise FalloDeTarea("PAQUETE_NO_VALIDO",
                                f"El paquete de '{p['id']}' no pasó la verificación: {e}",
-                               "No se usa. Vuelva a exportarlo; si se repite, avise al "
+                               "No se usa (va a _para_borrar) y el paquete anterior, si había, "
+                               "queda donde estaba. Vuelva a exportarlo; si se repite, avise al "
                                "Exportador Vectorial.") from None
+        # Publicado y verificado: recién ahora el viejo a _para_borrar y el nuevo a su lugar.
+        manifiesto, movidos = instalar(preparacion, carpeta, paquete, self.config.paquetes,
+                                       self.config.para_borrar)
+        self._preparaciones.pop(tarea.id, None)
+        aceptado = importar_paquete(manifiesto)
         return self._resultado(manifiesto, p, aceptado, en_cache=False, movidos=movidos,
                                avisos=[str(n.get("message")) for n in t.get("notices") or []
                                        if isinstance(n, dict) and n.get("message")])
@@ -405,7 +436,17 @@ class AplicacionEditor:
         t = self.canal.tarea(id_tarea) if self.canal else None
         if t is None:
             raise ErrorAplicacion(404, f"No existe la tarea «{id_tarea}».")
+        self.limpiar_preparaciones()
         return t.foto()
+
+    def limpiar_preparaciones(self, todas: bool = False) -> None:
+        """Las carpetas de preparación de exportaciones que terminaron sin instalarse (canceladas
+        o fallidas): lo que haya publicado se mueve a _para_borrar; el paquete viejo no se toca."""
+        for id_tarea, preparacion in list(self._preparaciones.items()):
+            t = self.canal.tarea(id_tarea) if self.canal else None
+            if todas or t is None or t.estado in FINALES:
+                limpiar_preparacion(preparacion, self.config.paquetes, self.config.para_borrar)
+                self._preparaciones.pop(id_tarea, None)
 
     def cancelar(self, id_tarea: str) -> dict:
         if self.canal is None or self.canal.tarea(id_tarea) is None:
@@ -424,3 +465,5 @@ class AplicacionEditor:
     def cerrar(self) -> None:
         if self.canal is not None:
             self.canal.cerrar()
+        if self._preparaciones:
+            self.limpiar_preparaciones(todas=True)

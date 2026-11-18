@@ -60,6 +60,19 @@
     return n;
   }
 
+  /** Caja de error: el mensaje claro y, si hay, «Ver detalle» con el texto técnico. */
+  function cajaError(foto, clase) {
+    const caja = nodo("div", { class: clase }, D.textoError(foto));
+    const detalle = D.textoDetalle(foto);
+    if (detalle) {
+      const ver = nodo("details", { class: "detalle-error" });
+      ver.appendChild(nodo("summary", {}, "Ver detalle"));
+      ver.appendChild(nodo("pre", {}, detalle));
+      caja.appendChild(ver);
+    }
+    return caja;
+  }
+
   function lista(textos, clase) {
     const ul = nodo("ul", { class: clase });
     for (const t of textos) ul.appendChild(nodo("li", {}, t));
@@ -146,8 +159,7 @@
       caja.appendChild(cancelar);
       hijos.push(caja);
     } else if (vista.tarea && vista.tarea.estado !== "terminada") {
-      hijos.push(nodo("div", { class: vista.tarea.estado === "cancelada" ? "aviso-dxf" : "error-dxf" },
-        D.textoError(vista.tarea)));
+      hijos.push(cajaError(vista.tarea, vista.tarea.estado === "cancelada" ? "aviso-dxf" : "error-dxf"));
     }
     if (e && e.dxf) hijos.push(carpeta(e.dxf));
     panel.replaceChildren(...hijos);
@@ -318,7 +330,8 @@
         if (typeof (t.foto.avance || {}).percent === "number") barra.value = t.foto.avance.percent;
         fila.appendChild(barra);
       }
-      fila.appendChild(nodo("div", { class: "dato" }, textoTrabajo(t)));
+      if (t.foto.estado === "fallida") fila.appendChild(cajaError(t.foto, "dato"));
+      else fila.appendChild(nodo("div", { class: "dato" }, textoTrabajo(t)));
       if (enMarcha(t)) {
         const cancelar = nodo("button", { type: "button" }, "Cancelar");
         cancelar.disabled = !!t.foto.cancelando;

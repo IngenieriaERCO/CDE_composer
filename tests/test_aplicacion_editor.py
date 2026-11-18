@@ -71,7 +71,7 @@ def test_cargar_un_dxf_hasta_la_carpeta(armar, tmp_path):
     carpeta = foto["resultado"]
     assert carpeta["dxf"]["nombre"] == "GUAMO.dxf"
     assert [(b["nombre"], b["escala_sugerida"]) for b in carpeta["bloques"]] == [
-        ("BLOQUE1", 5000), ("Detalle", 50)]
+        ("BLOQUE1", 3000), ("Detalle", 20)]
     e = app.estado()
     assert e["dxf"]["bloques"] == carpeta["bloques"] and e["dxf"]["sesion_activa"] is True
     assert e["tarea"]["id"] == r["tarea"]["id"]
@@ -90,8 +90,8 @@ def test_el_margen_de_componedor_json_va_en_load(armar, tmp_path):
     app.config = ConfigExportador(comando_falso(), tmp_path / "trabajo", margen_mm=20.0)
     foto = esperar_tarea(app, app.elegir_y_cargar()["tarea"]["id"])
     assert foto["resultado"]["margen_mm"] == 20.0
-    # 31 m a 1:50 = 620 mm + 2 × 20 = 660 mm > 639,7: ya no cabe a 1:50.
-    assert foto["resultado"]["bloques"][0]["escala_sugerida"] == 100
+    # 31 m a 1:50 = 620 mm + 2 × 20 = 660 mm > 639,7: ya no cabe a 1:50; a 1:75 sí.
+    assert foto["resultado"]["bloques"][0]["escala_sugerida"] == 75
 
 
 def test_cancelado_en_el_cuadro(armar):

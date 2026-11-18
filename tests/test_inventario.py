@@ -61,7 +61,7 @@ def test_no_cabe_con_margen_sugiere_escala(tmp_path, formato):
     assert e.cabe is False
     # Contenido 690 x 110 (página - 2 x 5 mm); a 1:100 la página sería 355 x 65 mm.
     assert e.notas == ["no cabe en area_dibujo: se pasa 60.3 mm de ancho y 0.0 mm de alto",
-                       "escala sugerida (aproximada): 1:100, página ≈ 355.0 x 65.0 mm"]
+                       "escala sugerida (aproximada): 1:75, página ≈ 470.0 x 83.3 mm"]
 
 
 def test_no_cabe_sin_margen_no_sugiere(tmp_path, formato):
@@ -127,7 +127,7 @@ def test_cli_no_caber_no_cambia_el_codigo(tmp_path, capsys):
              if l.startswith(("bueno", "grande"))}
     assert filas == {"bueno": ["aceptado", "sí"], "grande": ["aceptado", "no"]}
     assert "Notas:\n  grande:\n    - no cabe en area_dibujo: se pasa 60.3 mm" in out
-    assert "escala sugerida (aproximada): 1:100" in out
+    assert "escala sugerida (aproximada): 1:75" in out
     assert out.rstrip().endswith("2 detalle(s): 2 aceptado(s), 0 rechazado(s), "
                                  "1 no caben en area_dibujo.")
 

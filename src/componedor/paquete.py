@@ -52,16 +52,19 @@ class Paquete:
 
 
 PREFIJO_TEMPORAL = ".cde-tmp-"  # temporales del trabajador del exportador (contrato §1.1)
+# Y donde el Componedor prepara un paquete nuevo antes de ponerlo en su lugar (exportar_dxf).
+PREFIJOS_TEMPORALES = (PREFIJO_TEMPORAL, ".componedor-nuevo-")
 
 
 def es_temporal(ruta: Path, carpeta: Path) -> bool:
-    """True si `ruta` está dentro de (o es) una carpeta `.cde-tmp-*` bajo `carpeta`, o es un
-    archivo con ese prefijo: el exportador la está usando o quedó de una publicación cortada."""
+    """True si `ruta` está dentro de (o es) una carpeta `.cde-tmp-*` (del exportador) o
+    `.componedor-nuevo-*` (preparación de «Exportar») bajo `carpeta`, o es un archivo con ese
+    prefijo: se está usando o quedó de una publicación cortada."""
     try:
         partes = Path(ruta).relative_to(carpeta).parts
     except ValueError:
         partes = (Path(ruta).name,)
-    return any(p.startswith(PREFIJO_TEMPORAL) for p in partes)
+    return any(p.startswith(PREFIJOS_TEMPORALES) for p in partes)
 
 
 def localizar_paquetes(carpeta: Path | str, recursivo: bool = False) -> list[Paquete]:
@@ -115,7 +118,7 @@ def paquete_de_manifiesto(ruta_manifiesto: Path | str) -> Paquete:
 
 def _paquetes_de_una_carpeta(carpeta: Path) -> tuple[list[Paquete], list[Path]]:
     archivos = {p.name: p for p in carpeta.iterdir()
-                if p.is_file() and not p.name.startswith(PREFIJO_TEMPORAL)}
+                if p.is_file() and not p.name.startswith(PREFIJOS_TEMPORALES)}
     usados: set[str] = set()  # PDF que ya pertenecen a algún paquete
     paquetes = []
 

@@ -5,6 +5,10 @@ Exportador Vectorial, sin abrir AutoCAD.
 
 ## Instalación (Windows, PowerShell)
 
+Para instalar todo en otro PC (este repositorio, el Exportador `CDE_Extractor`, los archivos de
+ERCO que no están en git y cómo conectarlos), siga
+[docs/instalacion_y_uso.md](docs/instalacion_y_uso.md). En resumen, para el Componedor:
+
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1

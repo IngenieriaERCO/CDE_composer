@@ -334,10 +334,18 @@ los sólidos 3D). Es una imagen solo para ubicar; el PDF final es vector.
   completa dentro del área de dibujo.
 - **Cambiar la escala** (el **centro no se mueve**; solo cambia el tamaño de la caja y de la
   imagen, sin pedir otra vista previa):
-  - el selector **Escala** de Propiedades (las 12 estándar, la sugerida marcada) y el botón
-    **Escala sugerida**;
-  - las teclas **+** (dibujo más grande: de 1:100 a 1:50) y **−** (más chico), también las del
-    teclado numérico. No actúan si el foco está en un cuadro de texto o en una lista;
+  - el selector **Escala** de Propiedades, con las escalas normalizadas (1:5, 1:10, 1:20, 1:25,
+    1:50, 1:75, 1:100, 1:200, 1:250, 1:500, 1:750, 1:1000, 1:1500, 1:2000, 1:2500, 1:3000,
+    1:4000, 1:5000, 1:7500 y 1:10000; la sugerida marcada) y el botón **Escala sugerida**. La
+    sugerida es la más grande de la lista con la que la página cabe;
+  - **escribirla a mano** en «o escriba»: `1:3500` o `3500`, entero de 1 a 100000. Si no es
+    normalizada se permite, con el aviso «escala no normalizada»; se guarda tal cual en el
+    plano.json y la usan el nombre del paquete (`…_1-3500`), la caché y el rótulo;
+  - **Ajustar a la hoja**: la escala exacta más grande con la que la página cabe, aunque no
+    sea normalizada (BLOQUE1 de GUAMO: 1:2507). Si la caja quedaría afuera, se acomoda dentro;
+  - las teclas **+** (dibujo más grande: de 1:100 a 1:75) y **−** (más chico), también las del
+    teclado numérico; desde una escala escrita pasan a la anterior o siguiente de la lista. No
+    actúan si el foco está en un cuadro de texto o en una lista;
   - el **tirador** (cuadrito blanco en la esquina superior derecha del bloque seleccionado):
     al arrastrarlo, la escala salta a la estándar cuya esquina queda más cerca del puntero.
 - **Si no cabe** (o se sale del área): borde rojo y «no cabe: sobran X × Y mm; sugerida 1:N» en
@@ -370,7 +378,11 @@ en la hoja.
 - Si el paquete ya estaba publicado (mismo bloque, escala, margen y versión del DXF), se usa tal
   cual: «ya estaba publicado».
 - Si en su lugar había uno viejo (otra versión del DXF), se **mueve** a `_para_borrar/` (nunca se
-  borra) y se dice.
+  borra) y se dice, pero **solo cuando el nuevo ya se publicó y pasó la verificación**. Si se
+  cancela o falla, el viejo queda donde estaba.
+- Si el exportador falla, el editor dice qué pasó con un mensaje claro (por ejemplo «No se pudo
+  leer el DXF: el exportador encontró un objeto que no entiende») y **Ver detalle** despliega
+  el texto técnico y la ruta del registro (`data\cache_exportador\trabajador.log`).
 - Si el DXF cambió en el disco, no se exporta: **Volver a cargar** primero.
 
 ## 3. Qué se ve en la hoja

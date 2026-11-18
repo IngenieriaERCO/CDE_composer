@@ -33,6 +33,7 @@ from componedor.datos_rotulo_editor import CARPETA_SIMBOLOS
 ARCHIVO_HTML = "editor.html"
 MARCADORES = {
     "/*@@CSS@@*/": "editor.css",
+    "/*@@JS_SIN_AUTORRELLENO@@*/": "editor_sin_autorrelleno.js",  # el primero: vigila los cuadros
     "/*@@JS_BLOQUES@@*/": "editor_bloques.js",  # antes de la lógica: la usa (plano versión 3)
     "/*@@JS_LOGICA@@*/": "editor_logica.js",
     "/*@@JS_ROTULO@@*/": "editor_rotulo.js",

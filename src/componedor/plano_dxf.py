@@ -32,7 +32,8 @@ CLAVES_PENDIENTE = {"id", "origen", "centro_mm", "etiqueta_escala"}
 CLAVES_ORIGEN = {"dxf", "bloque", "handle", "ocurrencia", "escala", "tamano_m", "caja_exacta"}
 RE_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 RE_HANDLE = re.compile(r"^[0-9A-F]+$")
-RE_ESCALA = re.compile(r"^1:(\d+(?:\.\d+)?)$")
+RE_ESCALA = re.compile(r"^1:(\d+)$")
+ESCALA_MAXIMA = 100000  # igual que inventario.ESCALA_MAXIMA
 
 
 @dataclass(frozen=True)
@@ -116,10 +117,11 @@ def leer_lista_dxf(valor, carpeta: Path, errores: list[str]) -> dict[str, DxfPla
 
 
 def leer_escala(texto) -> float | None:
-    """"1:2000" → 2000.0; None si no es «1:N» con N > 0."""
+    """"1:2000" → 2000.0; None si no es «1:N» con N entero de 1 a 100000 (puede no ser
+    normalizada: el usuario la escribió a mano)."""
     m = RE_ESCALA.match(texto) if isinstance(texto, str) else None
     n = float(m.group(1)) if m else 0.0
-    return n if n > 0 else None
+    return n if 1 <= n <= ESCALA_MAXIMA else None
 
 
 def leer_pendiente(item: dict, donde: str, dxfs: dict[str, DxfPlano],
@@ -169,8 +171,8 @@ def _origen(origen: dict, donde: str, dxfs: dict[str, DxfPlano], errores: list[s
         errores.append(f"{donde}.ocurrencia: se esperaba un entero ≥ 1")
     escala = leer_escala(origen.get("escala"))
     if escala is None:
-        errores.append(f"{donde}.escala: se esperaba «1:N» (p. ej. \"1:50\"); tiene "
-                       f"{origen.get('escala')!r}")
+        errores.append(f"{donde}.escala: se esperaba «1:N» con N entero de 1 a 100000 (p. ej. "
+                       f"\"1:50\"); tiene {origen.get('escala')!r}")
     tamano = origen.get("tamano_m")
     if not (isinstance(tamano, list) and len(tamano) == 2
             and all(_numero(v) and v >= 0 for v in tamano)):

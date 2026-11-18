@@ -33,8 +33,11 @@
   "use strict";
 
   const EPS_MM = 1e-6; // igual que formato.EPS_MM
-  // Igual que inventario.ESCALAS_ESTANDAR (una prueba lo compara).
-  const ESCALAS = [50, 100, 200, 250, 500, 750, 1000, 1500, 2000, 2500, 5000, 10000];
+  // Escalas normalizadas de ingeniería. Igual que inventario.ESCALAS_ESTANDAR (una prueba lo
+  // compara). Una escala escrita a mano puede no estar aquí: entero de 1 a ESCALA_MAXIMA.
+  const ESCALAS = [5, 10, 20, 25, 50, 75, 100, 200, 250, 500, 750, 1000, 1500, 2000, 2500,
+    3000, 4000, 5000, 7500, 10000];
+  const ESCALA_MAXIMA = 100000; // igual que inventario.ESCALA_MAXIMA
 
   // ---------------------------------------------------------------------------------------
   // Tamaño, escala y si cabe (mismas reglas que Python).
@@ -82,11 +85,42 @@
 
   const textoEscala = (n) => "1:" + (Number.isInteger(n) ? n : String(n));
 
-  /** "1:2000" → 2000; null si no es «1:N» con N > 0 (igual que plano_dxf.leer_escala). */
+  /** "1:2000" → 2000; null si no es «1:N» con N entero de 1 a 100000 (igual que
+   *  plano_dxf.leer_escala). */
   function leerEscala(texto) {
-    const m = typeof texto === "string" ? /^1:(\d+(?:\.\d+)?)$/.exec(texto) : null;
-    const n = m ? parseFloat(m[1]) : 0;
-    return n > 0 ? n : null;
+    const m = typeof texto === "string" ? /^1:(\d+)$/.exec(texto) : null;
+    const n = m ? parseInt(m[1], 10) : 0;
+    return n >= 1 && n <= ESCALA_MAXIMA ? n : null;
+  }
+
+  const esNormalizada = (n, escalas) => (escalas || ESCALAS).includes(n);
+
+  /**
+   * Lo que el usuario escribe en «Escala»: «1:3500», «3500» o «1 : 3500». {n, aviso} o {error}.
+   * N entero de 1 a 100000; si no es normalizada, se permite con el aviso «escala no normalizada».
+   */
+  function leerEscalaEscrita(texto, escalas) {
+    const limpio = String(texto === undefined || texto === null ? "" : texto).replace(/\s+/g, "");
+    const m = /^(?:1:)?(\d+)$/.exec(limpio);
+    const n = m ? parseInt(m[1], 10) : NaN;
+    if (!(n >= 1 && n <= ESCALA_MAXIMA)) {
+      return { error: "Escala no válida: escriba 1:N o N, con N entero de 1 a " + ESCALA_MAXIMA +
+        " (por ejemplo 1:3500)." };
+    }
+    return { n, aviso: esNormalizada(n, escalas) ? null : "escala no normalizada" };
+  }
+
+  /**
+   * «Ajustar a la hoja»: la escala EXACTA más grande (N entero más chico) con la que la página
+   * cabe en la zona, aunque no sea normalizada. null si ni a 1:100000 cabe o el margen no deja
+   * lugar.
+   */
+  function escalaAjustada(tamanoM, margen, zona) {
+    const libre = [zona[2] - zona[0] - 2 * margen, zona[3] - zona[1] - 2 * margen];
+    if (libre[0] <= 0 || libre[1] <= 0) return null;
+    let n = Math.max(1, Math.ceil(Math.max(tamanoM[0] * 1000 / libre[0], tamanoM[1] * 1000 / libre[1]) - 1e-9));
+    while (n <= ESCALA_MAXIMA && !cabePorTamano(paginaMm(tamanoM, n, margen), zona)) n++; // por redondeo
+    return n <= ESCALA_MAXIMA ? n : null;
   }
 
   // ---------------------------------------------------------------------------------------
@@ -371,7 +405,7 @@
    *  (el servidor da `desde_centro_mm`, que vale para cualquier copia a esa escala). */
   const posicionExportada = (centro, desdeCentro) => [centro[0] - desdeCentro[0], centro[1] - desdeCentro[1]];
 
-  return { EPS_MM, ESCALAS, pedidosExportar, posicionExportada, paginaMm, excesoDeTamano, escalaSugerida, escalaVecina, textoEscala,
+  return { EPS_MM, ESCALAS, ESCALA_MAXIMA, esNormalizada, leerEscalaEscrita, escalaAjustada, pedidosExportar, posicionExportada, paginaMm, excesoDeTamano, escalaSugerida, escalaVecina, textoEscala,
     leerEscala, rectCentrado, rectDibujo, centroLimitado, centroZona, estadoCaja, escalaPorTirador,
     mmPorUnidadCad, centroCaja, cadAPapel, pxACad, imagenEnPapel, entradaDxf, nombreArchivo,
     leerListaDxf, leerPendiente, asignarIdsDxf, listaDxf, pendienteParaGuardar };

@@ -60,7 +60,8 @@ def test_exportar_un_bloque(armar, tmp_path):
     assert foto["tipo"] == "exportar"
     datos = app.canal.tarea(foto["id"]).datos
     salida = tmp_path / "data" / "input" / "dxf" / "GUAMO_prueba"
-    assert datos == {"session": "s-1", "output_dir": str(salida.resolve()),
+    # El trabajador publica en una carpeta de preparación (el viejo no se toca hasta el final).
+    assert datos == {"session": "s-1", "output_dir": str((salida / ".componedor-nuevo-1").resolve()),
                      "jobs": [{"job": "j1", "ref": "BLOQUE1#1", "scale": "1:5000",
                                "package": "BLOQUE1_1-5000"}],
                      "options": {"solids": "footprint", "omit_unsupported": True,
@@ -79,7 +80,7 @@ def test_exportar_un_bloque(armar, tmp_path):
     assert d["tamano_pagina_mm"] == pytest.approx([201.436, 280.0038])
     assert d["tiene_fondo"] is False and d["miniatura"]["data_url"].startswith("data:image/png;base64,")
     assert sorted(p.name for p in salida.iterdir()) == [
-        "BLOQUE1_1-5000.manifest.json", "BLOQUE1_1-5000.pdf", "BLOQUE1_1-5000.txt"]
+        "BLOQUE1_1-5000.manifest.json", "BLOQUE1_1-5000.pdf", "BLOQUE1_1-5000.txt"]  # sin la preparación
 
 
 def test_avance_de_la_exportacion(armar):
@@ -156,7 +157,10 @@ def test_falla_del_exportador_y_paquete_que_no_pasa_la_verificacion(armar):
     a, b = app.exportar([pedido(carpeta), pedido(carpeta, "Viga", "1A1", 50, (100, 100))])["tareas"]
     fa, fb = esperar(app, a["id"]), esperar(app, b["id"])
     assert fa["estado"] == "fallida" and fa["error"]["codigo"] == "EXPORT_FAILED"
-    assert "entidad no soportada" in fa["error"]["mensaje"]
+    assert fa["error"]["mensaje"] == ("'BLOQUE1': No se pudo exportar el bloque: el exportador no "
+                                      "pudo dibujarlo.")
+    assert fa["error"]["detalle"] == "entidad no soportada"  # para «Ver detalle»
+    assert fa["error"]["registro"].endswith("trabajador.log")
     assert fb["estado"] == "fallida" and fb["error"]["codigo"] == "PAQUETE_NO_VALIDO"
     assert "escala física" in fb["error"]["mensaje"]
 
@@ -290,3 +294,111 @@ def test_el_plano_con_el_paquete_exportado_se_compone(armar, tmp_path):
     (colocado,) = resultado.detalles
     x0, y0, x1, y1 = colocado.ocupado
     assert ((x0 + x1) / 2, (y0 + y1) / 2) == pytest.approx((342.55, 297.0), abs=0.01)
+
+
+def test_escala_escrita_a_mano(armar):
+    """Una escala no normalizada se exporta tal cual: paquete _1-3500, caché por esa escala."""
+    app, _, carpeta = armar()
+    r = esperar(app, app.exportar([pedido(carpeta, escala=3500)])["tareas"][0]["id"])["resultado"]
+    assert r["paquete"] == "BLOQUE1_1-3500" and r["detalle"]["escala"] == 3500.0
+    assert r["detalle"]["tamano_pagina_mm"] == pytest.approx([957.18 / 3.5 + 10, 1350.019 / 3.5 + 10])
+    otra = app.exportar([pedido(carpeta, escala=3500)])["tareas"][0]
+    assert otra["resultado"]["en_cache"] is True
+    for escala in (12.5, 0, 100001, True):
+        with pytest.raises(ErrorAplicacion, match="entero de 1 a 100000"):
+            app.exportar([pedido(carpeta, escala=escala)])
+
+
+def test_error_interno_del_exportador_con_mensaje_claro(armar):
+    """El texto técnico de Python no llega al mensaje: va en «detalle», con el registro."""
+    app, _, carpeta = armar(export_error_interno=["TypeError", "'NoneType' object is not subscriptable"])
+    foto = esperar(app, app.exportar([pedido(carpeta)])["tareas"][0]["id"])
+    e = foto["error"]
+    assert e["codigo"] == "INTERNAL"
+    assert e["mensaje"] == "No se pudo exportar el bloque: el exportador encontró un objeto que no entiende."
+    assert "Repita" not in e["consejo"] and "TypeError" in e["detalle"]
+    assert e["registro"].endswith("trabajador.log")
+
+
+def test_error_interno_al_cargar(tmp_path):
+    ruta = dxf_falso(tmp_path / "a.dxf", error_interno=["AttributeError", "'Insert' object has no attribute 'x'"])
+    app = AplicacionEditor(tmp_path / "editor.html", ZONA_A1,
+                           ConfigExportador(comando_falso(), tmp_path / "trabajo"),
+                           elegir=lambda inicial: ruta)
+    try:
+        e = esperar(app, app.elegir_y_cargar()["tarea"]["id"])["error"]
+    finally:
+        app.cerrar()
+    assert e["mensaje"] == "No se pudo leer el DXF: el exportador encontró un objeto que no entiende."
+    assert e["detalle"] == ("Error inesperado del exportador (AttributeError): 'Insert' object has "
+                            "no attribute 'x'")
+
+
+# --- tarea 4: el paquete viejo solo se mueve cuando el nuevo está publicado y verificado -----
+
+def viejo_de_otra_version(armar, tmp_path, **spec):
+    """Exporta BLOQUE1, cambia el DXF (otra versión) y lo vuelve a cargar: el paquete publicado
+    queda «viejo». Devuelve (app, carpeta nueva, carpeta de salida, bytes del PDF viejo)."""
+    app, ruta, carpeta = armar(**spec)
+    esperar(app, app.exportar([pedido(carpeta)])["tareas"][0]["id"])
+    salida = tmp_path / "data" / "input" / "dxf" / "GUAMO_prueba"
+    viejo = (salida / "BLOQUE1_1-5000.pdf").read_bytes()
+    ruta.write_text(ruta.read_text(encoding="utf-8") + " ", encoding="utf-8")
+    nueva = esperar(app, app.recargar()["tarea"]["id"])["resultado"]
+    return app, nueva, salida, viejo
+
+
+def sin_preparacion(salida):
+    return [p.name for p in salida.iterdir() if p.name.startswith(".componedor-nuevo-")] == []
+
+
+def test_cancelado_deja_el_viejo_donde_estaba(armar, tmp_path):
+    app, nueva, salida, viejo = viejo_de_otra_version(armar, tmp_path, export_demora_s=0.3)
+    (foto,) = app.exportar([pedido(nueva)])["tareas"]
+    while app.tarea(foto["id"])["estado"] != "en_curso":
+        time.sleep(0.02)
+    app.cancelar(foto["id"])
+    assert esperar(app, foto["id"])["estado"] == "cancelada"
+    assert (salida / "BLOQUE1_1-5000.pdf").read_bytes() == viejo  # en su lugar, intacto
+    assert not (tmp_path / "_para_borrar").exists() and sin_preparacion(salida)
+
+
+def test_fallido_deja_el_viejo_donde_estaba(armar, tmp_path):
+    app, nueva, salida, viejo = viejo_de_otra_version(armar, tmp_path)
+    # El trabajador falla en el siguiente export (error interno): el viejo no se toca.
+    ruta = next((tmp_path / "obras").glob("*.dxf"))
+    import json as _json
+    spec = _json.loads(ruta.read_text(encoding="utf-8"))
+    spec["export_error_interno"] = ["TypeError", "x"]
+    ruta.write_text(_json.dumps(spec), encoding="utf-8")
+    nueva = esperar(app, app.recargar()["tarea"]["id"])["resultado"]
+    foto = esperar(app, app.exportar([pedido(nueva)])["tareas"][0]["id"])
+    assert foto["estado"] == "fallida"
+    assert (salida / "BLOQUE1_1-5000.pdf").read_bytes() == viejo
+    assert not (tmp_path / "_para_borrar").exists() and sin_preparacion(salida)
+
+
+def test_paquete_nuevo_que_no_pasa_la_verificacion(armar, tmp_path):
+    """Publicado pero no válido: el NUEVO va a _para_borrar y el viejo queda en su lugar."""
+    app, nueva, salida, viejo = viejo_de_otra_version(armar, tmp_path)
+    ruta = next((tmp_path / "obras").glob("*.dxf"))
+    import json as _json
+    spec = _json.loads(ruta.read_text(encoding="utf-8"))
+    spec["blocks"][0]["escala_no_garantizada"] = True
+    ruta.write_text(_json.dumps(spec), encoding="utf-8")
+    nueva = esperar(app, app.recargar()["tarea"]["id"])["resultado"]
+    foto = esperar(app, app.exportar([pedido(nueva)])["tareas"][0]["id"])
+    assert foto["estado"] == "fallida" and foto["error"]["codigo"] == "PAQUETE_NO_VALIDO"
+    assert (salida / "BLOQUE1_1-5000.pdf").read_bytes() == viejo
+    app.tarea(foto["id"])  # el editor la consulta: se limpia la preparación
+    (nuevo_rechazado,) = (tmp_path / "_para_borrar").rglob("BLOQUE1_1-5000.pdf")
+    assert nuevo_rechazado.read_bytes() != viejo and sin_preparacion(salida)
+
+
+def test_publicado_y_verificado_recien_ahi_mueve_el_viejo(armar, tmp_path):
+    app, nueva, salida, viejo = viejo_de_otra_version(armar, tmp_path)
+    foto = esperar(app, app.exportar([pedido(nueva)])["tareas"][0]["id"])
+    assert foto["estado"] == "terminada" and len(foto["resultado"]["movidos"]) == 3
+    (movido,) = (tmp_path / "_para_borrar").rglob("BLOQUE1_1-5000.pdf")
+    assert movido.read_bytes() == viejo
+    assert (salida / "BLOQUE1_1-5000.pdf").read_bytes() != viejo and sin_preparacion(salida)

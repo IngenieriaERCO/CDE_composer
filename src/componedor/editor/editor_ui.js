@@ -253,6 +253,12 @@
           "' se sale del área de dibujo: muévalo (cabe a " + B.textoEscala(c.escala) + ")." });
       }
     }
+    for (const c of bloques) {
+      if (!B.esNormalizada(c.escala, escalasDe(c))) {
+        lista.push({ nivel: "aviso", ids: [c.id], texto: "'" + c.id + "': escala no normalizada (" +
+          B.textoEscala(c.escala) + ")." });
+      }
+    }
     if (bloques.length) {
       lista.push({ nivel: "aviso", ids: [], texto: bloques.length + " bloque(s) del DXF sin exportar: el plano " +
         "se guarda como versión 3 y componer pedirá exportarlos primero." });
@@ -558,16 +564,27 @@
     const lista = escalasDe(c).slice();
     if (!lista.includes(c.escala)) lista.push(c.escala);
     for (const n of lista.sort((x, y) => x - y)) {
-      const opcion = nodo("option", { value: String(n) }, B.textoEscala(n) + (n === sugerida ? " (sugerida)" : ""));
+      const opcion = nodo("option", { value: String(n) }, B.textoEscala(n) + (n === sugerida ? " (sugerida)"
+        : B.esNormalizada(n, escalasDe(c)) ? "" : " (no normalizada)"));
       if (n === c.escala) opcion.selected = true;
       selector.appendChild(opcion);
     }
     selector.addEventListener("change", () => cambiarEscala(c, parseFloat(selector.value)));
     fila.appendChild(selector);
-    filas.push(fila,
+    // Escala escrita a mano: «1:3500» o «3500» (entero de 1 a 100000; puede no ser normalizada).
+    const filaEscrita = nodo("div", { class: "fila" });
+    filaEscrita.appendChild(nodo("label", { for: "escala-escrita" }, "o escriba"));
+    const escrita = nodo("input", { type: "text", id: "escala-escrita", inputmode: "numeric",
+      placeholder: "1:3500", title: "Escriba 1:N o N (entero de 1 a 100000) y pulse Enter" });
+    escrita.value = B.textoEscala(c.escala);
+    escrita.addEventListener("change", () => escribirEscala(c, escrita.value));
+    filaEscrita.appendChild(escrita);
+    filas.push(fila, filaEscrita,
       campoCentro("Centro X (mm)", c.centro[0], 0), campoCentro("Centro Y (mm)", c.centro[1], 1),
       nodo("div", { class: "medida" }, "Página a " + B.textoEscala(c.escala) + ": " + (b.caja_exacta ? "" : "≤ ") +
         mm(pagina[0]) + " × " + mm(pagina[1]) + " mm (centro fijo al cambiar la escala)."),
+      ...(B.esNormalizada(c.escala, escalasDe(c)) ? [] : [nodo("div", { class: "medida aviso-escala" },
+        "Escala no normalizada (" + B.textoEscala(c.escala) + "): se permite; el paquete y el rótulo la usan tal cual.")]),
       nodo("div", { class: e.cabe && e.dentro ? "medida" : "medida no-cabe" }, !e.cabe
         ? "NO CABE: sobran " + mm1(e.exceso[0]) + " × " + mm1(e.exceso[1]) + " mm" +
           (sugerida ? "; sugerida " + B.textoEscala(sugerida) : "") + ". Se puede guardar, pero componer lo rechaza."
@@ -581,6 +598,7 @@
     const acciones = [
       ["Centrar", () => moverCentro(c, B.centroZona(ZONA))],
       ["Escala sugerida", () => sugerida && cambiarEscala(c, sugerida)],
+      ["Ajustar a la hoja", () => ajustarALaHoja(c)],
       ["Traer al frente", () => reordenar(c, +Infinity)],
       ["Enviar atrás", () => reordenar(c, -Infinity)],
       ["Quitar", () => quitar(c)],
@@ -849,6 +867,32 @@
     actualizar();
   }
 
+  /** La escala que el usuario escribió («1:3500» o «3500»). */
+  function escribirEscala(c, texto) {
+    const r = B.leerEscalaEscrita(texto, escalasDe(c));
+    if (r.error) {
+      mensaje(r.error, "error");
+      pintarPropiedades();
+      return;
+    }
+    if (r.aviso) mensaje(B.textoEscala(r.n) + ": " + r.aviso + " (se permite).", "aviso");
+    cambiarEscala(c, r.n);
+  }
+
+  /** «Ajustar a la hoja»: la escala exacta más grande con la que cabe (puede no ser normalizada). */
+  function ajustarALaHoja(c) {
+    const n = B.escalaAjustada(c.bloque.tamano_m, c.bloque.dxf.margen_mm, ZONA);
+    if (!n) {
+      mensaje("'" + c.id + "' no cabe en el área de dibujo ni a 1:" + B.ESCALA_MAXIMA + ".", "error");
+      return;
+    }
+    if (!B.esNormalizada(n, escalasDe(c))) mensaje(B.textoEscala(n) + ": la más grande que cabe (escala no normalizada).", "aviso");
+    // Con el centro fijo la caja puede quedar afuera: se acomoda dentro (es una sola acción).
+    c.escala = n;
+    moverCentro(c, c.centro);
+    marcarCambios();
+  }
+
   /** Cambia la escala de un bloque: el CENTRO no se mueve (aunque la caja quede afuera). */
   function cambiarEscala(c, n) {
     if (!esBloque(c) || !(n > 0) || n === c.escala) {
@@ -1058,7 +1102,8 @@
     if (movimientos[ev.key]) {
       ev.preventDefault();
       const [dx, dy] = movimientos[ev.key]; // en papel, Y hacia arriba: flecha arriba = +Y
-      mover(c, [c.pos[0] + dx, c.pos[1] + dy]);
+      if (esBloque(c)) moverCentro(c, [c.centro[0] + dx, c.centro[1] + dy]);
+      else mover(c, [c.pos[0] + dx, c.pos[1] + dy]);
     } else if (ev.key === "Delete") {
       quitar(c);
     }
@@ -1294,6 +1339,8 @@
   // Para la verificación automática del reporte (no la usa la interfaz).
   window.EditorPrueba = { estado, agregar: (id) => agregar(CATALOGO.find((d) => d.id === id)),
     cambiarEscala: (id, n) => cambiarEscala(estado.colocaciones.find((c) => c.id === id), n),
+    escribirEscala: (id, texto) => escribirEscala(estado.colocaciones.find((c) => c.id === id), texto),
+    ajustarALaHoja: (id) => ajustarALaHoja(estado.colocaciones.find((c) => c.id === id)),
     moverCentro: (id, centro) => moverCentro(estado.colocaciones.find((c) => c.id === id), centro),
     seleccionar, caja: (id) => paginaDe(estado.colocaciones.find((c) => c.id === id)),
     previa: (id) => previaDe(estado.colocaciones.find((c) => c.id === id)),
