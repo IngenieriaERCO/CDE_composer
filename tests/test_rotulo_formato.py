@@ -30,7 +30,7 @@ def test_a1_erco_trae_los_campos_medidos_del_rotulo_v2():
     r = formato.rotulo
     assert r.version == 1 and r.relleno_mm == 0.6 and r.interlineado == 1.6
     assert r.fuente == Path("C:/Windows/Fonts/arial.ttf")
-    assert set(r.campos) == {"localizacion_escala", "este", "norte", "revisiones", "titulo",
+    assert set(r.campos) == {"localizacion_escala", "localizacion_imagen", "este", "norte", "revisiones", "titulo",
                              "firmas", "hoja", "de", "escala", "no_plano", "rev", "notas",
                              "convenciones"}
     # La franja del logo ya no lleva DISEÑADOR ni REVISOR: planos viejos los traen y se ignoran.
@@ -144,7 +144,7 @@ def test_error_del_rotulo_sale_como_formato_invalido():
     (lambda r: r.update(interlineado=0.5), "rotulo.interlineado: se esperaba un número mayor o igual a 1"),
     (lambda r: r.update(campos={}), "rotulo.campos: se esperaba un objeto con al menos un campo"),
     (lambda r: r["campos"]["titulo"].update(tipo="parrafo"),
-     "rotulo.campos.titulo.tipo: se esperaba \"texto\", \"tabla\", \"notas\" o \"convenciones\""),
+     "rotulo.campos.titulo.tipo: se esperaba \"texto\", \"tabla\", \"notas\", \"convenciones\" o \"imagen\""),
     (lambda r: r["campos"]["titulo"].update(colr="x"), "rotulo.campos.titulo.colr: campo no reconocido"),
     (lambda r: r["campos"]["titulo"].update(alinear="justificado"),
      "rotulo.campos.titulo.alinear: se esperaba uno de izq, centro, der"),

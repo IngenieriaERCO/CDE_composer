@@ -37,7 +37,11 @@ ortofoto, la foto cubre toda el área de dibujo (mismo mapeo CAD → papel de es
 detalles sin ortofoto llevan un fondo blanco del tamaño de su página. Con «cuadricula», la
 cuadrícula de coordenadas (cuadricula.py) va sobre la foto y debajo de los detalles. La rosa
 siempre queda encima de la foto (se vuelve a dibujar si la tapa). Orden: plantilla → ortofoto →
-cuadrícula → rosa → fondos blancos → detalles → textos.
+cuadrícula → rosa → fondos blancos → detalles → imagen de localización → textos.
+
+Imagen de localización (localizacion.py): un campo "imagen" del rótulo; el original si existe y
+coincide (y deja la copia `<plano>_localizacion.<ext>`), si no la copia (con aviso); ajustada al
+recuadro sin deformar, ~300 ppp, debajo de los textos del rótulo y verificada en el PDF.
 """
 
 import os
@@ -77,6 +81,11 @@ from componedor.formato import EPS_MM, ElementoPlantilla, Formato, RectMM, carga
 from componedor.firmas import FirmaPedida, insertar_firmas, verificar_firmas
 from componedor.fuente import Fuente, FuenteInvalida, cargar_fuente
 from componedor.importador import PaqueteAceptado, PaqueteRechazado, importar_paquete
+from componedor.localizacion import ImagenLocalizacion, LocalizacionInvalida
+from componedor.localizacion import insertar as insertar_localizacion
+from componedor.localizacion import leer_valor as leer_localizacion
+from componedor.localizacion import preparar as preparar_localizacion
+from componedor.localizacion import verificar as verificar_localizacion
 from componedor.maquetacion import TextoMaquetado
 from componedor.ortofoto_copia import InformeCopia, carpeta_copia, escribir_copia
 from componedor.ortofoto_fuente import (
@@ -150,6 +159,7 @@ class ResultadoComposicion:
     ortofoto: InformeOrtofoto | None = None  # plano versión 4
     copia: InformeCopia | None = None  # la copia reducida (si se compuso con el original)
     cuadriculas: list[InformeCuadricula] = field(default_factory=list)  # versión 5
+    localizacion: ImagenLocalizacion | None = None  # la imagen de localización del rótulo
     extendida: bool = False  # versión 5: la ortofoto cubre toda el área de dibujo
 
 
@@ -211,6 +221,9 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
         advertencias = _traslapes(colocados) + _sobre_elementos(colocados, elementos)
         textos, valores, avisos = _textos(plano, formato, colocados, elementos)
         advertencias += avisos
+        localizacion = _localizacion(plano, formato)
+        if localizacion is not None:
+            advertencias += localizacion.avisos
         ortofoto = None
         if plano.ortofoto is not None and not usan_ortofoto:
             advertencias.append(f"El plano tiene la ortofoto «{plano.ortofoto.archivo.name}», "
@@ -222,7 +235,7 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
                                        config_ortofoto or ConfigOrtofoto(), destino_rosa, textos,
                                        advertencias)
         resultado = _componer_y_verificar(formato, colocados, salida, guias, destino_rosa,
-                                          textos, ortofoto)
+                                          textos, ortofoto, localizacion)
     finally:
         for doc in documentos.values():
             doc.close()
@@ -244,6 +257,30 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
     resultado.simbolos = textos.simbolos
     resultado.firmas = textos.firmas
     return resultado
+
+
+def _localizacion(plano: Plano, formato: Formato) -> ImagenLocalizacion | None:
+    """La imagen de localización del rótulo (campo de tipo "imagen"), si el plano la tiene."""
+    from componedor.rotulo_formato import CampoImagen
+
+    if formato.rotulo is None or not isinstance(plano.rotulo, dict):
+        return None
+    for campo in formato.rotulo.campos.values():
+        if not isinstance(campo, CampoImagen) or campo.nombre not in plano.rotulo:
+            continue
+        problemas: list[str] = []
+        valor = leer_localizacion(plano.rotulo[campo.nombre], f"rotulo.{campo.nombre}",
+                                  problemas)
+        if valor is None:
+            raise PlanoNoComponible("No se compone el plano:\n"
+                                    + "\n".join(f"- {p}" for p in problemas))
+        escala = plano.rotulo.get(campo.campo_escala) if campo.campo_escala else "-"
+        vacia = escala is None or (isinstance(escala, str) and not escala.strip())
+        try:
+            return preparar_localizacion(campo, valor, plano.ruta, vacia)
+        except LocalizacionInvalida as e:
+            raise PlanoNoComponible(f"No se compone el plano: {e}") from None
+    return None
 
 
 def _detalle_ortofoto(aceptado: PaqueteAceptado, colocado: DetalleColocado,
@@ -453,7 +490,8 @@ def _textos(plano: Plano, formato: Formato, colocados: list[tuple],
 def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path,
                           guias: bool, destino_rosa: RectMM | None | str = MANTENER,
                           textos: _Textos | None = None,
-                          ortofoto: _Ortofoto | None = None) -> ResultadoComposicion:
+                          ortofoto: _Ortofoto | None = None,
+                          localizacion: ImagenLocalizacion | None = None) -> ResultadoComposicion:
     textos = textos or _Textos()
     informe_orto = None
     cuadriculas: list[InformeCuadricula] = []
@@ -497,6 +535,8 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
                 trazos_por_detalle.append(len(doc_detalle[0].get_drawings()))
                 insertar_pagina(base, formato, doc_detalle, 0, colocado.ocupado[:2])
             todos = textos.rotulo + textos.etiquetas
+            if localizacion is not None:  # debajo de los textos del rótulo
+                insertar_localizacion(base, formato.alto_mm, localizacion)
             escribir_textos(base, todos, textos.fuente, formato.alto_mm)
             etiquetas_cuadricula = "".join(e.texto for c in cuadriculas for e in c.etiquetas)
             if etiquetas_cuadricula and textos.fuente is not None:
@@ -513,7 +553,7 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
         problemas = _verificar(temporal, formato, informe, [c for *_, c in colocados],
                                trazos_base, trazos_por_detalle, imagenes_base, todos,
                                textos.notas, textos.simbolos, textos.firmas, informe_orto,
-                               cuadriculas)
+                               cuadriculas, localizacion)
         if problemas:
             raise PlanoNoComponible(
                 "La verificación del PDF compuesto falló; no se generó el plano:\n"
@@ -523,7 +563,8 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
         if temporal.exists():
             temporal.unlink()  # cualquier falla: no queda un PDF a medias
     return ResultadoComposicion(salida, informe, [c for *_, c in colocados], rosa=informe_rosa,
-                                ortofoto=informe_orto, cuadriculas=cuadriculas)
+                                ortofoto=informe_orto, cuadriculas=cuadriculas,
+                                localizacion=localizacion)
 
 
 def _cuadricula_rosa_y_fondos(base: pymupdf.Page, formato: Formato, o: "_Ortofoto",
@@ -570,7 +611,8 @@ def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
                simbolos: list[ColocacionSimbolo] = (),
                firmas: list[FirmaPedida] = (),
                ortofoto: InformeOrtofoto | None = None,
-               cuadriculas: list[InformeCuadricula] = ()) -> list[str]:
+               cuadriculas: list[InformeCuadricula] = (),
+               localizacion: ImagenLocalizacion | None = None) -> list[str]:
     """Mide el PDF guardado. Devuelve la lista de problemas (vacía si todo está bien)."""
     with pymupdf.open(ruta) as final:
         page = final[0]
@@ -581,6 +623,7 @@ def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
         textos_mal += verificar_firmas(page, list(firmas), formato.alto_mm)
         textos_mal += verificar_ortofoto(page, ortofoto, formato.alto_mm)
         textos_mal += verificar_cuadricula(page, list(cuadriculas), formato.alto_mm)
+        textos_mal += verificar_localizacion(page, localizacion, formato.alto_mm)
         trazos = page.get_drawings()
         esperados = trazos_base + sum(trazos_por_detalle)
         if len(trazos) != esperados:
@@ -620,10 +663,12 @@ def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
         # mosaico de la ortofoto: los detalles nunca traen imágenes nuevas (no se rasteriza).
         imagenes = len(page.get_image_info())
         mosaicos = len(ortofoto.mosaicos) if ortofoto is not None else 0
-        esperadas = imagenes_base + len(firmas) + mosaicos
+        esperadas = imagenes_base + len(firmas) + mosaicos + (1 if localizacion else 0)
         if imagenes != esperadas:
             firmas_txt = f" + {len(firmas)} firma(s)" if firmas else ""
             orto_txt = f" + {mosaicos} mosaico(s) de la ortofoto" if mosaicos else ""
+            if localizacion:
+                orto_txt += " + 1 imagen de localización"
             problemas.append(f"la hoja tiene {imagenes} imágenes y debía tener {esperadas} (hoja "
                              f"base {imagenes_base}{firmas_txt}{orto_txt}): no se debe "
                              f"rasterizar ningún detalle")

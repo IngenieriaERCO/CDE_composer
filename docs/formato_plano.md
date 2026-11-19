@@ -134,7 +134,8 @@ falta queda vacío, salvo su valor por defecto. `null` o `""` dejan la celda vac
 
 | Campo del plano | Tipo | Celda (A1 ERCO) |
 |---|---|---|
-| `localizacion_escala` | texto | ESC del recuadro de localización. Por defecto **`DEFINIR`**. |
+| `localizacion_escala` | texto | ESC del recuadro de localización. Por defecto **`DEFINIR`**. Se escribe a mano. |
+| `localizacion_imagen` | objeto | La imagen de localización (PNG o JPG) en su recuadro. Ver «Imagen de localización». |
 | `este`, `norte` | texto | Coordenadas de la localización. |
 | `titulo` | texto o lista de hasta 3 líneas | Título del plano (2,5 mm; se puede reducir hasta 2,0 mm). |
 | ~~`disenador`, `revisor`~~ | — | **Retirados** (plantilla v3: la franja del logo solo lleva el logo). Un plano viejo que los traiga se compone igual: se ignoran con un solo aviso. |
@@ -157,6 +158,40 @@ son angostas (unos 10 mm útiles): use iniciales.
 `firma` es texto opcional (por defecto vacía) **o una imagen**: `{"imagen": "<persona>"}` (ver
 «Firma con imagen»). La fila REVISÓ admite 2 líneas en cada celda
 (`"nombre": ["ANDRÉS GÓMEZ", "(DIRECTOR TÉCNICO)"]`).
+
+### Imagen de localización (`rotulo.localizacion_imagen`)
+
+Un PNG o JPG (exportado de QGIS, por ejemplo) en el recuadro LOCALIZACIÓN del rótulo. La elige
+«Cargar imagen de localización» del editor
+([editor.md](editor.md#2h-imagen-de-localización-con-servidor-local)). El plano guarda solo la
+ruta, el tamaño y la fecha del archivo; **la imagen nunca va dentro del plano.json**:
+
+```json
+"rotulo": {
+  "localizacion_imagen": {"archivo": "../qgis/localizacion.png", "bytes": 482113,
+                          "modificado": "2026-11-19T15:02:11Z"},
+  "localizacion_escala": "1:25.000"
+}
+```
+
+- `archivo`: relativo a la carpeta del plano (`.png`, `.jpg` o `.jpeg`). `bytes` y `modificado`
+  son opcionales, pero sin ellos no se puede saber si el archivo cambió.
+- **Recuadro** (A1 ERCO): X 673,4 a 827,3, Y 455,8 a 570,2 mm, entre el título «LOCALIZACIÓN» y
+  la fila de «ESC:»; no tapa la escala ni las coordenadas. Lo define el formato (campo de tipo
+  `"imagen"`).
+- **Ajuste**: entera, centrada y **sin deformar**; lo que sobra queda en blanco.
+- **Resolución**: un PNG con más de ~300 ppp en el papel se reduce a 300 ppp (sin pérdida); con
+  menos, no se agranda. Un JPG va **tal cual**, sin recomprimir.
+- **Escala**: `localizacion_escala` se escribe a mano. Si hay imagen y la escala está vacía, sale
+  «DEFINIR» y `componer` lo avisa. Este y Norte también se escriben a mano.
+- Los archivos `.pgw` / `.jgw` (georreferencia) no se leen por ahora.
+
+`componer` usa el **original** si existe y coincide con el plano (mismo tamaño y fecha) y deja
+una **copia** al lado del plano: `<nombre del plano>_localizacion.png` (o `.jpg`). Si el original
+no está o cambió, usa esa copia y lo dice en una advertencia, como con la ortofoto. Si tampoco
+hay copia, **no se compone** y el error dice qué hacer. La imagen va debajo de los textos del
+rótulo, y la verificación del PDF comprueba que esté en su recuadro (±0,1 mm), con los píxeles
+esperados y, si es JPG, que siga siendo el JPEG original.
 
 ### Firma con imagen (subfases 4.2d a 4.2f)
 

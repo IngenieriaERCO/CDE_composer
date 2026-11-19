@@ -27,6 +27,7 @@ from componedor.notas import leer_archivo_notas
 from componedor.rotulo_formato import (
     AVISO_CAMPOS_RETIRADOS,
     CampoConvenciones,
+    CampoImagen,
     CampoNotas,
     CampoTabla,
     CampoTexto,
@@ -157,6 +158,9 @@ def definicion_editor(definicion: DefinicionRotulo) -> dict:
                               "alto_max_mm": campo.celdas[(campo.filas[0], c)].alto_max_mm}
                              for c in campo.columnas],
             }
+        elif isinstance(campo, CampoImagen):
+            campos[nombre] = {"tipo": "imagen", "rect_mm": list(campo.rect), "ppp": campo.ppp,
+                              "campo_escala": campo.campo_escala}
         elif isinstance(campo, CampoNotas):
             campos[nombre] = {"tipo": "notas", **_celda(campo.celda),
                               "separacion_notas": campo.separacion_notas}

@@ -134,7 +134,7 @@ def test_todos_los_problemas_juntos(definicion, fuente):
         preparar_rotulo(definicion, valores, [50.0], fuente)
     m = str(e.value)
     for esperado in [
-        "- rotulo.titulos: campo no reconocido (campos válidos: localizacion_escala, este,",
+        "- rotulo.titulos: campo no reconocido (campos válidos: localizacion_escala, localizacion_imagen, este,",
         "- rotulo.escala: se calcula automáticamente (la escala de los detalles, o INDICADAS si "
         "son distintas); no se escribe en el plano",
         "- rotulo.rev: se calcula automáticamente (0 si hay emisión final; si no, la mayor "

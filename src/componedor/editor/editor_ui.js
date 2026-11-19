@@ -130,6 +130,9 @@
   function marcarCambios() {
     estado.cambios = true;
     programarVistaPrevia(); // el rótulo pudo cambiar (los paneles llaman aquí)
+    // El aviso de «ESC: DEFINIR» de la imagen de localización depende de la escala escrita.
+    const pl = window.EditorPanelLocalizacion;
+    if (pl && pl.alCambiarRotulo) pl.alCambiarRotulo();
   }
 
   // ---------------------------------------------------------------------------------------
@@ -178,6 +181,8 @@
 
   // Vista previa (4.3f), en el orden de componer: los símbolos de convenciones son parte de la
   // hoja base (debajo de los detalles); textos, etiquetas «ESC» y firmas van encima.
+  // La imagen de localización del rótulo (en su recuadro), debajo de los textos del rótulo.
+  const capaLocalizacion = nodoSvg("g", { class: "capa-localizacion" }, svg);
   const capasVistaPrevia = { simbolos: nodoSvg("g", { class: "vp-capa" }, svg) };
   const capaDetalles = nodoSvg("g", {}, svg);
   capasVistaPrevia.textos = nodoSvg("g", { class: "vp-capa" }, svg);
@@ -340,6 +345,31 @@
     });
   }
 
+  const LO = window.EditorLocalizacion;
+  const CAMPO_LOCALIZACION = LO ? LO.campoImagen(DEFINICION_ROTULO) : null;
+
+  /** La imagen de localización en su recuadro (entera, centrada, sin deformar), como componer.
+   *  Si el plano la tiene pero no está cargada, un recuadro punteado con su nombre. */
+  function dibujarLocalizacion() {
+    capaLocalizacion.replaceChildren();
+    if (!CAMPO_LOCALIZACION) return;
+    const valor = R.valor(estado.rotulo, CAMPO_LOCALIZACION.nombre);
+    if (!valor) return;
+    const panel = window.EditorPanelLocalizacion;
+    const img = panel ? panel.imagen() : null;
+    if (img) {
+      const r = L.rectPapelAPantalla(LO.contener(CAMPO_LOCALIZACION.rect_mm, img.px[0], img.px[1]), ESCALA);
+      const n = nodoSvg("image", { x: r.x, y: r.y, width: r.ancho, height: r.alto, preserveAspectRatio: "none",
+        class: "imagen-localizacion" }, capaLocalizacion);
+      n.setAttribute("href", img.url);
+      return;
+    }
+    const r = L.rectPapelAPantalla(CAMPO_LOCALIZACION.rect_mm, ESCALA);
+    nodoSvg("rect", { x: r.x, y: r.y, width: r.ancho, height: r.alto, class: "localizacion-pendiente" }, capaLocalizacion);
+    nodoSvg("text", { x: r.x + 4, y: r.y + 14, class: "etiqueta-fijo" }, capaLocalizacion).textContent =
+      "Imagen de localización: " + String(valor.archivo).split(/[\\/]/).pop();
+  }
+
   let ultimasCuadriculas = [];
 
   /** La cuadrícula de coordenadas (cuadricula.py en el PDF): líneas sobre la foto y etiquetas en
@@ -487,6 +517,7 @@
     dibujarRosa(tapados.has(L.ROSA));
     dibujarOrtofoto();
     dibujarCuadricula();
+    dibujarLocalizacion();
     dibujarDetalles(niveles);
     pintarRosa();
     pintarPropiedades();
@@ -1360,6 +1391,7 @@
     estado.original = resultado.original;
     estado.ortofoto = resultado.ortofoto || null;
     if (PO() && PO().repintar) PO().repintar();
+    if (window.EditorPanelLocalizacion) window.EditorPanelLocalizacion.repintar();
     pintarRotulo();
     estado.cambios = resultado.avisos.length > 0; // si se ajustó algo, hay cambios por guardar
     actualizar();
@@ -1494,7 +1526,14 @@
   window.EditorUI = { agregarBloque, catalogoCambiado, refrescar: () => actualizar(),
     colocaciones: () => estado.colocaciones, zona: () => ZONA, aplicarExportado, registrarDetalles,
     ortofoto: () => estado.ortofoto, fijarOrtofoto, cajasOrtofoto,
-    marcadosOrtofoto: () => marcados().length, extendida, cuadriculas: () => ultimasCuadriculas };
+    marcadosOrtofoto: () => marcados().length, extendida, cuadriculas: () => ultimasCuadriculas,
+    // Imagen de localización (y su escala): valores del rótulo que no edita el formulario.
+    rotuloValor: (campo) => R.valor(estado.rotulo, campo),
+    cambiarRotulo: (campo, valor) => {
+      R.cambiar(estado.rotulo, campo, valor);
+      marcarCambios();
+      actualizar();
+    } };
 
   // Para la verificación automática del reporte (no la usa la interfaz).
   window.EditorPrueba = { estado, agregar: (id) => agregar(CATALOGO.find((d) => d.id === id)),
@@ -1527,7 +1566,7 @@
       estado.vista = { x: r.x + r.ancho / 2 - ancho / 2, y: r.y + r.alto / 2 - alto / 2, ancho, alto };
       aplicarVista();
     },
-    ajustar: ajustarVista };
+    ajustar: ajustarVista, escala: ESCALA };
 
   if (CON_VISTA_PREVIA) {
     const diferencia = LR.diferenciaDeFuente(FUENTE_ROTULO);

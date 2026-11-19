@@ -88,6 +88,13 @@
         archivoPlano ? { archivo_plano: archivoPlano } : {}),
       quitarOrtofoto: () => pedir("POST", "/api/ortofoto/quitar"),
       previaOrtofoto: (cuerpo) => pedir("POST", "/api/ortofoto/previa", cuerpo),
+      // Imagen de localización (rótulo): la elige el cuadro nativo; la ruta del plano, solo
+      // para abrirlo en su carpeta. La imagen se baja con el token (blob).
+      localizacion: () => pedir("GET", "/api/localizacion"),
+      elegirLocalizacion: (archivoPlano) => pedir("POST", "/api/localizacion/elegir",
+        archivoPlano ? { archivo_plano: archivoPlano } : {}),
+      quitarLocalizacion: () => pedir("POST", "/api/localizacion/quitar"),
+      imagenLocalizacion: () => pedir("GET", "/api/localizacion/imagen", null, true),
     };
   }
 

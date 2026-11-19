@@ -483,6 +483,36 @@ En el PDF la pone `componer` (o `Componer.bat`), detrás de los detalles y recor
 en el editor, a 300 ppp en JPEG (`componedor.json` → `ortofoto`). Ver
 [formato_plano.md](formato_plano.md#ortofoto-de-fondo-versión-4).
 
+## 2h. Imagen de localización (con servidor local)
+
+Solo con `Abrir editor.bat`. En la columna derecha, debajo del Rótulo, el panel **Imagen de
+localización** tiene el botón **Cargar imagen de localización**: abre el cuadro de Windows para
+elegir un PNG o JPG (por ejemplo, el mapa de localización exportado de QGIS).
+
+- La imagen aparece en el recuadro LOCALIZACIÓN del rótulo, **entera, centrada y sin
+  deformar**. No tapa el título, «ESC:» ni las coordenadas; si sobra espacio, queda en blanco.
+- La **ficha** dice el nombre, el formato y los píxeles, cuánto mide en el recuadro y con
+  cuántos ppp sale en el PDF: un PNG con más de 300 ppp «se reduce a 300 ppp (sin pérdida)»; con
+  menos, «no se agranda»; un JPG «va tal cual, sin recomprimir».
+- **Escala**: «ESC:» se escribe a mano en el Rótulo («ESC. de localización»). Mientras esté
+  vacía, un **aviso amarillo** dice que en el PDF saldrá «ESC: DEFINIR»; al escribirla, el aviso
+  se va. Este y Norte también se escriben a mano, como siempre.
+- **Quitar imagen de localización**: la saca del plano (el archivo no se toca).
+
+Se guarda en el plano.json con la ruta, el tamaño y la fecha del archivo; la imagen **no** va
+dentro del plano ([formato_plano.md](formato_plano.md#imagen-de-localización-rotulolocalizacion_imagen)).
+Al abrir un plano con imagen de localización:
+
+- si el servidor ya la tiene cargada (la misma), se dibuja de nuevo;
+- si no, se ve un recuadro punteado con su nombre: **Cargar imagen de localización** abre el
+  cuadro **en la carpeta del plano** (el editor solo le pasa esa ruta al cuadro);
+- si la elegida **no coincide** con la del plano en nombre, tamaño o fecha, el plano **no
+  cambia**: el panel dice qué difiere y ofrece **Usar la cargada en el plano**.
+
+Sin servidor el panel dice qué imagen usa el plano y la conserva al guardar, pero no la dibuja.
+En el PDF la pone `componer`; si el original se movió, usa la copia
+`<plano>_localizacion.<ext>` que deja al lado del plano (con advertencia).
+
 ## 3. Qué se ve en la hoja
 
 | Elemento | Aspecto |

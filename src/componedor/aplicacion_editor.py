@@ -57,6 +57,7 @@ from componedor.exportar_dxf import (
 from componedor.formato import RectMM
 from componedor.importador import importar_paquete
 from componedor.inventario import ESCALA_MAXIMA
+from componedor.localizacion_editor import LocalizacionEditor
 from componedor.mensajes_trabajador import para_el_usuario
 from componedor.ortofoto_editor import OrtofotoEditor
 from componedor.previa_dxf import (
@@ -99,8 +100,12 @@ class AplicacionEditor:
                  elegir: Callable[[Path | None], Path | None] = elegir_dxf,
                  fabrica: Callable[[], Trabajador] | None = None,
                  elegir_ortofoto: Callable[[Path | None], Path | None] | None = None,
-                 intervalo_cuadricula_m: float = 50.0):
+                 intervalo_cuadricula_m: float = 50.0,
+                 elegir_localizacion: Callable[[Path | None], Path | None] | None = None):
         self.ruta_html = Path(ruta_html)
+        # «Cargar imagen de localización» (rótulo): tampoco usa el trabajador.
+        self.localizacion = (LocalizacionEditor(self.ruta_html.parent, elegir_localizacion)
+                             if elegir_localizacion else LocalizacionEditor(self.ruta_html.parent))
         # «Cargar ortofoto» no usa el trabajador: funciona aunque falte la sección exportador.
         self.ortofoto = (OrtofotoEditor(self.ruta_html.parent, elegir_ortofoto,
                                         intervalo_cuadricula_m)
@@ -161,7 +166,7 @@ class AplicacionEditor:
                 "exportador": {"disponible": motivo is None, "mensaje": motivo,
                                "trabajador": trabajador},
                 "dxf": dxf, "tarea": tarea.foto() if tarea else None,
-                "ortofoto": self.ortofoto.estado()}
+                "ortofoto": self.ortofoto.estado(), "localizacion": self.localizacion.estado()}
 
     def elegir_y_cargar(self) -> dict:
         """Abre el cuadro; si se elige un DXF, encola su carga. {"elegido", "tarea"}."""

@@ -260,6 +260,10 @@ bloque:
 | `POST /api/ortofoto/previa` | Cuerpo `{caja_cad: [x0, y0, x1, y1], mm_por_unidad, crs_dibujo, crs_ortofoto?, px?}` (solo números y códigos EPSG): la ortofoto en esa caja CAD, leída por ventanas y reproyectada. Responde `{id, url, px, cobertura, caja_cad}`. 400 si falta un sistema o no es válido; 409 sin ortofoto o si cambió en el disco. Se atiende en el mismo pedido, de a una, y las hechas se guardan (las últimas 64). |
 | `GET /api/ortofoto/previas/<id>` | El PNG (con transparencia donde no hay foto) de esa vista previa. 404 si ya no está. |
 | `POST /api/ortofoto/quitar` | Olvida la ortofoto de la sesión (el archivo no se toca). |
+| `GET /api/localizacion` | `{localizacion}`: la imagen de localización de esta sesión (`nombre`, `archivo_plano`, `bytes`, `modificado`, `px`, `formato`, `cambio`) o `null`. También va en `/api/estado`. |
+| `POST /api/localizacion/elegir` | Cuerpo opcional `{"archivo_plano": "<la ruta que guardó el plano>"}`: solo para abrir el cuadro en esa carpeta. Abre el cuadro nativo (`.png`, `.jpg`, `.jpeg`), comprueba que sea un PNG o JPG que se pueda leer y la deja como la imagen de la sesión. `{elegida, localizacion}`. 400 si no sirve; 409 si ya hay un cuadro abierto. |
+| `GET /api/localizacion/imagen` | Los bytes de la imagen (`image/png` o `image/jpeg`), con el token en la cabecera. 404 sin imagen; 409 si cambió en el disco desde que se eligió. |
+| `POST /api/localizacion/quitar` | Olvida la imagen de la sesión (el archivo no se toca). |
 
 ## Pruebas
 

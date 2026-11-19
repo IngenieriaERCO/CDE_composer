@@ -435,6 +435,15 @@ def texto_composicion(plano_ruta: Path, r: ResultadoComposicion) -> str:
                       f"Y {y0:.2f} a {y1:.2f}")
     lineas += texto_rosa_y_rotulo(r)
     lineas += texto_ortofoto(r)
+    if r.localizacion is not None:
+        loc = r.localizacion
+        de = "la copia" if loc.origen == "copia" else "el original"
+        reducida = (f", reducida de {loc.px_original[0]} × {loc.px_original[1]} px"
+                    if loc.px != loc.px_original else "")
+        lineas += ["", (f"Imagen de localización ({de}: {loc.archivo.name}): "
+                        f"{loc.formato.upper()} de {loc.px[0]} × {loc.px[1]} px{reducida}, a "
+                        f"{loc.ppp:.0f} ppp, en X {loc.destino[0]:.1f} a {loc.destino[2]:.1f}, "
+                        f"Y {loc.destino[1]:.1f} a {loc.destino[3]:.1f} mm.")]
     if r.advertencias:
         lineas += ["", f"Advertencias ({len(r.advertencias)}):"]
         lineas += [f"  - {a}" for a in r.advertencias]
@@ -445,7 +454,9 @@ def texto_composicion(plano_ruta: Path, r: ResultadoComposicion) -> str:
         extras.append(f"las {len(r.firmas)} firma(s)")
     if r.ortofoto is not None and r.ortofoto.mosaicos:
         extras.append(f"los {len(r.ortofoto.mosaicos)} mosaico(s) de la ortofoto")
-    imagenes = (f"no hay más imágenes que las de la plantilla y {' y '.join(extras)} (los "
+    if r.localizacion is not None:
+        extras.append("la imagen de localización")
+    imagenes = (f"no hay más imágenes que las de la plantilla y {' y '.join([', '.join(extras[:-1]), extras[-1]] if len(extras) > 1 else extras)} (los "
                 f"detalles siguen siendo vectores)" if extras else "no hay imágenes nuevas")
     verificado = ("el dibujo de cada detalle está donde dice el plano (±0,1 mm), el marco del "
                   f"rótulo no se movió y {imagenes}")
@@ -458,6 +469,10 @@ def texto_composicion(plano_ruta: Path, r: ResultadoComposicion) -> str:
                        "casilla (±0,1 mm)")
     if r.ortofoto is not None and r.ortofoto.mosaicos:
         verificado += "; cada mosaico de la ortofoto es JPEG y está en su sitio (±0,1 mm)"
+    if r.localizacion is not None:
+        verificado += ("; la imagen de localización está en su recuadro (±0,1 mm) con los píxeles "
+                       "esperados" + (" y sigue siendo el JPEG original" if r.localizacion.formato
+                                      == "jpeg" else ""))
     if r.firmas:
         verificado += ("; cada firma en imagen está dentro de su caja en la columna FIRMA sin "
                        "pisar el encabezado (±0,1 mm), con su máscara de transparencia y es la "

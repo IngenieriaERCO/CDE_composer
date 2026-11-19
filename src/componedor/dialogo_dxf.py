@@ -28,6 +28,8 @@ TIPOS = {
     "dxf": (TITULO, [("Dibujos DXF", "*.dxf"), ("Todos los archivos", "*.*")]),
     "ortofoto": ("Cargar ortofoto", [("Ortofotos GeoTIFF", "*.tif *.tiff"),
                                      ("Todos los archivos", "*.*")]),
+    "localizacion": ("Cargar imagen de localización", [("Imágenes PNG o JPG", "*.png *.jpg *.jpeg"),
+                                                       ("Todos los archivos", "*.*")]),
 }
 
 
@@ -79,6 +81,16 @@ def elegir_ortofoto(inicial: Path | None = None) -> Path | None:
     ruta = ruta_elegida(r.returncode, r.stdout.decode("utf-8", "replace"),
                         r.stderr.decode("utf-8", "replace"), "la ortofoto", OrtofotoInvalida)
     return validar_ruta(ruta) if ruta else None
+
+
+def elegir_localizacion(inicial: Path | None = None) -> Path | None:
+    """«Cargar imagen de localización»: la ruta elegida (sin validar: lo hace
+    localizacion_editor) o None si se canceló. ValueError si el cuadro falló."""
+    r = _abrir_cuadro(inicial, "localizacion")
+    ruta = ruta_elegida(r.returncode, r.stdout.decode("utf-8", "replace"),
+                        r.stderr.decode("utf-8", "replace"), "la imagen de localización",
+                        ValueError)
+    return Path(ruta) if ruta else None
 
 
 def ruta_elegida(codigo: int, salida: str, errores: str, que: str,

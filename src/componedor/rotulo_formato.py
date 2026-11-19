@@ -43,6 +43,11 @@ formato (todo en mm de papel, Y hacia arriba). Esquema (versión 1):
   pase a las vecinas, siempre dentro del cuerpo de la tabla (sin el encabezado); una fila más
   alta usa su propia altura útil.
 
+- Imagen (aditivo, imagen de localización): {"tipo": "imagen", "rect_mm": [x0, y0, x1, y1],
+  "ppp": 300, "campo_escala": "localizacion_escala"}. El plano pone en ese campo
+  {"archivo", "bytes", "modificado"} (localizacion.py); "campo_escala" es el campo de texto de
+  su escala: si hay imagen y está vacío, se avisa.
+
 - Campos retirados (aditivo): "campos_retirados": ["disenador", "revisor"] lista campos que el
   rótulo YA NO tiene. Un plano.json o proyecto.json viejo que los traiga sigue valiendo: se
   ignoran y se avisa UNA vez (`aviso_campos_retirados`, el mismo texto en Python y en el editor).
@@ -80,6 +85,8 @@ CLAVES_TABLA = {"tipo", "altura_mm", "altura_min_mm", "filas", "columnas", "colu
 CLAVES_NOTAS = {"tipo", "rect_mm", "altura_mm", "altura_min_mm", "separacion_notas"}
 CLAVES_CONVENCIONES = {"tipo", "filas_y_mm", "columnas_x_mm", "altura_mm", "altura_min_mm",
                        "lineas_max", "biblioteca"}
+CLAVES_IMAGEN = {"tipo", "rect_mm", "ppp", "campo_escala"}
+PPP_IMAGEN_POR_DEFECTO = 300
 CLAVES_FILA = {"y_mm", "lineas_max"}
 SEPARACION_NOTAS_POR_DEFECTO = 0.5
 CLAVES_COLUMNA = {"x_mm", "alinear", "acepta_imagen", "alto_max_mm"}
@@ -124,6 +131,14 @@ class CampoTabla:
 
 
 @dataclass(frozen=True)
+class CampoImagen:
+    nombre: str
+    rect: RectMM  # el recuadro (la imagen va entera dentro, centrada, sin deformar)
+    ppp: int = PPP_IMAGEN_POR_DEFECTO  # resolución objetivo (no se agranda si trae menos)
+    campo_escala: str | None = None  # campo de texto con su escala (aviso si queda vacío)
+
+
+@dataclass(frozen=True)
 class CampoNotas:
     nombre: str
     celda: Celda  # lineas_max no se usa: caben las que quepan en el alto
@@ -163,6 +178,8 @@ def _celdas(campo) -> list[Celda]:
         return list(campo.celdas.values())
     if isinstance(campo, CampoConvenciones):
         return list(campo.simbolos) + list(campo.descripciones)
+    if isinstance(campo, CampoImagen):
+        return []  # no es una celda de texto (la revisión de traslapes la agrega aparte)
     return [campo.celda]
 
 
@@ -296,9 +313,26 @@ def _campo(nombre: str, valor, errores: list[str], base: Path | None = None):
         return _campo_notas(nombre, valor, donde, errores)
     if tipo == "convenciones":
         return _campo_convenciones(nombre, valor, donde, errores, base)
-    errores.append(f"{donde}.tipo: se esperaba \"texto\", \"tabla\", \"notas\" o "
-                   f"\"convenciones\"; tiene {tipo!r}")
+    if tipo == "imagen":
+        return _campo_imagen(nombre, valor, donde, errores)
+    errores.append(f"{donde}.tipo: se esperaba \"texto\", \"tabla\", \"notas\", "
+                   f"\"convenciones\" o \"imagen\"; tiene {tipo!r}")
     return None
+
+
+def _campo_imagen(nombre: str, valor: dict, donde: str, errores: list[str]) -> CampoImagen | None:
+    n = len(errores)
+    _desconocidas(valor, CLAVES_IMAGEN, donde, errores)
+    rect = _rect(valor.get("rect_mm"), f"{donde}.rect_mm", errores)
+    ppp = valor.get("ppp", PPP_IMAGEN_POR_DEFECTO)
+    if isinstance(ppp, bool) or not isinstance(ppp, int) or not 72 <= ppp <= 1200:
+        errores.append(f"{donde}.ppp: se esperaba un entero de 72 a 1200; tiene {ppp!r}")
+    escala = valor.get("campo_escala")
+    if escala is not None and (not isinstance(escala, str) or not escala.strip()):
+        errores.append(f"{donde}.campo_escala: se esperaba el nombre de un campo de texto")
+    if len(errores) > n:
+        return None
+    return CampoImagen(nombre, rect, ppp, escala)
 
 
 def _campo_convenciones(nombre: str, valor: dict, donde: str, errores: list[str],
@@ -444,6 +478,9 @@ def _campo_tabla(nombre: str, valor: dict, donde: str, errores: list[str]) -> Ca
 def _revisar_celdas(campos: dict, zona: RectMM, relleno: float, errores: list[str]) -> None:
     """Cada celda dentro de la zona del rótulo, con alto para una línea y sin traslapes."""
     celdas = [c for campo in campos.values() for c in _celdas(campo)]
+    # El recuadro de cada imagen, como una celda sin texto: dentro del rótulo y sin tapar otra.
+    celdas += [Celda(campo.nombre, campo.rect, "izq", 0.0, 0.0, 1) for campo in campos.values()
+               if isinstance(campo, CampoImagen)]
     for c in celdas:
         x0, y0, x1, y1 = c.rect
         if (x0 < zona[0] - EPS_MM or y0 < zona[1] - EPS_MM or x1 > zona[2] + EPS_MM

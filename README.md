@@ -21,7 +21,9 @@ python -m pip install -e ".[dev]"
 1. **`Abrir editor.bat`**: genera el editor con las rutas de `componedor.json` y lo abre en el
    navegador con un **servidor local** (solo en esta computadora, `127.0.0.1`) que habilita
    **«Cargar DXF»** y **«Cargar ortofoto»** (un GeoTIFF de fondo, detrás de los detalles; ver
-   [docs/editor.md](docs/editor.md#2g-ortofoto-de-fondo-con-servidor-local)). Deje abierta esa ventana negra mientras usa el editor: al cerrarla se apaga
+   [docs/editor.md](docs/editor.md#2g-ortofoto-de-fondo-con-servidor-local)) y **«Cargar imagen
+   de localización»** (un PNG o JPG de QGIS para el recuadro LOCALIZACIÓN del rótulo; ver
+   [docs/editor.md](docs/editor.md#2h-imagen-de-localización-con-servidor-local)). Deje abierta esa ventana negra mientras usa el editor: al cerrarla se apaga
    el servidor. Si el servidor no puede arrancar, el `.bat` abre el editor sin servidor, como
    antes. Arme el plano y guarde el `plano.json` en `editor\` (al lado de `editor.html`) o en
    `planos\`: las dos carpetas están al mismo nivel, así que el plano funciona en cualquiera.
@@ -37,7 +39,7 @@ editor nunca borra los `plano.json` que usted guardó.
 
 | Carpeta | Qué guarda | ¿Va a git? |
 |---|---|---|
-| `planos/` | sus `plano.json` (y, si llevan ortofoto, su copia reducida `<plano>_ortofoto/`, que deja `componer`) | no (datos de ERCO) |
+| `planos/` | sus `plano.json` (y, si llevan ortofoto, su copia reducida `<plano>_ortofoto/`; si llevan imagen de localización, su copia `<plano>_localizacion.png` o `.jpg`; las dos las deja `componer`) | no (datos de ERCO) |
 | `editor/` | `editor.html`, el único archivo que genera el editor (todo va incrustado dentro); y los planos que usted guarde ahí, con su `<plano>_ortofoto/` | no (se regenera) |
 | `resultados/` | los PDF que deja `Componer.bat` | no |
 | `firmas/<persona>/firma.png` | las firmas en imagen, una carpeta por persona | no (datos personales) |
@@ -387,7 +389,8 @@ línea (marco 0,5 mm, guías 0,13 mm) y, opcionalmente:
   líneas, valor por defecto o calculado), las notas, la rejilla de convenciones con la ruta de
   la biblioteca de símbolos (`../simbolos/indice.json`), los `campos_retirados` (campos que
   el rótulo ya no tiene, hoy `disenador` y `revisor`: un plano viejo que los traiga se compone
-  igual, se ignoran con un solo aviso) y la fuente
+  igual, se ignoran con un solo aviso), el recuadro de la imagen de localización (tipo
+  `"imagen"`: `rect_mm`, `ppp` 300 y `campo_escala`) y la fuente
   (`C:/Windows/Fonts/arial.ttf`). Esquema versionado y validado: campos desconocidos, celdas
   fuera del rótulo o traslapadas son error.
 

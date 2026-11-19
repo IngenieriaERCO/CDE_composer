@@ -35,6 +35,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from componedor.aplicacion_editor import AplicacionEditor, ErrorAplicacion
+from componedor.localizacion_editor import ErrorLocalizacion
 from componedor.ortofoto_editor import ErrorOrtofoto
 
 HOST = "127.0.0.1"
@@ -44,10 +45,12 @@ RUTA_TAREA = re.compile(r"^/api/tareas/(t-\d+)$")
 RUTA_CANCELAR = re.compile(r"^/api/tareas/(t-\d+)/cancelar$")
 RUTA_PNG = re.compile(r"^/api/previas/(t-\d+)$")
 RUTA_PNG_ORTOFOTO = re.compile(r"^/api/ortofoto/previas/(o-\d+)$")
-RUTAS_GET = ("/", "/api/estado", "/api/exportados", "/api/ortofoto")
+RUTAS_GET = ("/", "/api/estado", "/api/exportados", "/api/ortofoto", "/api/localizacion",
+              "/api/localizacion/imagen")
 RUTAS_POST = ("/api/dxf/elegir", "/api/dxf/recargar", "/api/previa", "/api/exportar",
               "/api/trabajador/reiniciar", "/api/trabajador/detener", "/api/latido",
-              "/api/ortofoto/elegir", "/api/ortofoto/quitar", "/api/ortofoto/previa")
+              "/api/ortofoto/elegir", "/api/ortofoto/quitar", "/api/ortofoto/previa",
+              "/api/localizacion/elegir", "/api/localizacion/quitar")
 
 
 def ruta_conocida(metodo: str, ruta: str) -> bool:
@@ -195,8 +198,11 @@ def _manejador(servidor: ServidorEditor):
                 if m := RUTA_PNG_ORTOFOTO.match(ruta):
                     self._enviar(200, servidor.app.ortofoto.png(m.group(1)), "image/png")
                     return
+                if ruta == "/api/localizacion/imagen":
+                    self._enviar(200, *servidor.app.localizacion.imagen())
+                    return
                 self._responder(200, self._api(metodo, ruta, cuerpo))
-            except (ErrorAplicacion, ErrorOrtofoto) as e:
+            except (ErrorAplicacion, ErrorOrtofoto, ErrorLocalizacion) as e:
                 self._responder(e.estado_http, {"error": e.mensaje})
             except Exception as e:  # noqa: BLE001 - un pedido no tumba el servidor
                 servidor.anotar(f"error interno en {metodo} {ruta}: {e!r}")
@@ -232,6 +238,12 @@ def _manejador(servidor: ServidorEditor):
                 return app.ortofoto.quitar()
             if ruta == "/api/ortofoto/previa":
                 return app.ortofoto.previa(cuerpo)
+            if ruta == "/api/localizacion":
+                return {"localizacion": app.localizacion.estado()}
+            if ruta == "/api/localizacion/elegir":
+                return app.localizacion.elegir(cuerpo.get("archivo_plano"))
+            if ruta == "/api/localizacion/quitar":
+                return app.localizacion.quitar()
             m = RUTA_CANCELAR.match(ruta)
             return app.cancelar(m.group(1))
 

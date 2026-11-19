@@ -2254,11 +2254,77 @@ capturas.
 - cuadrícula cada 50 m: 7 + 6 líneas y 26 etiquetas, todas legibles en el PDF;
 - 19,8 s, 390 MB de pico, PDF de 6,5 MB, copia reducida de 1,4 MB.
 
+### Imagen de localización en el rótulo — Fase 6 ✅ (2026-11-19)
+
+El commit de documentación 3617179 («Docs: contrato de paquete, manifiesto 1.4 probado») está en
+dev, sin push.
+
+**Decisiones del usuario**: la imagen va entera y centrada, sin deformar, con bandas blancas
+donde sobre. «ESC:», Este y Norte se escriben a mano; mientras «ESC:» esté vacía hay aviso (sale
+«DEFINIR»). Un PNG se reduce a ~300 ppp sin pérdida (nunca se agranda) y un JPG va tal cual.
+Hay una copia junto al plano (`<plano>_localizacion.<ext>`), que se usa si el original se mueve.
+Los `.pgw` / `.jgw` se ignoran por ahora.
+
+**Qué se hizo**
+- Formato: campo del rótulo de tipo `"imagen"` (`rotulo_formato.CampoImagen`: `rect_mm`, `ppp`,
+  `campo_escala`). En `A1_ERCO.json`, `localizacion_imagen` va en X 673,4 a 827,3, Y 455,8 a
+  570,2 mm (medido en la plantilla: entre el título «LOCALIZACIÓN» y la fila de «ESC:»). Se
+  revisa que no se monte sobre otra celda.
+- `localizacion.py` (nuevo):
+  - lee `rotulo.localizacion_imagen` `{archivo, bytes, modificado}`;
+  - elige entre el original y la copia, y deja la copia;
+  - ajusta la imagen (`contener`) y reduce el PNG;
+  - la inserta debajo de los textos;
+  - `verificar`: posición ±0,1 mm, píxeles y DCTDecode para el JPG.
+- `componer`: la imagen va antes de los textos del rótulo y la verificación cuenta una imagen
+  más. `cli` muestra una línea «Imagen de localización…» y la menciona en la verificación.
+- Servidor:
+  - `localizacion_editor.py` (nuevo);
+  - `/api/localizacion`, `/elegir`, `/imagen` y `/quitar`;
+  - cuadro nativo `elegir_localizacion` en `dialogo_dxf.py`.
+- Editor:
+  - `editor_localizacion.js` (lógica pura: `contener`, `enElPdf`, diferencias, ficha);
+  - `editor_panel_localizacion.js` (panel bajo el Rótulo);
+  - capa `capa-localizacion` en el lienzo;
+  - el aviso de «ESC:» vacía se actualiza al escribir en el Rótulo.
+
+**Pruebas**: 1319 pasan y 1 se salta (antes 1299). ruff igual que antes (173).
+- `test_localizacion` (15), con PNG sintéticos y JPG:
+  - `contener`;
+  - el recuadro de A1 no tapa ESC ni las coordenadas;
+  - valores mal escritos;
+  - un PNG de 3000 × 2000 se reduce a 1818 × 1212 (~300 ppp);
+  - un PNG chico no se agranda y un JPG va tal cual;
+  - si el original se mueve, se usa la copia (con aviso), y sin copia hay error;
+  - aviso de escala vacía;
+  - PDF con PNG y JPG (posición, DCT, debajo de los textos);
+  - sale «DEFINIR».
+- `test_localizacion_editor` (5): estado, imágenes que no sirven, HTTP con token y origen, y
+  `contener` y `enElPdf` iguales en JS y Python.
+
+**Verificación en Edge** (`data/verificacion/verificar_localizacion.mjs`, 22 comprobaciones,
+todo OK). Con PRGD (Exportador real) y `loc_google.jpg` (1600 × 1200, recortada de la foto de
+Google; en `data\` no había una imagen real de QGIS):
+- la ficha dice «JPEG · 1600 × 1200 px, 152,5 × 114,4 mm, 266 ppp, va tal cual»;
+- la imagen queda en el rectángulo de `contener`, 4:3 en mm;
+- el aviso de «ESC:» desaparece al escribir 1:10000;
+- el plano guarda `localizacion_imagen` (sin la imagen dentro) y la escala;
+- con un plano que no coincide: recuadro punteado, el cuadro se abre en la carpeta del plano, el
+  plano no cambia, y «Usar la cargada en el plano» lo corrige;
+- «Quitar» funciona;
+- sin errores de JavaScript.
+
+**PDF con PRGD** (`data/verificacion/v14/plano_loc_jpg.pdf` y `plano_loc_png.pdf`, con la
+ortofoto, la cuadrícula y los dos detalles):
+- JPG 1600 × 1200 tal cual (DCT) a 266 ppp, en X 674,1 a 826,6 mm, con «ESC: 1:10000»;
+- PNG sintético 3000 × 2000 reducido a 1818 × 1212 (300 ppp), con aviso de «DEFINIR»;
+- verificación OK; copias `plano_loc_*_localizacion.*` junto al plano.
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de
-  movimiento de tierras, escala de colores de cortes y rellenos, imagen de localización en su
-  recuadro) queda como referencia hasta la nueva definición.
+  movimiento de tierras, escala de colores de cortes y rellenos) queda como referencia hasta la
+  nueva definición. La imagen de localización en su recuadro ya está hecha (ver arriba).
 
 ### Preguntas abiertas para Alan
 

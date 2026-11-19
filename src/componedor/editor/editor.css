@@ -332,3 +332,6 @@ main { flex: 1; display: flex; min-height: 0; }
 .fondo-blanco { fill: #fff; stroke: none; }
 .campo-intervalo { display: flex; align-items: center; gap: 4px; font-size: 13px; }
 .campo-intervalo input { width: 70px; }
+/* Imagen de localización: la imagen en su recuadro, o un recuadro punteado si no está cargada. */
+.capa-localizacion { pointer-events: none; }
+.localizacion-pendiente { fill: none; stroke: #6b7280; stroke-dasharray: 4 3; stroke-width: 1; }
