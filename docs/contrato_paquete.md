@@ -212,6 +212,14 @@ Pueden faltar, venir en `null` o cambiar de forma sin que el componedor falle. N
 - Los **campos desconocidos se ignoran** (a diferencia del validador del exportador, que es
   estricto). Así una versión 1.x con campos nuevos se sigue pudiendo leer.
 
+### Versiones del exportador y lo que se probó con el Componedor
+
+| Versión | Qué agrega (ver `docs/manifiesto.md` del Exportador) | Con el Componedor |
+|---|---|---|
+| `1.2` | `selection.clip` (recorte a la zona de `cad extract-modelspace`) y avisos `MODELSPACE_CLIPPED` / `MODELSPACE_NOT_CLIPPED`. | Sin probar con un paquete real: no hubo paquetes de Model Space recortado. Solo agrega claves que se ignoran. |
+| `1.3` | En `options`: `units`, `instancing`, `xobject`, `clip`, `exporter_version`. | Probada: los paquetes de «Exportar» del editor (etapa 3 y bloques anónimos, PRGD y GUAMO) se importan, se verifican y se componen. |
+| `1.4` | En `options`: `plot_style` (`null` o `{name, sha256}` de la CTB) y `print_transparency`; avisos `PLOT_STYLE_APPLIED` y `HATCH_TRANSPARENT_OMITTED`. | **Probada el 2026-11-19** con el Exportador real (dev, 7154704) y PRGD: «via tunez» 1:500 y la mesa I1.M1.PV1_12900 1:75, con las opciones por defecto y con `plot_style` = `CTB_ERCO_V2.ctb` y `print_transparency: false`. Se importan, aparecen en el catálogo del editor y se componen (con ortofoto y cuadrícula). No hizo falta ningún cambio. |
+
 ## 5. Quién valida qué
 
 - `manifiesto.leer_manifiesto`: solo la **estructura** (es el único lector del manifiesto;
