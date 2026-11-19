@@ -87,7 +87,8 @@ Ver [docs/servidor_editor.md](docs/servidor_editor.md).
 La sección `ortofoto` es opcional (sin ella, los mismos valores): `ppp` (de 72 a 1200) es la
 resolución con que va la ortofoto en el PDF, en píxeles por pulgada de papel, y `calidad_jpeg`
 (de 1 a 100), su calidad. `componer --config` (y `Componer.bat`) las usa; sin `--config`, 300 y
-85. Al componer con la ortofoto original, `componer` deja una **copia reducida** en
+85; `cuadricula_intervalo_m` (50) es el intervalo por defecto de la cuadrícula de
+coordenadas. Al componer con la ortofoto original, `componer` deja una **copia reducida** en
 `<nombre del plano>_ortofoto/`, al lado del plano.json, para poder volver a componerlo sin el
 original (ver [docs/formato_plano.md](docs/formato_plano.md#ortofoto-de-fondo-versión-4)).
 

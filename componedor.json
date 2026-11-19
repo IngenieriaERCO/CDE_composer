@@ -19,6 +19,7 @@
   },
   "ortofoto": {
     "ppp": 300,
-    "calidad_jpeg": 85
+    "calidad_jpeg": 85,
+    "cuadricula_intervalo_m": 50
   }
 }

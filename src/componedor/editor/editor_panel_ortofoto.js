@@ -17,6 +17,9 @@
  *   Si no lo trae, o si el código salió del texto de la autoridad (epsg_from "authority"),
  *   queda vacío; el aviso amarillo y «Usar EPSG:… para el dibujo» se muestran igual.
  * - Va solo detrás de los detalles con «Usar ortofoto» (casilla en Selección, plano versión 5).
+ * - «Extender a todo el layout» (solo con UN detalle marcado): la foto cubre toda el área de
+ *   dibujo con el mismo mapeo CAD → papel; los demás detalles, con fondo blanco.
+ * - «Cuadrícula de coordenadas» e intervalo (m; por defecto el de componedor.json).
  * - Vistas previas: una por caja CAD (la página de cada detalle), pedidas 250 ms después del
  *   último cambio (al arrastrar el tirador de escala no se pide una por cada paso).
  *
@@ -197,6 +200,12 @@
       estadoDetalles.appendChild(nodo("li", {}, "Ningún detalle usa la ortofoto: seleccione uno y marque " +
         "«Usar ortofoto» en Selección."));
     }
+    for (const g of UI().cuadriculas ? UI().cuadriculas() : []) {
+      estadoDetalles.appendChild(nodo("li", {}, g.id + ": cuadrícula cada " + g.intervalo_m + " m, " +
+        g.este.length + " + " + g.norte.length + " líneas, " + g.etiquetas.length + " etiquetas" +
+        (g.omitidas ? " (" + g.omitidas + " omitidas por chocar)" : "") +
+        (g.demasiadas ? " — serían " + g.demasiadas + " líneas: aumente el intervalo" : "")));
+    }
     for (const r of cajas) {
       let texto;
       if (!r.caja) {
@@ -282,10 +291,53 @@
     });
     opacidad.append(deslizador, valor);
     hijos.push(opacidad);
+    const n = UI().marcadosOrtofoto();
+    ultimoMarcados = n;
+    if (n === 1) {
+      hijos.push(casilla("extender-ortofoto", "Extender a todo el layout", o.extender === true,
+        (si) => cambiarPlano({ extender: si }),
+        "La foto cubre toda el área de dibujo, sin mover ni escalar nada (mismo mapeo del detalle); " +
+        "los detalles sin ortofoto quedan con fondo blanco."));
+    } else if (o.extender) {
+      hijos.push(nodo("div", { class: "aviso-ortofoto info" }, "«Extender a todo el layout» vale con un solo " +
+        "detalle con ortofoto (hay " + n + "): cada una va recortada a su página."));
+    }
+    hijos.push(casilla("cuadricula-ortofoto", "Cuadrícula de coordenadas", o.cuadricula === true,
+      (si) => cambiarPlano({ cuadricula: si }),
+      "Líneas cada tantos metros (en el sistema del dibujo) y sus coordenadas en el borde, como el plano de AutoCAD."));
+    if (o.cuadricula) {
+      const fila = nodo("label", { class: "campo-intervalo" }, "Cada ");
+      const campo = nodo("input", { type: "number", id: "intervalo-cuadricula", min: "1", step: "1",
+        value: String(o.intervalo_m || intervalo()) });
+      campo.addEventListener("change", () => {
+        const v = Number(campo.value);
+        if (!(v > 0)) {
+          campo.value = String(o.intervalo_m || intervalo());
+          return;
+        }
+        cambiarPlano({ intervalo_m: v === intervalo() && !o.intervalo_m ? null : v });
+      });
+      fila.append(campo, " m" + (o.intervalo_m ? "" : " (el de componedor.json)"));
+      hijos.push(fila);
+    }
     hijos.push(estadoDetalles);
     hijos.push(botonQuitar("Quitar ortofoto"));
     panel.replaceChildren(...hijos);
     pintarDetalles();
+  }
+
+  let ultimoMarcados = null;
+
+  /** El intervalo por defecto de la cuadrícula: el de componedor.json (lo da el servidor). */
+  const intervalo = () => (vista.estado && vista.estado.cuadricula_intervalo_m) || 50;
+
+  function casilla(id, texto, marcada, alCambiar, titulo) {
+    const fila = nodo("label", { class: "casilla-ortofoto", title: titulo });
+    const c = nodo("input", { type: "checkbox", id });
+    c.checked = marcada;
+    c.addEventListener("change", () => alCambiar(c.checked));
+    fila.append(c, " " + texto);
+    return fila;
   }
 
   function botonQuitar(texto) {
@@ -359,8 +411,13 @@
     }
   }
 
-  window.EditorPanelOrtofoto = { previa, repintar: pintar,
-    alCambiarPlano: () => { if (!prellenar()) pintarDetalles(); } };
+  window.EditorPanelOrtofoto = { previa, repintar: pintar, intervalo,
+    alCambiarPlano: () => {
+      if (prellenar()) return;
+      // «Extender» aparece o desaparece según cuántos detalles usan la ortofoto.
+      if (UI() && vista.estado && UI().marcadosOrtofoto() !== ultimoMarcados) pintar();
+      else pintarDetalles();
+    } };
 
   if (!conexion) {
     boton.disabled = true;

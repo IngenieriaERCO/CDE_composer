@@ -77,11 +77,11 @@ def plan_de_copia(detalles: list[DetalleOrtofoto], fuente: Fuente, crs_dibujo: C
     """Qué se escribirá por detalle: {id, archivo, caja_m, px}."""
     plan = []
     for i, det in enumerate(detalles, start=1):
-        caja = caja_cad(det.ocupado, det.ocupado, det.matriz)
+        caja = caja_cad(det.recorte, det.ocupado, det.matriz)
         if caja is None:
             continue
         caja_m = en_metros(caja, det.mm_por_unidad)
-        (ancho_pdf, _), _ = cuadricula(det.ocupado, ppp)
+        (ancho_pdf, _), _ = cuadricula(det.recorte, ppp)
         res_pdf = (caja_m[2] - caja_m[0]) / ancho_pdf
         mx, my = (caja_m[2] - caja_m[0]) * MARGEN, (caja_m[3] - caja_m[1]) * MARGEN
         ampliada = (caja_m[0] - mx, caja_m[1] - my, caja_m[2] + mx, caja_m[3] + my)

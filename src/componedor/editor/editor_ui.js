@@ -159,6 +159,10 @@
 
   // La rosa va debajo de los detalles, como en el PDF (es parte de la hoja base). plantilla.png
   // ya viene SIN la rosa: se dibuja solo aquí, en su posición actual.
+  // La ortofoto (detrás de los detalles marcados, o extendida a toda el área) y la cuadrícula
+  // de coordenadas, debajo de la rosa: la rosa nunca queda tapada por la foto (como en el PDF).
+  const capaOrtofoto = nodoSvg("g", { class: "capa-ortofoto" }, svg);
+  const capaCuadricula = nodoSvg("g", { class: "capa-cuadricula" }, svg);
   const capaRosa = nodoSvg("g", {}, svg);
 
   const capaElementos = nodoSvg("g", {}, svg);
@@ -175,8 +179,6 @@
   // Vista previa (4.3f), en el orden de componer: los símbolos de convenciones son parte de la
   // hoja base (debajo de los detalles); textos, etiquetas «ESC» y firmas van encima.
   const capasVistaPrevia = { simbolos: nodoSvg("g", { class: "vp-capa" }, svg) };
-  // La ortofoto, detrás de TODOS los detalles (como en el PDF): recortada a la página de cada uno.
-  const capaOrtofoto = nodoSvg("g", { class: "capa-ortofoto" }, svg);
   const capaDetalles = nodoSvg("g", {}, svg);
   capasVistaPrevia.textos = nodoSvg("g", { class: "vp-capa" }, svg);
   capasVistaPrevia.etiquetas = nodoSvg("g", { class: "vp-capa" }, svg);
@@ -305,10 +307,17 @@
    * Para la ortofoto: por cada colocación con «Usar ortofoto», la página en la hoja y la caja CAD que la cubre
    * {id, pagina, caja, mm_por_unidad, motivo} (motivo: por qué no hay caja, o null).
    */
+  const marcados = () => estado.colocaciones.filter((c) => c.ortofoto === true);
+  /** «Extender a todo el layout»: vale solo con UN detalle con ortofoto (si no, recortadas). */
+  const extendida = () => !!(estado.ortofoto && estado.ortofoto.extender && marcados().length === 1);
+
   function cajasOrtofoto() {
-    return estado.colocaciones.filter((c) => c.ortofoto === true).map((c) => {
-      const pagina = paginaDe(c);
-      const r = { id: c.id, pagina, caja: null, mm_por_unidad: null, motivo: null };
+    const extender = extendida();
+    return marcados().map((c) => {
+      const paginaDetalle = paginaDe(c);
+      // Extendida: el área de dibujo, con el MISMO mapeo CAD → papel del detalle.
+      const pagina = extender ? ZONA.slice() : paginaDetalle;
+      const r = { id: c.id, pagina, paginaDetalle, caja: null, mm_por_unidad: null, motivo: null };
       if (esBloque(c)) {
         const p = previaDe(c);
         if (!p.caja_cad || !p.mm_por_unidad) {
@@ -324,11 +333,54 @@
         r.motivo = "el catálogo no trae su matriz CAD (vuelva a generar el editor)";
         return r;
       }
-      r.caja = O.cajaCadDetalle(pagina, d.cad_a_pagina);
+      r.caja = O.cajaCadDetalle(paginaDetalle, d.cad_a_pagina, pagina);
       r.mm_por_unidad = d.mm_por_unidad;
       if (!r.caja) r.motivo = "su dibujo está girado en la página: sin ortofoto en el editor";
       return r;
     });
+  }
+
+  let ultimasCuadriculas = [];
+
+  /** La cuadrícula de coordenadas (cuadricula.py en el PDF): líneas sobre la foto y etiquetas en
+   *  la franja de afuera. También donde la foto no cubre. */
+  function dibujarCuadricula() {
+    capaCuadricula.replaceChildren();
+    ultimasCuadriculas = [];
+    const o = estado.ortofoto;
+    if (!o || !o.cuadricula) return;
+    const panel = PO();
+    const intervalo = o.intervalo_m || (panel && panel.intervalo ? panel.intervalo() : null) || 50;
+    const medir = O.medidorCuadricula(FUENTE_ROTULO);
+    const altura = O.alturaCuadricula(FUENTE_ROTULO);
+    const rosa = rosaParaLogica();
+    const fijos = DATOS.zonas.filter((z) => !z.editable).map((z) => z.rect_mm)
+      .concat(rosa && rosa.visible ? [rosa.rect] : [])
+      .concat((etiquetasActuales.textos || []).map((x) => x.celda_mm).filter(Boolean));
+    const C = O.CUADRICULA;
+    for (const r of cajasOrtofoto()) {
+      if (!r.caja) continue;
+      const otras = estado.colocaciones.filter((c) => c.id !== r.id).map(paginaDe);
+      const k = r.mm_por_unidad / 1000;
+      const g = O.cuadricula(r.pagina, r.caja.map((v) => v * k), intervalo, fijos.concat(otras),
+        DATOS.marco_mm || null, medir, altura);
+      g.id = r.id;
+      g.intervalo_m = intervalo;
+      ultimasCuadriculas.push(g);
+      for (const [x0, y0, x1, y1] of g.lineas) {
+        const a = L.papelAPantalla(x0, y0, ESCALA);
+        const b = L.papelAPantalla(x1, y1, ESCALA);
+        nodoSvg("line", { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: C.color,
+          "stroke-width": C.grosor_mm * ESCALA.pxPorMmX, class: "linea-cuadricula" }, capaCuadricula);
+      }
+      for (const et of g.etiquetas) {
+        const p = L.papelAPantalla(et.base[0], et.base[1], ESCALA);
+        const n = nodoSvg("text", { x: p.x, y: p.y, class: "etiqueta-cuadricula", "data-eje": et.eje,
+          "font-size": C.em_mm * ESCALA.pxPorMmY,
+          transform: et.giro ? "rotate(-90 " + p.x + " " + p.y + ")" : "" }, capaCuadricula);
+        n.textContent = et.texto;
+      }
+    }
   }
 
   function dibujarOrtofoto() {
@@ -360,6 +412,7 @@
       const g = nodoSvg("g", { class: clases.join(" "), "data-id": c.id }, capaDetalles);
       const pagina = L.paginaEnPapel(c.detalle, c.pos);
       const r = L.rectPapelAPantalla(pagina, ESCALA);
+      if (extendida() && c.ortofoto !== true) rectSvg(nodoSvg("rect", { class: "fondo-blanco" }, g), pagina);
       const imagen = nodoSvg("image", { x: r.x, y: r.y, width: r.ancho, height: r.alto,
         preserveAspectRatio: "none" }, g);
       imagen.setAttribute("href", c.detalle.miniatura.data_url);
@@ -382,6 +435,7 @@
     const g = nodoSvg("g", { class: clases.join(" "), "data-id": c.id }, capaDetalles);
     const pagina = paginaDe(c);
     const r = L.rectPapelAPantalla(pagina, ESCALA);
+    if (extendida() && c.ortofoto !== true) rectSvg(nodoSvg("rect", { class: "fondo-blanco" }, g), pagina);
     const previa = previaDe(c);
     if (previa.estado === "lista" && previa.caja_cad && previa.mm_por_unidad) {
       const k = B.mmPorUnidadCad(previa.mm_por_unidad, c.escala);
@@ -432,6 +486,7 @@
     for (const [nombre, rect] of nodosElementos) rect.classList.toggle("tapado", tapados.has(nombre));
     dibujarRosa(tapados.has(L.ROSA));
     dibujarOrtofoto();
+    dibujarCuadricula();
     dibujarDetalles(niveles);
     pintarRosa();
     pintarPropiedades();
@@ -1438,7 +1493,8 @@
 
   window.EditorUI = { agregarBloque, catalogoCambiado, refrescar: () => actualizar(),
     colocaciones: () => estado.colocaciones, zona: () => ZONA, aplicarExportado, registrarDetalles,
-    ortofoto: () => estado.ortofoto, fijarOrtofoto, cajasOrtofoto };
+    ortofoto: () => estado.ortofoto, fijarOrtofoto, cajasOrtofoto,
+    marcadosOrtofoto: () => marcados().length, extendida, cuadriculas: () => ultimasCuadriculas };
 
   // Para la verificación automática del reporte (no la usa la interfaz).
   window.EditorPrueba = { estado, agregar: (id) => agregar(CATALOGO.find((d) => d.id === id)),

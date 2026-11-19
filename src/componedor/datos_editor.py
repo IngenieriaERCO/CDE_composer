@@ -109,6 +109,8 @@ def construir_datos_editor(carpeta_paquetes: Path | str, ruta_formato: Path | st
         "version": VERSION,
         "formato": _relativa(Path(ruta_formato), carpeta_salida),
         "hoja": {"ancho_mm": formato.ancho_mm, "alto_mm": formato.alto_mm},
+        # El marco: de él no salen las etiquetas de la cuadrícula de coordenadas.
+        "marco_mm": list(formato.marco),
         "imagen_plantilla": {"archivo": ARCHIVO_PLANTILLA},
         "zonas": [{"nombre": nombre, "rect_mm": list(rect), "editable": nombre == ZONA_EDITABLE}
                   for nombre, rect in formato.zonas.items()],

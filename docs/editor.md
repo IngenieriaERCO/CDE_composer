@@ -468,6 +468,17 @@ abrir un plano con ortofoto:
 Sin servidor (doble clic en `editor.html`) el panel dice qué ortofoto usa el plano y la conserva
 al guardar, pero no la dibuja.
 
+**Extender a todo el layout**: aparece en el panel Ortofoto solo cuando hay UN detalle con
+ortofoto. La foto cubre toda el área de dibujo, sin mover ni escalar nada (mismo mapeo del
+detalle); los demás detalles quedan con fondo blanco. Si después se marca otro, la casilla
+desaparece y el panel explica que cada foto va recortada a su página.
+
+**Cuadrícula de coordenadas**: casilla e intervalo en m (por defecto el de `componedor.json`, 50).
+Líneas negras finas sobre la foto y, en la franja entre el marco y el área (o alrededor de la
+página del detalle), sus coordenadas: Este arriba y abajo, Norte girado a los lados, como el
+plano de AutoCAD de PRGD. El panel dice cuántas líneas y etiquetas salen (y cuántas se omiten
+por chocar). Se guarda en el plano.
+
 En el PDF la pone `componer` (o `Componer.bat`), detrás de los detalles y recortada igual que
 en el editor, a 300 ppp en JPEG (`componedor.json` → `ortofoto`). Ver
 [formato_plano.md](formato_plano.md#ortofoto-de-fondo-versión-4).

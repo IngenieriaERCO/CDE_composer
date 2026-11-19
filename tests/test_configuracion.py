@@ -221,8 +221,10 @@ def test_exportador_invalido(entorno, seccion, mensaje):
 # --- sección ortofoto ----------------------------------------------------------------------------
 
 def test_ortofoto_por_defecto_y_del_repositorio(entorno):
-    assert leer_config_ortofoto(_config(entorno, EDITOR, COMPONER)) == ConfigOrtofoto(300, 85)
-    assert leer_config_ortofoto(RAIZ / "componedor.json") == ConfigOrtofoto(300, 85)
+    assert leer_config_ortofoto(_config(entorno, EDITOR, COMPONER)) == ConfigOrtofoto(300, 85, 50.0)
+    assert leer_config_ortofoto(RAIZ / "componedor.json") == ConfigOrtofoto(300, 85, 50.0)
+    assert leer_config_ortofoto(_config(entorno, EDITOR, COMPONER, ortofoto={
+        "cuadricula_intervalo_m": 25})).cuadricula_intervalo_m == 25.0
     ruta = _config(entorno, EDITOR, COMPONER, ortofoto={"ppp": 200, "calidad_jpeg": 70})
     assert leer_config_ortofoto(ruta) == ConfigOrtofoto(200, 70)
     assert leer_config_ortofoto(_config(entorno, EDITOR, COMPONER, ortofoto={"ppp": 150})).calidad_jpeg == 85
@@ -239,6 +241,8 @@ def test_ortofoto_por_defecto_y_del_repositorio(entorno):
     ({"calidad_jpeg": 0}, "ortofoto.calidad_jpeg: se esperaba un entero de 1 a 100"),
     ({"calidad_jpeg": 101}, "ortofoto.calidad_jpeg"),
     ({"dpi": 300}, "ortofoto.dpi: clave desconocida"),
+    ({"cuadricula_intervalo_m": 0}, "ortofoto.cuadricula_intervalo_m: se esperaba"),
+    ({"cuadricula_intervalo_m": "50"}, "ortofoto.cuadricula_intervalo_m"),
 ])
 def test_ortofoto_invalida(entorno, seccion, mensaje):
     with pytest.raises(ConfigInvalida, match=mensaje):

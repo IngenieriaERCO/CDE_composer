@@ -225,3 +225,77 @@ def test_ninguno_marcado_no_necesita_la_ortofoto(entorno):
     assert r.ortofoto is None and r.copia is None
     assert any("ningún detalle la usa" in a for a in r.advertencias)
     assert [i for i in imagenes_pdf(entorno / "p.pdf", ALTO) if i["filtro"] == "/DCTDecode"] == []
+
+
+# --- etapa B: «Extender a todo el layout» y cuadrícula ---------------------------------------
+
+AREA = (22.7, 22.7, 662.4, 571.3)
+
+
+def plano_b(carpeta, marcas, **seccion):
+    leido = plano_v5(carpeta, marcas)
+    datos = json.loads(leido.ruta.read_text(encoding="utf-8"))
+    datos["ortofoto"].update(seccion)
+    leido.ruta.write_text(json.dumps(datos), encoding="utf-8")
+    return leer_plano(leido.ruta)
+
+
+def test_extendida_cubre_el_area_con_el_mismo_mapeo(entorno):
+    """Un solo detalle con ortofoto: la foto cubre toda el área de dibujo (donde hay foto),
+    con el mapeo de ese detalle; el otro, sin ortofoto, lleva fondo blanco de su página."""
+    r = componer_plano(plano_b(entorno, (True, False), extender=True), entorno / "p.pdf",
+                       config_ortofoto=ConfigOrtofoto(30, 85))
+    assert r.extendida
+    jpeg = [i for i in imagenes_pdf(entorno / "p.pdf", ALTO) if i["filtro"] == "/DCTDecode"]
+    caja = (min(i["rect_mm"][0] for i in jpeg), min(i["rect_mm"][1] for i in jpeg),
+            max(i["rect_mm"][2] for i in jpeg), max(i["rect_mm"][3] for i in jpeg))
+    # La foto sintética cubre 20 × 10 m alrededor del detalle «a»: más que su página, dentro del área.
+    assert caja[0] < OCUPADO[0] and caja[2] > OCUPADO[2] and caja[3] > OCUPADO[3]
+    assert AREA[0] - 0.01 <= caja[0] and caja[2] <= AREA[2] + 0.01
+    for i in jpeg:  # mismo mapeo: cada mosaico, la foto que predice el CAD de «a»
+        assert error_de_posicion(i, a_cad, entorno / "fotos" / "orto.tif") < 6
+    with pymupdf.open(entorno / "p.pdf") as d:
+        blancos = [x for x in d[0].get_drawings() if x.get("fill") == (1.0, 1.0, 1.0)
+                   and abs(x["rect"].width - 260 * 72 / 25.4) < 0.5
+                   and abs(x["rect"].height - 120 * 72 / 25.4) < 0.5]
+    assert len(blancos) >= 1  # el fondo blanco de «b»
+
+
+def test_extender_con_dos_detalles_no_vale(entorno):
+    r = componer_plano(plano_b(entorno, (True, True), extender=True), entorno / "p.pdf",
+                       config_ortofoto=POCO)
+    assert not r.extendida
+    assert any("solo vale con UN detalle con ortofoto y hay 2" in a for a in r.advertencias)
+    assert set(r.ortofoto.cobertura) == {"a", "b"}
+
+
+def test_cuadricula_en_el_pdf(entorno):
+    r = componer_plano(plano_b(entorno, (True, False),
+                               cuadricula={"visible": True, "intervalo_m": 2}),
+                       entorno / "p.pdf", config_ortofoto=POCO)
+    (c,) = r.cuadriculas
+    assert c.intervalo_m == 2 and len(c.este) == 7 and len(c.norte) == 3
+    with pymupdf.open(entorno / "p.pdf") as d:
+        palabras = {w[4] for w in d[0].get_text("words")}
+        assert {e.texto for e in c.etiquetas} <= palabras  # se leen (y se buscan) en el PDF
+        lineas = [x for x in d[0].get_drawings() if x.get("color") == (0.0, 0.0, 0.0)
+                  and x.get("width") and abs(x["width"] - 0.085 * 72 / 25.4) < 1e-3]
+        assert len(lineas) == 1 and len(lineas[0]["items"]) == 10
+    # El intervalo por defecto sale de la configuración.
+    r = componer_plano(plano_b(entorno, (True, False), cuadricula={"visible": True}),
+                       entorno / "q.pdf", config_ortofoto=ConfigOrtofoto(100, 85, 4.0))
+    assert r.cuadriculas[0].intervalo_m == 4.0
+    # Sin «visible»: no hay cuadrícula.
+    r = componer_plano(plano_b(entorno, (True, False), cuadricula={"visible": False}),
+                       entorno / "s.pdf", config_ortofoto=POCO)
+    assert r.cuadriculas == []
+
+
+def test_cuadricula_aunque_la_foto_no_cubra(entorno):
+    crear_geotiff(entorno / "fotos" / "orto.tif", ancho=40, alto=20,
+                  origen=(X0_CAD + 900, Y0_CAD + 900), pixel=0.05)
+    r = componer_plano(plano_b(entorno, (True, False),
+                               cuadricula={"visible": True, "intervalo_m": 2}),
+                       entorno / "p.pdf", config_ortofoto=POCO)
+    assert r.ortofoto.cobertura == {"a": 0.0} and r.ortofoto.mosaicos == []
+    assert len(r.cuadriculas[0].lineas_mm) == 10  # las coordenadas valen igual

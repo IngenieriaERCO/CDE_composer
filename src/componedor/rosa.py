@@ -112,6 +112,17 @@ def aplicar_rosa(page: pymupdf.Page, formato: Formato, destino: RectMM | None) -
                        len(de_la_rosa))
 
 
+def redibujar_rosa(page: pymupdf.Page, formato: Formato, destino: RectMM) -> None:
+    """Vuelve a dibujar la rosa en `destino`, encima de lo que ya hay (p. ej. la ortofoto: la
+    rosa nunca queda tapada por la foto). Es la misma copia que hace `aplicar_rosa`."""
+    sola = documento_rosa_sola(formato)
+    try:
+        page.show_pdf_page(_caja(destino, formato), sola, 0,
+                           clip=_caja(formato.elemento(NOMBRE).rect, formato))
+    finally:
+        sola.close()
+
+
 def documento_rosa_sola(formato: Formato) -> pymupdf.Document:
     """Hoja con la plantilla en la que se borró TODO lo que no es la rosa: las cuatro franjas
     alrededor de su rectángulo (más el margen) se redactan quitando cualquier trazo que las

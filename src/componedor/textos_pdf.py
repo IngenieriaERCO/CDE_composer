@@ -62,6 +62,12 @@ def cmap_tounicode(glifos: dict[int, str]) -> bytes:
             ).encode("ascii")
 
 
+def corregir_tounicode(page: pymupdf.Page, texto: str, fuente: Fuente) -> None:
+    """Igual que después de escribir los textos, con TODO lo escrito en nuestra fuente (p. ej.
+    también las etiquetas de la cuadrícula de coordenadas)."""
+    _corregir_tounicode(page, texto, fuente)
+
+
 def _corregir_tounicode(page: pymupdf.Page, texto: str, fuente: Fuente) -> None:
     """Reemplaza la tabla ToUnicode de nuestra fuente (ver arriba)."""
     glifos: dict[int, str] = {}

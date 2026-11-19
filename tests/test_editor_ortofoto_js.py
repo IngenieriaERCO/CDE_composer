@@ -317,7 +317,8 @@ def test_abrir_y_guardar_un_plano_v5_sin_tocar_nada_es_identico(entorno_editor):
               cambiada, otra, quitada};""", {"texto": texto, "datos": datos})
     assert r["errores"] == [] and r["avisos"] == []
     assert r["ortofoto"] == {"archivo": "C:/fotos/a.tif", "bytes": None, "modificado": None,
-                             "crs": None, "crs_dibujo": "EPSG:9377", "opacidad": 1}
+                             "crs": None, "crs_dibujo": "EPSG:9377", "opacidad": 1,
+                             "extender": False, "cuadricula": False, "intervalo_m": None}
     assert r["igual"] == texto and r["marcas"] == [True, False]  # tal como vino
     assert ["ortofoto" in d for d in r["cambiada"]["detalles"]] == [False, True]
     assert r["otra"]["ortofoto"]["opacidad"] == 0.5
@@ -377,3 +378,64 @@ def test_el_editor_rechaza_la_ortofoto_mal_escrita(entorno_editor):
     assert r["sin_seccion"] == [("detalles[0] ('a'): lleva \"ortofoto\": true, pero el plano no "
                                  "tiene la sección \"ortofoto\".")]
     assert "versiones 1, 2, 3, 4 y 5" in r["v6"][0]
+
+
+# --- etapa B: extendida y cuadrícula --------------------------------------------------------------
+
+def test_caja_cad_de_otro_rectangulo_con_el_mapeo_de_la_pagina():
+    """Extendida: la caja CAD del área de dibujo con el mapeo de la página del detalle."""
+    from componedor.cad_a_papel import MatrizCad
+    from componedor.ortofoto_pdf import caja_cad
+    pagina, area = [30, 40, 290, 160], [22.7, 22.7, 662.4, 571.3]
+    r = js("return O.cajaCadDetalle(entrada.pagina, entrada.m, entrada.area);",
+           {"pagina": pagina, "m": MATRIZ_SINTETICA, "area": area})
+    assert cerca(r, caja_cad(tuple(area), tuple(pagina), MatrizCad(*MATRIZ_SINTETICA)), 1e-6)
+
+
+@pytest.mark.parametrize("intervalo, obstaculos", [
+    (2.0, []), (0.5, []), (2.0, [[120, 30, 140, 39]]), (50.0, [])])
+def test_la_cuadricula_del_editor_es_la_de_python(intervalo, obstaculos):
+    from componedor.cad_a_papel import MatrizCad
+    from componedor.cuadricula import armar
+    from componedor.ortofoto_pdf import caja_cad
+    region = (100.0, 40.0, 360.0, 160.0)
+    m = MatrizCad(*MATRIZ_SINTETICA)
+    py = armar("a", region, region, m, 1000.0, intervalo, [tuple(o) for o in obstaculos],
+               (12.7, 12.7, 828.3, 581.3))
+    caja = caja_cad(region, region, m)
+    r = js("""return O.cuadricula(entrada.region, entrada.caja, entrada.intervalo, entrada.obst,
+                                  [12.7, 12.7, 828.3, 581.3], O.medidorCuadricula(null));""",
+           {"region": list(region), "caja": list(caja), "intervalo": intervalo, "obst": obstaculos})
+    assert r["este"] == pytest.approx(py.este) and r["norte"] == pytest.approx(py.norte)
+    assert len(r["lineas"]) == len(py.lineas_mm)
+    for a, b in zip(r["lineas"], py.lineas_mm, strict=True):
+        assert cerca(a, b, 1e-6)
+    assert r["omitidas"] == py.omitidas
+    assert [(e["eje"], e["texto"], e["giro"]) for e in r["etiquetas"]] == [
+        (e.eje, e.texto, e.giro) for e in py.etiquetas]
+    for a, b in zip(r["etiquetas"], py.etiquetas, strict=True):
+        assert cerca(a["rect"], b.rect_mm, 1e-6) and cerca(a["base"], b.base_mm, 1e-6)
+
+
+def test_extender_y_cuadricula_de_ida_y_vuelta(entorno_editor):
+    carpeta, datos = entorno_editor
+    assert datos["marco_mm"] == [12.7, 12.7, 828.3, 581.3]
+    r = js("""
+      const d = entrada.datos.detalles[0];
+      const cs = [{id: "a", detalle: d, pos: [30, 40], ortofoto: true}];
+      const base = {archivo: "a.tif", opacidad: 1};
+      const con = L.serializarPlano(cs, entrada.datos,
+        {ortofoto: Object.assign({}, base, {extender: true, cuadricula: true, intervalo_m: 25})});
+      const sin = JSON.parse(L.serializarPlano(cs, entrada.datos, {ortofoto: base}));
+      const leido = L.leerPlano(con, entrada.datos);
+      return {con: JSON.parse(con), sin, leido: leido.ortofoto, errores: leido.errores};""",
+           {"datos": datos})
+    assert r["con"]["ortofoto"]["extender"] is True
+    assert r["con"]["ortofoto"]["cuadricula"] == {"visible": True, "intervalo_m": 25}
+    assert "extender" not in r["sin"]["ortofoto"] and "cuadricula" not in r["sin"]["ortofoto"]
+    assert r["errores"] == [] and (r["leido"]["extender"], r["leido"]["cuadricula"],
+                                   r["leido"]["intervalo_m"]) == (True, True, 25)
+    ruta = carpeta / "editor" / "b.json"
+    ruta.write_text(json.dumps(r["con"]), encoding="utf-8")
+    o = leer_plano(ruta).ortofoto
+    assert (o.extender, o.cuadricula, o.intervalo_m) == (True, True, 25.0)

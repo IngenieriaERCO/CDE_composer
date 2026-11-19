@@ -506,6 +506,32 @@ ortofoto» del editor). Un perfil u otro bloque que no la necesita queda sin ell
 - Si ninguno la usa, `componer` sale sin ortofoto (con advertencia) y ni siquiera necesita el
   archivo.
 
+### Extender a todo el layout y cuadrícula de coordenadas (versión 5)
+
+```json
+"ortofoto": {"archivo": "…", "crs_dibujo": "EPSG:9377", "opacidad": 1,
+             "extender": true, "cuadricula": {"visible": true, "intervalo_m": 50}}
+```
+
+- `extender` (opcional, `false`): con **un solo** detalle con ortofoto, la foto cubre toda el
+  área de dibujo con el mismo mapeo CAD → papel de ese detalle (no se mueve ni se escala nada;
+  solo cambia el recorte). Los detalles sin ortofoto llevan un fondo blanco del tamaño de su
+  página. Con otro número de detalles no cuenta: cada una va recortada a su página (advertencia).
+- `cuadricula` (opcional): `visible` (`false` por defecto) e `intervalo_m` (m, > 0; sin él, el de
+  `componedor.json` → `ortofoto.cuadricula_intervalo_m`, 50). Va en la página de cada detalle con
+  ortofoto, o en toda el área de dibujo si se extiende, también donde la foto no cubre. Las
+  coordenadas son las del sistema del dibujo.
+- Estilo copiado del plano de AutoCAD de PRGD (`data/input/PRGD-26-1377-GEN-PL-101_1_V0.pdf`):
+  - líneas negras de 0,085 mm que cruzan toda la foto;
+  - una etiqueta en cada línea y en los dos extremos, en ArialMT de 10 pt (cifras de 2,53 mm),
+    negra, con el formato «4705900.000» (3 decimales, sin letras);
+  - las etiquetas van fuera de la foto, sin fondo ni halo, centradas en una franja de 10 mm: la
+    del marco al área de dibujo. El Este va abajo y arriba; el Norte, girado a los lados, se lee
+    de abajo hacia arriba;
+  - una etiqueta que se salga del marco o choque con el rótulo, otro detalle, la rosa, una
+    etiqueta «ESC» u otra etiqueta se omite (y se avisa);
+  - la cuadrícula va debajo de los vectores de los detalles, y la rosa siempre encima de la foto.
+
 ### Cómo la pone `componer`
 
 - **Qué archivo usa**: el original, si existe y coincide con el plano (mismo tamaño y fecha, lo

@@ -47,6 +47,13 @@ class DetalleOrtofoto:
     matriz: MatrizCad  # cad_to_page del manifiesto
     mm_por_unidad: float  # mm reales por unidad CAD (1000 si el dibujo está en m)
     tiene_fondo: bool = False  # paquete antiguo con fondo blanco: tapa la ortofoto
+    # Dónde va la ortofoto (mm de papel): None = su página; en modo extendido, el área de dibujo
+    # (el mapeo CAD → papel sigue siendo el de su página: solo cambia el recorte).
+    region: RectMM | None = None
+
+    @property
+    def recorte(self) -> RectMM:
+        return self.region if self.region is not None else self.ocupado
 
 
 @dataclass(frozen=True)
@@ -151,12 +158,12 @@ def poner_ortofoto(page: pymupdf.Page, alto_hoja_mm: float, detalles: list[Detal
         fuente = fuentes.get(det.id)
         if fuente is None:
             continue
-        caja = caja_cad(det.ocupado, det.ocupado, det.matriz)
+        caja = caja_cad(det.recorte, det.ocupado, det.matriz)
         if caja is None:
             informe.avisos.append(f"Detalle '{det.id}': su dibujo está girado en la página "
                                   f"(matriz con giro): no lleva ortofoto.")
             continue
-        (ancho, alto), mosaicos = cuadricula(det.ocupado, ppp, lado)
+        (ancho, alto), mosaicos = cuadricula(det.recorte, ppp, lado)
         informe.px[det.id] = (ancho, alto)
         factor = fuente.factor(en_metros(caja, det.mm_por_unidad), ancho, alto, crs_dibujo)
         cubiertos = 0

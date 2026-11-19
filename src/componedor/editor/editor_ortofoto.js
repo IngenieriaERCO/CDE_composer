@@ -32,7 +32,7 @@
 
   const LADO_PX = 1500; // igual que previa_ortofoto.LADO_PX
   const RE_EPSG = /^EPSG:\d{4,6}$/;
-  const CLAVES = ["archivo", "bytes", "modificado", "crs", "crs_dibujo", "opacidad"];
+  const CLAVES = ["archivo", "bytes", "modificado", "crs", "crs_dibujo", "opacidad", "extender", "cuadricula"];
   const RE_FECHA = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
   const esNumero = (v) => typeof v === "number" && isFinite(v);
   const esObjeto = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -54,11 +54,13 @@
   const esquinas = (r) => [[r[0], r[1]], [r[0], r[3]], [r[2], r[1]], [r[2], r[3]]];
 
   /**
-   * Caja CAD de la página de un detalle exportado. pagina: [x0, y0, x1, y1] en la hoja (mm, Y
-   * arriba); m: cad_to_page. null si la matriz está girada (b o c ≠ 0: la imagen no se puede
-   * poner derecha en la página) o no se puede invertir.
+   * Caja CAD de `rect` (por defecto, la página) con el mapeo de un detalle exportado. pagina:
+   * [x0, y0, x1, y1] de su página en la hoja (mm, Y arriba); m: cad_to_page. En modo extendido
+   * rect es el área de dibujo (el mapeo sigue siendo el de la página). null si la matriz está
+   * girada (b o c ≠ 0: la imagen no se puede poner derecha) o no se puede invertir.
    */
-  function cajaCadDetalle(pagina, m) {
+  function cajaCadDetalle(pagina, m, rect) {
+    rect = rect || pagina;
     if (!Array.isArray(m) || m.length !== 6 || !m.every(esNumero)) return null;
     const [a, b, c, d, e, f] = m;
     if (b !== 0 || c !== 0) return null;
@@ -70,7 +72,7 @@
       const py = alto - (sy - pagina[1]) - f;
       return [(d * px - c * py) / det, (-b * px + a * py) / det];
     };
-    return cajaDe(esquinas(pagina).map(aCad));
+    return cajaDe(esquinas(rect).map(aCad));
   }
 
   /** Caja CAD de la página de un bloque sin exportar (centro en la hoja y centro CAD, k mm/unidad). */
@@ -226,17 +228,132 @@
     }
     const o = valor.opacidad === undefined ? 1 : valor.opacidad;
     if (!esNumero(o) || o < 0 || o > 1) errores.push("ortofoto.opacidad: se esperaba un número de 0 a 1.");
+    if (valor.extender !== undefined && typeof valor.extender !== "boolean") {
+      errores.push("ortofoto.extender: se esperaba true o false.");
+    }
+    const c = valor.cuadricula;
+    if (c !== undefined) {
+      if (!esObjeto(c)) errores.push("ortofoto.cuadricula: se esperaba un objeto {\"visible\", \"intervalo_m\"}.");
+      else {
+        for (const k of Object.keys(c)) {
+          if (k !== "visible" && k !== "intervalo_m") errores.push("ortofoto.cuadricula." + k + ": campo no reconocido (campos válidos: intervalo_m, visible).");
+        }
+        if (c.visible !== undefined && typeof c.visible !== "boolean") errores.push("ortofoto.cuadricula.visible: se esperaba true o false.");
+        if (c.intervalo_m !== undefined && c.intervalo_m !== null && !(esNumero(c.intervalo_m) && c.intervalo_m > 0 && c.intervalo_m <= 100000)) {
+          errores.push("ortofoto.cuadricula.intervalo_m: se esperaba un número de m > 0.");
+        }
+      }
+    }
     if (errores.length !== n) return null;
     return { archivo: valor.archivo, bytes: b === undefined ? null : b, modificado: m || null,
-      crs: valor.crs || null, crs_dibujo: valor.crs_dibujo || null, opacidad: o };
+      crs: valor.crs || null, crs_dibujo: valor.crs_dibujo || null, opacidad: o,
+      extender: valor.extender === true, cuadricula: !!(c && c.visible === true),
+      intervalo_m: c && esNumero(c.intervalo_m) ? c.intervalo_m : null };
   }
 
-  /** La sección "ortofoto" para guardar (siempre las mismas claves, en el mismo orden). */
+  /** La sección "ortofoto" para guardar (las mismas claves, en el mismo orden; "extender" y
+   *  "cuadricula" solo si se usan, así un plano que no los tiene sale igual). */
   function ortofotoParaGuardar(o) {
-    return { archivo: o.archivo, bytes: o.bytes === undefined ? null : o.bytes, modificado: o.modificado || null,
+    const s = { archivo: o.archivo, bytes: o.bytes === undefined ? null : o.bytes, modificado: o.modificado || null,
       crs: o.crs || null, crs_dibujo: o.crs_dibujo || null, opacidad: Math.round(o.opacidad * 100) / 100 };
+    if (o.extender === true) s.extender = true;
+    if (o.cuadricula === true || esNumero(o.intervalo_m)) {
+      s.cuadricula = { visible: o.cuadricula === true };
+      if (esNumero(o.intervalo_m)) s.cuadricula.intervalo_m = o.intervalo_m;
+    }
+    return s;
+  }
+
+  // ---------------------------------------------------------------------------------------
+  // Cuadrícula de coordenadas (cuadricula.py en Python: la misma regla; las pruebas lo comparan).
+  // Líneas en la región (la página del detalle o, extendida, el área de dibujo); etiquetas en
+  // una franja de 10 mm FUERA de ella, como en el plano de AutoCAD de PRGD.
+  // ---------------------------------------------------------------------------------------
+
+  // Como en PRGD: Arial de 10 pt (em de 3,528 mm), líneas negras de 0,085 mm, franja de 10 mm.
+  const CUADRICULA = { color: "#000000", grosor_mm: 0.085, tamano_pt: 10, em_mm: 10 * 25.4 / 72, banda_mm: 10,
+    max_lineas: 400, espacio_min_mm: 15 };
+  /** Altura de las cifras a 10 pt (con la fuente del rótulo o Helvetica, 0,718 em). */
+  const alturaCuadricula = (fuente) => CUADRICULA.em_mm * (fuente && fuente.altura_mayusculas ? fuente.altura_mayusculas : 0.718);
+  const textoCoordenada = (v) => v.toFixed(3);
+
+  /** Múltiplos de `intervalo` estrictamente dentro de (minimo, maximo) (cuadricula.valores). */
+  function valoresCuadricula(minimo, maximo, intervalo) {
+    const eps = intervalo * 1e-9;
+    const salida = [];
+    for (let k = Math.floor(minimo / intervalo) + 1; k <= Math.ceil(maximo / intervalo) - 1; k++) {
+      const v = k * intervalo;
+      if (minimo + eps < v && v < maximo - eps) salida.push(v);
+    }
+    return salida;
+  }
+
+  const cruza = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+  const dentro = (a, b) => a[0] >= b[0] - 1e-9 && a[1] >= b[1] - 1e-9 && a[2] <= b[2] + 1e-9 && a[3] <= b[3] + 1e-9;
+
+  /**
+   * La cuadrícula de una región. region: [x0, y0, x1, y1] en la hoja (mm); cajaM: la caja CAD
+   * de esa región en m (sin giro: el mapeo es lineal); medir(texto) → ancho en mm a 2,5 mm.
+   * {este, norte, lineas: [[x0, y0, x1, y1]], etiquetas: [{eje, texto, rect, base, giro}], omitidas, paso_mm}.
+   */
+  function cuadricula(region, cajaM, intervalo, obstaculos, limite, medir, altura) {
+    const r = { este: valoresCuadricula(cajaM[0], cajaM[2], intervalo),
+      norte: valoresCuadricula(cajaM[1], cajaM[3], intervalo), lineas: [], etiquetas: [], omitidas: 0, paso_mm: 0 };
+    if (r.este.length + r.norte.length > CUADRICULA.max_lineas) {
+      r.demasiadas = r.este.length + r.norte.length;
+      r.este = [];
+      r.norte = [];
+      return r;
+    }
+    const [x0, y0, x1, y1] = region;
+    const kx = (x1 - x0) / (cajaM[2] - cajaM[0]);
+    const ky = (y1 - y0) / (cajaM[3] - cajaM[1]);
+    r.paso_mm = intervalo * kx;
+    const xs = r.este.map((e) => x0 + (e - cajaM[0]) * kx);
+    const ys = r.norte.map((n) => y0 + (n - cajaM[1]) * ky);
+    r.lineas = xs.map((x) => [x, y0, x, y1]).concat(ys.map((y) => [x0, y, x1, y]));
+    const h = altura || alturaCuadricula(null);
+    const mitad = CUADRICULA.banda_mm / 2;
+    const candidatas = [];
+    r.este.forEach((e, i) => {
+      const t = textoCoordenada(e);
+      const w = medir(t);
+      for (const yb of [y0 - mitad - h / 2, y1 + mitad - h / 2]) {
+        candidatas.push({ eje: "E", texto: t, rect: [xs[i] - w / 2, yb, xs[i] + w / 2, yb + h], base: [xs[i] - w / 2, yb], giro: 0 });
+      }
+    });
+    r.norte.forEach((n, i) => {
+      const t = textoCoordenada(n);
+      const w = medir(t);
+      for (const xb of [x0 - mitad + h / 2, x1 + mitad + h / 2]) {
+        candidatas.push({ eje: "N", texto: t, rect: [xb - h, ys[i] - w / 2, xb, ys[i] + w / 2], base: [xb, ys[i] - w / 2], giro: 90 });
+      }
+    });
+    const puestas = [];
+    for (const et of candidatas) {
+      if ((limite && !dentro(et.rect, limite)) || obstaculos.some((o) => cruza(et.rect, o)) ||
+          puestas.some((p) => cruza(et.rect, p))) {
+        r.omitidas++;
+        continue;
+      }
+      r.etiquetas.push(et);
+      puestas.push(et.rect);
+    }
+    return r;
+  }
+
+  /** Ancho de avance (mm) de un texto a 10 pt con la fuente del rótulo ({anchos_em}) o, sin
+   *  ella, Helvetica (como cuadricula.ancho_texto_mm). */
+  function medidorCuadricula(fuente) {
+    const em = CUADRICULA.em_mm;
+    if (fuente && fuente.anchos_em) {
+      return (t) => [...t].reduce((s, c) => s + (c in fuente.anchos_em ? fuente.anchos_em[c] : 0.556), 0) * em;
+    }
+    const helv = (c) => (c === "." ? 0.278 : c === "-" ? 0.333 : 0.556);
+    return (t) => [...t].reduce((s, c) => s + helv(c), 0) * em;
   }
 
   return { LADO_PX, leerSistema, cajaCadDetalle, cajaCadBloque, clavePrevia, textoBytes, lineasFicha,
-    avisos, listaParaPrevias, textoCobertura, diferencias, esLaDelPlano, leerOrtofoto, ortofotoParaGuardar };
+    avisos, listaParaPrevias, textoCobertura, diferencias, esLaDelPlano, leerOrtofoto, ortofotoParaGuardar,
+    CUADRICULA, textoCoordenada, valoresCuadricula, cuadricula, medidorCuadricula, alturaCuadricula };
 });

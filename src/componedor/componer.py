@@ -31,6 +31,13 @@ el original si existe y coincide con el plano; si no, la copia reducida de la ca
 (con aviso); si no hay ninguna, no se compone (`ortofoto_fuente`). En el PDF guardado se
 verifica cada mosaico (JPEG, en su sitio ±0,1 mm) y que los detalles siguen siendo vectores. Con
 el original, después se escribe (o se deja, si está al día) la copia reducida.
+
+Versión 5: solo los detalles marcados llevan ortofoto. Con «extender» y UN solo detalle con
+ortofoto, la foto cubre toda el área de dibujo (mismo mapeo CAD → papel de ese detalle) y los
+detalles sin ortofoto llevan un fondo blanco del tamaño de su página. Con «cuadricula», la
+cuadrícula de coordenadas (cuadricula.py) va sobre la foto y debajo de los detalles. La rosa
+siempre queda encima de la foto (se vuelve a dibujar si la tapa). Orden: plantilla → ortofoto →
+cuadrícula → rosa → fondos blancos → detalles → textos.
 """
 
 import os
@@ -56,6 +63,10 @@ from componedor.colocar import (
     tamano_visible_mm,
 )
 from componedor.composicion import MANTENER, hoja_base_con_rosa
+from componedor.cuadricula import InformeCuadricula
+from componedor.cuadricula import armar as armar_cuadricula
+from componedor.cuadricula import dibujar as dibujar_cuadricula
+from componedor.cuadricula import verificar as verificar_cuadricula
 from componedor.comprobacion_dibujo import (
     es_fondo_blanco,
     limites_de_trazos,
@@ -92,6 +103,7 @@ from componedor.rosa import (
     elementos_visibles,
     motivo_fuera,
     rect_destino,
+    redibujar_rosa,
     verificar_rosa,
 )
 from componedor.notas import NotasMaquetadas, verificar_notas
@@ -102,7 +114,7 @@ from componedor.simbolos import (
     dibujar_simbolos,
     verificar_simbolos,
 )
-from componedor.textos_pdf import escribir_textos, verificar_textos
+from componedor.textos_pdf import corregir_tounicode, escribir_textos, verificar_textos
 from componedor.transformaciones import rect_papel_a_pdf
 
 ZONA = "area_dibujo"
@@ -137,6 +149,8 @@ class ResultadoComposicion:
     firmas: list[FirmaPedida] = field(default_factory=list)  # firmas en imagen (4.2d)
     ortofoto: InformeOrtofoto | None = None  # plano versión 4
     copia: InformeCopia | None = None  # la copia reducida (si se compuso con el original)
+    cuadriculas: list[InformeCuadricula] = field(default_factory=list)  # versión 5
+    extendida: bool = False  # versión 5: la ortofoto cubre toda el área de dibujo
 
 
 @dataclass
@@ -146,6 +160,11 @@ class _Ortofoto:
     detalles: list[DetalleOrtofoto]
     config: ConfigOrtofoto
     opacidad: float
+    intervalo_m: float | None = None  # None: sin cuadrícula
+    obstaculos: list = field(default_factory=list)  # para las etiquetas: rosa, etiquetas ESC
+    rosa: RectMM | None = None  # dónde quedó la rosa (se redibuja si la foto la tapa)
+    fondos: list = field(default_factory=list)  # páginas de los detalles sin ortofoto (extendida)
+    paginas: dict = field(default_factory=dict)  # id → página de cada detalle (obstáculos)
 
 
 @dataclass
@@ -199,9 +218,9 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
                                 f"sale sin ella.")
         if eleccion is not None:
             advertencias += eleccion.avisos
-            ortofoto = _Ortofoto(eleccion, [_detalle_ortofoto(a, c) for d, a, _, c in colocados
-                                            if d.ortofoto],
-                                 config_ortofoto or ConfigOrtofoto(), plano.ortofoto.opacidad)
+            ortofoto = _armar_ortofoto(plano, formato, colocados, eleccion,
+                                       config_ortofoto or ConfigOrtofoto(), destino_rosa, textos,
+                                       advertencias)
         resultado = _componer_y_verificar(formato, colocados, salida, guias, destino_rosa,
                                           textos, ortofoto)
     finally:
@@ -209,6 +228,9 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
             doc.close()
     if resultado.ortofoto is not None:
         advertencias += resultado.ortofoto.avisos
+        resultado.extendida = any(d.region is not None for d in ortofoto.detalles)
+        for c in resultado.cuadriculas:
+            advertencias += c.avisos
         if eleccion.origen == "original":
             try:
                 resultado.copia = _copia(plano, ortofoto)
@@ -224,10 +246,36 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
     return resultado
 
 
-def _detalle_ortofoto(aceptado: PaqueteAceptado, colocado: DetalleColocado) -> DetalleOrtofoto:
+def _detalle_ortofoto(aceptado: PaqueteAceptado, colocado: DetalleColocado,
+                      region: RectMM | None = None) -> DetalleOrtofoto:
     m = aceptado.manifiesto
     return DetalleOrtofoto(colocado.id, colocado.ocupado, m.pdf.dibujo.matriz,
-                           m.unidades.milimetros_por_unidad, colocado.tiene_fondo)
+                           m.unidades.milimetros_por_unidad, colocado.tiene_fondo, region)
+
+
+def _armar_ortofoto(plano: Plano, formato: Formato, colocados: list[tuple], eleccion: Eleccion,
+                    config: ConfigOrtofoto, destino_rosa, textos: "_Textos",
+                    advertencias: list[str]) -> "_Ortofoto":
+    """Qué detalles la llevan y dónde (su página o, extendida, el área de dibujo), la
+    cuadrícula y los fondos blancos."""
+    o = plano.ortofoto
+    marcados = [(a, c) for d, a, _, c in colocados if d.ortofoto]
+    extender = o.extender
+    if extender and len(marcados) != 1:
+        advertencias.append(f"«Extender a todo el layout» solo vale con UN detalle con ortofoto "
+                            f"y hay {len(marcados)}: cada una va recortada a su página.")
+        extender = False
+    region = formato.zonas[ZONA] if extender else None
+    rosa = destino_rosa if isinstance(destino_rosa, tuple) else None
+    # Las etiquetas ESC, con la caja que se les reservó (la misma que usa el editor).
+    obstaculos = ([rosa] if rosa else []) + [t.celda_mm or t.rect() for t in textos.etiquetas]
+    no_editables = [r for nombre, r in formato.zonas.items() if nombre != ZONA]
+    return _Ortofoto(eleccion, [_detalle_ortofoto(a, c, region) for a, c in marcados], config,
+                     o.opacidad,
+                     (o.intervalo_m or config.cuadricula_intervalo_m) if o.cuadricula else None,
+                     obstaculos + no_editables, rosa,
+                     [c.ocupado for d, _, _, c in colocados if not d.ortofoto] if extender else [],
+                     {c.id: c.ocupado for *_, c in colocados})
 
 
 def _copia(plano: Plano, o: _Ortofoto) -> InformeCopia:
@@ -408,6 +456,7 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
                           ortofoto: _Ortofoto | None = None) -> ResultadoComposicion:
     textos = textos or _Textos()
     informe_orto = None
+    cuadriculas: list[InformeCuadricula] = []
     salida.parent.mkdir(parents=True, exist_ok=True)
     temporal = salida.with_name(f".{salida.name}.componiendo.pdf")
     try:
@@ -435,13 +484,25 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
                 imagenes_base = len(base.get_image_info())
             if ortofoto is not None:
                 # Detrás de los detalles: va antes que ellos en el contenido de la página.
+                imagenes_antes = len(base.get_image_info())
                 informe_orto = _poner_ortofoto(base, formato, ortofoto)
+                cuadriculas = _cuadricula_rosa_y_fondos(base, formato, ortofoto, textos.fuente)
+                # La rosa redibujada puede traer imágenes propias; los trazos de la cuadrícula,
+                # la rosa y los fondos son parte de la hoja base (antes de los detalles).
+                imagenes_base += (len(base.get_image_info()) - imagenes_antes
+                                  - len(informe_orto.mosaicos))
+                trazos_base = len(base.get_drawings())
             trazos_por_detalle = []
             for _, _, doc_detalle, colocado in colocados:
                 trazos_por_detalle.append(len(doc_detalle[0].get_drawings()))
                 insertar_pagina(base, formato, doc_detalle, 0, colocado.ocupado[:2])
             todos = textos.rotulo + textos.etiquetas
             escribir_textos(base, todos, textos.fuente, formato.alto_mm)
+            etiquetas_cuadricula = "".join(e.texto for c in cuadriculas for e in c.etiquetas)
+            if etiquetas_cuadricula and textos.fuente is not None:
+                # Una sola fuente embebida para todo: su ToUnicode con lo de ambos.
+                corregir_tounicode(base, "".join(l.texto for x in todos for l in x.lineas)
+                                   + etiquetas_cuadricula, textos.fuente)
             insertar_firmas(base, textos.firmas, formato.alto_mm)  # PNG con máscara (SMask)
             # deflate_images: las firmas (insert_image) quedarían sin comprimir (~300 KB cada
             # una); se comprimen sin pérdida. Trazos y fuentes no se tocan.
@@ -451,7 +512,8 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
 
         problemas = _verificar(temporal, formato, informe, [c for *_, c in colocados],
                                trazos_base, trazos_por_detalle, imagenes_base, todos,
-                               textos.notas, textos.simbolos, textos.firmas, informe_orto)
+                               textos.notas, textos.simbolos, textos.firmas, informe_orto,
+                               cuadriculas)
         if problemas:
             raise PlanoNoComponible(
                 "La verificación del PDF compuesto falló; no se generó el plano:\n"
@@ -461,7 +523,27 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
         if temporal.exists():
             temporal.unlink()  # cualquier falla: no queda un PDF a medias
     return ResultadoComposicion(salida, informe, [c for *_, c in colocados], rosa=informe_rosa,
-                                ortofoto=informe_orto)
+                                ortofoto=informe_orto, cuadriculas=cuadriculas)
+
+
+def _cuadricula_rosa_y_fondos(base: pymupdf.Page, formato: Formato, o: "_Ortofoto",
+                              fuente: Fuente | None = None) -> list[InformeCuadricula]:
+    """Sobre la ortofoto: la cuadrícula (también donde la foto no cubre), la rosa otra vez si la
+    foto la tapa y, en modo extendido, el fondo blanco de cada detalle sin ortofoto."""
+    cuadriculas = []
+    if o.intervalo_m is not None:
+        for d in o.detalles:
+            otras = [r for ident, r in o.paginas.items() if ident != d.id]
+            c = armar_cuadricula(d.id, d.recorte, d.ocupado, d.matriz, d.mm_por_unidad,
+                                 o.intervalo_m, o.obstaculos + otras, formato.marco, fuente)
+            dibujar_cuadricula(base, formato.alto_mm, c, fuente)
+            cuadriculas.append(c)
+    if o.rosa is not None and any(_interseccion(o.rosa, d.recorte) for d in o.detalles):
+        redibujar_rosa(base, formato, o.rosa)
+    for pagina in o.fondos:
+        base.draw_rect(rect_papel_a_pdf(pagina, formato.alto_mm), color=None, fill=(1, 1, 1),
+                       width=0)
+    return cuadriculas
 
 
 def _poner_ortofoto(base: pymupdf.Page, formato: Formato, o: _Ortofoto) -> InformeOrtofoto:
@@ -487,7 +569,8 @@ def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
                notas: NotasMaquetadas | None = None,
                simbolos: list[ColocacionSimbolo] = (),
                firmas: list[FirmaPedida] = (),
-               ortofoto: InformeOrtofoto | None = None) -> list[str]:
+               ortofoto: InformeOrtofoto | None = None,
+               cuadriculas: list[InformeCuadricula] = ()) -> list[str]:
     """Mide el PDF guardado. Devuelve la lista de problemas (vacía si todo está bien)."""
     with pymupdf.open(ruta) as final:
         page = final[0]
@@ -497,6 +580,7 @@ def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
         textos_mal += verificar_simbolos(page, list(simbolos), formato.alto_mm)
         textos_mal += verificar_firmas(page, list(firmas), formato.alto_mm)
         textos_mal += verificar_ortofoto(page, ortofoto, formato.alto_mm)
+        textos_mal += verificar_cuadricula(page, list(cuadriculas), formato.alto_mm)
         trazos = page.get_drawings()
         esperados = trazos_base + sum(trazos_por_detalle)
         if len(trazos) != esperados:

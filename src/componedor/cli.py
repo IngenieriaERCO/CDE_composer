@@ -409,6 +409,13 @@ def texto_ortofoto(r: ResultadoComposicion) -> list[str]:
         ancho, alto = o.px[ident]
         lineas.append(f"  {ident}: {ancho} × {alto} px, cubre el {cobertura * 100:.0f} % de su "
                       f"página")
+    if r.extendida:
+        lineas.append("  Extendida a toda el área de dibujo (los detalles sin ortofoto, con fondo "
+                      "blanco).")
+    for c in r.cuadriculas:
+        lineas.append(f"  Cuadrícula de {c.detalle}: cada {c.intervalo_m:g} m, {len(c.este)} "
+                      f"línea(s) de Este y {len(c.norte)} de Norte, {len(c.etiquetas)} "
+                      f"etiqueta(s)" + (f" ({c.omitidas} omitida(s))" if c.omitidas else "") + ".")
     if r.copia is not None:
         estado = "escrita" if r.copia.escrita else "ya estaba al día"
         lineas.append(f"  Copia reducida {estado}: {r.copia.carpeta} ({r.copia.archivos} "
@@ -633,7 +640,9 @@ def preparar_servidor(args) -> ServidorEditor:
                          f"(«Abrir editor.bat» lo hace, o el subcomando editor --config).")
     formato = cargar_formato(config.formato, usar_plantilla=False)
     exportador = leer_config_exportador(args.config)
-    app = AplicacionEditor(ruta_html, formato.zonas[ZONA_EDITABLE], exportador)
+    app = AplicacionEditor(ruta_html, formato.zonas[ZONA_EDITABLE], exportador,
+                           intervalo_cuadricula_m=leer_config_ortofoto(
+                               args.config).cuadricula_intervalo_m)
     registro = exportador.trabajo / "servidor.log" if exportador else None
     return ServidorEditor(app, args.puerto, registro=registro)
 

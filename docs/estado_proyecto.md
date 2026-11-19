@@ -2194,6 +2194,66 @@ PRGD, también sin cobertura). Etapa A, ya hecha:
 - **PDF con PRGD y Google, versión 5** («via tunez» marcada, la mesa no): 36 mosaicos, todos de
   «via tunez»; 16,8 s, 332 MB de pico, PDF de 4,6 MB, los mismos 9369 trazos.
 
+### Ortofoto: extender a todo el layout y cuadrícula — Etapa B (2026-11-19, sin commit)
+
+La etapa A tiene commit en dev: 78fa64313d80cc29bb8fdd1455b4aa8954aefea5 («Fase 5b: ortofoto por
+detalle (plano.json v5)»).
+
+**Estilo de la cuadrícula**: el DXF de PRGD no trae ninguna (no hay textos de coordenadas; las
+capas «GRID» son de perfiles de Civil 3D, vacías). Se copió del PDF del plano de AutoCAD
+(`data/input/PRGD-26-1377-GEN-PL-101_1_V0.pdf`, leído con PyMuPDF; página girada 270°):
+- 12 líneas negras de 0,085 mm, continuas, que cruzan toda el área de dibujo, cada 50 m;
+- 24 etiquetas en ArialMT de 10 pt (cifras de 2,53 mm), negras, formato «4705900.000» (3
+  decimales, sin letras). Hay una en cada extremo de cada línea, centradas en la franja de 10 mm
+  entre el marco y el área de dibujo y en su línea. El Este va abajo (Y 15,5 a 19,1) y arriba; el
+  Norte, girado, a la izquierda (X 16,2 a 19,7) y a la derecha (X 666,1 a 669,6), y se lee de
+  abajo hacia arriba;
+- sin fondo ni halo. Una prueba reproduce esas posiciones con ±0,2 mm.
+
+**Qué se hizo**
+- `cuadricula.py` (nuevo): valores, líneas en la región y etiquetas en la franja de afuera, con
+  la fuente del rótulo (embebida una sola vez; ToUnicode corregido con todo).
+  - Se omite una etiqueta que se salga del marco o choque con el rótulo, otro detalle, la rosa,
+    una etiqueta ESC u otra etiqueta (con aviso).
+  - Avisa si las líneas quedan a menos de 15 mm, si no cae ninguna o si serían más de 400.
+  - `verificar`: cada etiqueta se lee en el PDF guardado.
+- Modo extendido: la región de la ortofoto (y de la copia reducida) es el área de dibujo, con el
+  mapeo del único detalle con ortofoto. Con otro número de detalles, advertencia y recortadas.
+- `componer`, orden: plantilla → ortofoto → cuadrícula → rosa otra vez (si la foto la tapa) →
+  fondos blancos (extendida) → detalles → textos. Los trazos de la base se vuelven a contar
+  antes de poner los detalles, y la verificación de cada detalle sigue igual.
+- plano.json versión 5: `ortofoto.extender` y `ortofoto.cuadricula {visible, intervalo_m}`.
+  `componedor.json` → `ortofoto.cuadricula_intervalo_m` (50). El editor recibe `marco_mm`, y el
+  servidor, el intervalo por defecto.
+- Editor:
+  - capas ortofoto → cuadrícula → rosa → detalles;
+  - «Extender a todo el layout» (solo con un detalle marcado) y fondo blanco para los demás;
+  - «Cuadrícula de coordenadas» con su intervalo y el resumen en el panel;
+  - la misma geometría que Python (`editor_ortofoto.cuadricula`, comparada en las pruebas).
+
+**Pruebas**: 1299 pasan y 1 se salta (antes 1274). ruff igual que antes (173).
+- `test_cuadricula` (7, con las posiciones de PRGD);
+- más casos en `test_componer_ortofoto` (extendida con el mismo mapeo y fondo blanco; con dos no
+  vale; cuadrícula en el PDF; sin cobertura), `test_plano_v4`, `test_configuracion` y
+  `test_editor_ortofoto_js` (la cuadrícula del editor igual a la de Python en 4 casos).
+
+**Verificación en Edge** (`verificar_ortofoto.mjs`, 106 comprobaciones, todo OK), fase E con
+PRGD y `foto_google_sat.tif`:
+- «Extender» solo con un detalle marcado; la foto cubre el área con el mismo mapeo (0,5 m de CAD
+  por mm, igual que en su página); la página no se mueve; la mesa con fondo blanco;
+- cuadrícula cada 50 m (7 + 6 líneas): etiquetas fuera del área, dentro del marco, formato
+  «4705900.000»; a 25 m, 24 líneas; el plano lo guarda;
+- al marcar otra vez la mesa, «Extender» desaparece y la foto vuelve a su página.
+
+El script ahora cierra los procesos de Edge que quedaban sueltos y bloqueaban la carpeta de
+capturas.
+
+**PDF extendido con PRGD y Google** (`data/verificacion/ortofoto_pdf/extendido.pdf`):
+- 56 mosaicos (4,1 MB) sobre toda el área de dibujo; los 20 que quedan fuera de la página de «via
+  tunez» caen donde predice su CAD (error medio 0,74 / 255);
+- cuadrícula cada 50 m: 7 + 6 líneas y 26 etiquetas, todas legibles en el PDF;
+- 19,8 s, 390 MB de pico, PDF de 6,5 MB, copia reducida de 1,4 MB.
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

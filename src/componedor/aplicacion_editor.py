@@ -98,11 +98,14 @@ class AplicacionEditor:
     def __init__(self, ruta_html: Path, zona: RectMM, config: ConfigExportador | None,
                  elegir: Callable[[Path | None], Path | None] = elegir_dxf,
                  fabrica: Callable[[], Trabajador] | None = None,
-                 elegir_ortofoto: Callable[[Path | None], Path | None] | None = None):
+                 elegir_ortofoto: Callable[[Path | None], Path | None] | None = None,
+                 intervalo_cuadricula_m: float = 50.0):
         self.ruta_html = Path(ruta_html)
         # «Cargar ortofoto» no usa el trabajador: funciona aunque falte la sección exportador.
-        self.ortofoto = (OrtofotoEditor(self.ruta_html.parent, elegir_ortofoto)
-                         if elegir_ortofoto else OrtofotoEditor(self.ruta_html.parent))
+        self.ortofoto = (OrtofotoEditor(self.ruta_html.parent, elegir_ortofoto,
+                                        intervalo_cuadricula_m)
+                         if elegir_ortofoto else OrtofotoEditor(
+                             self.ruta_html.parent, intervalo_m=intervalo_cuadricula_m))
         self.zona = zona
         self.config = config
         self._elegir = elegir

@@ -116,3 +116,23 @@ def test_pendiente_con_ortofoto_en_la_version_4_es_error(tmp_path):
     datos = plano(ortofoto=ORTOFOTO, dxf=DXF)
     datos["detalles"] = [{**PENDIENTE, "ortofoto": True}]
     assert "detalles[0].ortofoto: solo existe en la versión 5" in error(tmp_path, datos)
+
+
+def test_extender_y_cuadricula(tmp_path):
+    datos = plano(version=5, ortofoto={**ORTOFOTO, "extender": True,
+                                       "cuadricula": {"visible": True, "intervalo_m": 25}})
+    o = leer_plano(escribir(tmp_path, datos)).ortofoto
+    assert (o.extender, o.cuadricula, o.intervalo_m) == (True, True, 25.0)
+    o = leer_plano(escribir(tmp_path, plano(version=5, ortofoto=ORTOFOTO))).ortofoto
+    assert (o.extender, o.cuadricula, o.intervalo_m) == (False, False, None)
+
+
+@pytest.mark.parametrize("cambio, esperado", [
+    ({"extender": "sí"}, "ortofoto.extender: se esperaba true o false"),
+    ({"cuadricula": True}, "ortofoto.cuadricula: se esperaba un objeto"),
+    ({"cuadricula": {"visible": 1}}, "ortofoto.cuadricula.visible: se esperaba true o false"),
+    ({"cuadricula": {"intervalo_m": 0}}, "ortofoto.cuadricula.intervalo_m: se esperaba"),
+    ({"cuadricula": {"paso": 5}}, "ortofoto.cuadricula.paso: campo no reconocido"),
+])
+def test_extender_y_cuadricula_mal_escritos(tmp_path, cambio, esperado):
+    assert esperado in error(tmp_path, plano(version=5, ortofoto={**ORTOFOTO, **cambio}))

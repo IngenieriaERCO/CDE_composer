@@ -36,7 +36,9 @@ Esquema (versión 1):
         "ppp": 300,                            (opcional: resolución con que se pone en el PDF,
                                                 en píxeles por pulgada de papel; de 72 a 1200;
                                                 300)
-        "calidad_jpeg": 85                     (opcional: calidad JPEG de 1 a 100; 85)
+        "calidad_jpeg": 85,                    (opcional: calidad JPEG de 1 a 100; 85)
+        "cuadricula_intervalo_m": 50           (opcional: intervalo de la cuadrícula de
+                                                coordenadas, en m, si el plano no dice otro; 50)
       }
     }
 
@@ -107,6 +109,7 @@ class ConfigOrtofoto:
     """Cómo va la ortofoto en el PDF (la usa componer, etapa 2)."""
     ppp: int = 300
     calidad_jpeg: int = 85
+    cuadricula_intervalo_m: float = 50.0
 
 
 CLAVES_EXPORTADOR = ("comando", "trabajo", "margen_mm", "cache_previas_mb", "paquetes",
@@ -115,7 +118,7 @@ PAQUETES_POR_DEFECTO = "data/input/dxf"
 PARA_BORRAR_POR_DEFECTO = "_para_borrar"
 MARGEN_MM_POR_DEFECTO = 5.0
 ANONIMOS_MIN_POR_DEFECTO = 100
-CLAVES_ORTOFOTO = ("ppp", "calidad_jpeg")
+CLAVES_ORTOFOTO = ("ppp", "calidad_jpeg", "cuadricula_intervalo_m")
 PPP_LIMITES = (72, 1200)
 
 
@@ -197,11 +200,15 @@ def leer_config_ortofoto(ruta: Path | str) -> ConfigOrtofoto:
     calidad = seccion.get("calidad_jpeg", ConfigOrtofoto.calidad_jpeg)
     if isinstance(calidad, bool) or not isinstance(calidad, int) or not 1 <= calidad <= 100:
         problemas.append("ortofoto.calidad_jpeg: se esperaba un entero de 1 a 100.")
+    intervalo = seccion.get("cuadricula_intervalo_m", ConfigOrtofoto.cuadricula_intervalo_m)
+    if (isinstance(intervalo, bool) or not isinstance(intervalo, (int, float))
+            or not 0 < intervalo <= 100000):
+        problemas.append("ortofoto.cuadricula_intervalo_m: se esperaba un número de m > 0.")
     if problemas:
         raise ConfigInvalida(f"El archivo de configuración '{ruta}' tiene "
                              f"{len(problemas)} problema(s):\n"
                              + "\n".join(f"- {p}" for p in problemas))
-    return ConfigOrtofoto(ppp, calidad)
+    return ConfigOrtofoto(ppp, calidad, float(intervalo))
 
 
 def _leer_seccion(ruta: Path | str, nombre: str, verificar_rutas: bool) -> dict[str, Path | None]:

@@ -325,3 +325,10 @@ main { flex: 1; display: flex; min-height: 0; }
 .ortofoto-detalles { margin: 0; padding-left: 16px; color: var(--suave); }
 .capa-ortofoto image { pointer-events: none; }
 .casilla-ortofoto { display: flex; align-items: center; gap: 4px; margin: 6px 0; font-size: 13px; white-space: nowrap; }
+/* Cuadrícula de coordenadas (como el plano de AutoCAD de PRGD) y fondo blanco de los detalles sin
+   ortofoto cuando la foto se extiende a toda el área de dibujo. */
+.capa-cuadricula { pointer-events: none; }
+.etiqueta-cuadricula { font-family: Arial, Helvetica, sans-serif; fill: #000; }
+.fondo-blanco { fill: #fff; stroke: none; }
+.campo-intervalo { display: flex; align-items: center; gap: 4px; font-size: 13px; }
+.campo-intervalo input { width: 70px; }

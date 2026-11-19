@@ -49,8 +49,10 @@ class ErrorOrtofoto(Exception):
 
 class OrtofotoEditor:
     def __init__(self, carpeta_editor: Path,
-                 elegir: Callable[[Path | None], Path | None] = elegir_ortofoto):
+                 elegir: Callable[[Path | None], Path | None] = elegir_ortofoto,
+                 intervalo_m: float = 50.0):
         self.carpeta_editor = Path(carpeta_editor)
+        self.intervalo_m = intervalo_m  # cuadrícula: el de componedor.json (ortofoto)
         self._elegir = elegir
         self.ruta: Path | None = None
         self.ficha: dict | None = None
@@ -82,7 +84,8 @@ class OrtofotoEditor:
             return None
         return {"ficha": self.ficha, "archivo_plano": self.archivo_para_plano(self.ruta),
                 "cambio": self.cambio_en_disco(),
-                "sistemas": [{"codigo": c, "nombre": n} for c, n in SISTEMAS_COMUNES]}
+                "sistemas": [{"codigo": c, "nombre": n} for c, n in SISTEMAS_COMUNES],
+                "cuadricula_intervalo_m": self.intervalo_m}
 
     def carpeta_del_plano(self, archivo_plano) -> Path | None:
         """La carpeta donde estaba la ortofoto del plano (para abrir ahí el cuadro), si existe."""
