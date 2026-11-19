@@ -302,11 +302,11 @@
   const ORDEN_NIVEL = { aviso: 1, fuerte: 2, muy_fuerte: 3 };
 
   /**
-   * Para la ortofoto: por cada colocación, la página en la hoja y la caja CAD que la cubre
+   * Para la ortofoto: por cada colocación con «Usar ortofoto», la página en la hoja y la caja CAD que la cubre
    * {id, pagina, caja, mm_por_unidad, motivo} (motivo: por qué no hay caja, o null).
    */
   function cajasOrtofoto() {
-    return estado.colocaciones.map((c) => {
+    return estado.colocaciones.filter((c) => c.ortofoto === true).map((c) => {
       const pagina = paginaDe(c);
       const r = { id: c.id, pagina, caja: null, mm_por_unidad: null, motivo: null };
       if (esBloque(c)) {
@@ -596,7 +596,27 @@
       b.addEventListener("click", accion);
       botones.appendChild(b);
     }
-    panel.replaceChildren(...filas, botones);
+    panel.replaceChildren(...filas, casillaOrtofoto(c), botones);
+  }
+
+  /** «Usar ortofoto» del detalle (versión 5): solo los marcados la llevan detrás. */
+  function casillaOrtofoto(c) {
+    const fila = nodo("label", { class: "casilla-ortofoto" });
+    const casilla = nodo("input", { type: "checkbox", id: "usar-ortofoto" });
+    casilla.checked = c.ortofoto === true;
+    casilla.disabled = !estado.ortofoto;
+    fila.title = estado.ortofoto ? "La ortofoto del plano va detrás de este detalle, recortada a su página."
+      : "Primero cargue una ortofoto («Cargar ortofoto»).";
+    casilla.addEventListener("change", () => usarOrtofoto(c, casilla.checked));
+    fila.append(casilla, " Usar ortofoto");
+    return fila;
+  }
+
+  function usarOrtofoto(c, si) {
+    if ((c.ortofoto === true) === !!si) return;
+    c.ortofoto = !!si;
+    marcarCambios();
+    actualizar();
   }
 
   const numero1 = (v) => v.toFixed(3).replace(".", ",");
@@ -667,7 +687,7 @@
       if (texto === "Escala sugerida") boton.disabled = !sugerida || sugerida === c.escala;
       botones.appendChild(boton);
     }
-    panel.replaceChildren(...filas, botones);
+    panel.replaceChildren(...filas, casillaOrtofoto(c), botones);
   }
 
   function campoCentro(etiqueta, valor, indice) {
@@ -1402,6 +1422,7 @@
     const limitada = L.clampAZona(pos, detalle.tamano_pagina_mm, ZONA) || pos;
     const nueva = { id: c.id, detalle, pos: limitada };
     if (c.etiqueta_escala === false) nueva.etiqueta_escala = false;
+    if (c.ortofoto === true) nueva.ortofoto = true; // exportado: sigue con su ortofoto
     estado.colocaciones[i] = nueva;
     marcarCambios();
     actualizar();
@@ -1425,6 +1446,7 @@
     escribirEscala: (id, texto) => escribirEscala(estado.colocaciones.find((c) => c.id === id), texto),
     ajustarALaHoja: (id) => ajustarALaHoja(estado.colocaciones.find((c) => c.id === id)),
     moverCentro: (id, centro) => moverCentro(estado.colocaciones.find((c) => c.id === id), centro),
+    usarOrtofoto: (id, si) => usarOrtofoto(estado.colocaciones.find((c) => c.id === id), si),
     seleccionar, caja: (id) => paginaDe(estado.colocaciones.find((c) => c.id === id)),
     previa: (id) => previaDe(estado.colocaciones.find((c) => c.id === id)),
     mover: (id, pos) => mover(estado.colocaciones.find((c) => c.id === id), pos),

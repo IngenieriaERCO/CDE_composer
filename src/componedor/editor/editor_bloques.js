@@ -224,7 +224,7 @@
   const esObjeto = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
   const esNumero = (v) => typeof v === "number" && isFinite(v);
   const CLAVES_DXF = ["archivo", "bytes", "id", "margen_mm", "sha256", "unidades"];
-  const CLAVES_PENDIENTE = ["centro_mm", "etiqueta_escala", "id", "origen"];
+  const CLAVES_PENDIENTE = ["centro_mm", "etiqueta_escala", "id", "origen", "ortofoto"];
   const CLAVES_ORIGEN = ["bloque", "caja_exacta", "dxf", "escala", "handle", "ocurrencia", "tamano_m"];
 
   function desconocida(objeto, validas) {
@@ -308,6 +308,9 @@
     if (item.etiqueta_escala !== undefined && typeof item.etiqueta_escala !== "boolean") {
       return errores.push(donde + ".etiqueta_escala: se esperaba true o false."), null;
     }
+    if (item.ortofoto !== undefined && typeof item.ortofoto !== "boolean") {
+      return errores.push(donde + ".ortofoto: se esperaba true o false."), null;
+    }
     return {
       bloque: { dxf, nombre: o.bloque, handle: o.handle, ocurrencia: o.ocurrencia,
         tamano_m: t.slice(), caja_exacta: o.caja_exacta !== false,
@@ -316,6 +319,7 @@
       escala: n,
       centro: c.slice(),
       etiqueta_escala: item.etiqueta_escala,
+      ortofoto: item.ortofoto === true,
     };
   }
 
@@ -355,7 +359,8 @@
   }
 
   /** La entrada pendiente de un bloque colocado (id del DXF ya asignado). */
-  function pendienteParaGuardar(c) {
+  /** conOrtofoto: el plano tiene la sección "ortofoto" (sin ella, "ortofoto" no se escribe). */
+  function pendienteParaGuardar(c, conOrtofoto) {
     const b = c.bloque;
     const d = {
       id: c.id,
@@ -364,6 +369,7 @@
       centro_mm: [r2(c.centro[0]), r2(c.centro[1])],
     };
     if (c.etiqueta_escala === false) d.etiqueta_escala = false;
+    if (c.ortofoto === true && conOrtofoto) d.ortofoto = true; // versión 5
     return d;
   }
 

@@ -1,4 +1,4 @@
-"""Lectura y validación del plano.json (versiones 1 a 4): qué detalles van en la hoja y dónde.
+"""Lectura y validación del plano.json (versiones 1 a 5): qué detalles van en la hoja y dónde.
 
 Formato: docs/formato_plano.md. Todas las rutas son relativas a la carpeta del plano.json.
 Las posiciones van en mm de papel (origen en la esquina inferior izquierda de la hoja, Y
@@ -17,7 +17,13 @@ Versión 3 (etapa 2 de la integración con el exportador) = versión 2 más la l
 "detalles", bloques de un DXF todavía SIN exportar ("origen" + "centro_mm", sin "manifiesto"):
 ver plano_dxf.py. Se lee igual, pero `componer` no la compone hasta que estén exportados.
 
-Versión 4 (ortofoto) = versión 3 más "ortofoto": la ortofoto de fondo (plano_ortofoto.py).
+Versión 4 (ortofoto) = versión 3 más "ortofoto": la ortofoto de fondo (plano_ortofoto.py),
+detrás de TODOS los detalles.
+
+Versión 5 (ortofoto por detalle) = versión 4 más, en cada detalle (exportado o pendiente),
+"ortofoto": true para que lleve la ortofoto detrás (sin la clave: false). Un plano versión 4
+con ortofoto se lee como si todos los detalles la usaran (lo que hacía la versión 4): así se
+migra. Un detalle con "ortofoto": true en un plano sin la sección "ortofoto" es error.
 
 El plano.json lo escribe el editor HTML, pero el componedor SIEMPRE lo revalida: el editor
 nunca es la fuente de la verdad. Los campos desconocidos se rechazan (un error de tipeo como
@@ -27,7 +33,7 @@ nunca es la fuente de la verdad. Los campos desconocidos se rechazan (un error d
 
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from componedor.plano_dxf import (
@@ -38,11 +44,12 @@ from componedor.plano_dxf import (
 )
 from componedor.plano_ortofoto import OrtofotoPlano, leer_ortofoto
 
-VERSIONES_SOPORTADAS = (1, 2, 3, 4)
+VERSIONES_SOPORTADAS = (1, 2, 3, 4, 5)
 CLAVES_PLANO = {"version", "formato", "plantilla", "detalles"}
 CLAVES_DETALLE = {"id", "manifiesto", "posicion_mm", "centrar"}
 CLAVES_PLANO_V2 = CLAVES_PLANO | {"rotulo", "rosa_vientos"}
 CLAVES_DETALLE_V2 = CLAVES_DETALLE | {"etiqueta_escala"}
+CLAVES_DETALLE_V5 = CLAVES_DETALLE_V2 | {"ortofoto"}
 CLAVES_PLANO_V3 = CLAVES_PLANO_V2 | {"dxf"}
 CLAVES_PLANO_V4 = CLAVES_PLANO_V3 | {"ortofoto"}
 CLAVES_ROSA = {"visible", "posicion_mm"}
@@ -59,6 +66,7 @@ class DetallePlano:
     posicion_mm: tuple[float, float] | None  # esquina inferior izquierda de la página
     centrar: bool  # True: centrado en el área de dibujo (posicion_mm es None)
     etiqueta_escala: bool = True  # versión 2: false = sin etiqueta "ESC: 1:N"
+    ortofoto: bool = False  # versión 5: lleva la ortofoto detrás (versión 4: todos)
 
 
 @dataclass(frozen=True)
@@ -104,7 +112,8 @@ def leer_plano(ruta: Path | str) -> Plano:
 
     errores: list[str] = []
     carpeta = ruta.parent
-    v4 = datos.get("version") == 4
+    v5 = datos.get("version") == 5
+    v4 = datos.get("version") == 4 or v5
     v3 = datos.get("version") == 3 or v4  # cada versión incluye todo lo de la anterior
     v2 = datos.get("version") == 2 or v3
     validas = (CLAVES_PLANO_V4 if v4 else CLAVES_PLANO_V3 if v3 else CLAVES_PLANO_V2 if v2
@@ -128,7 +137,7 @@ def leer_plano(ruta: Path | str) -> Plano:
         errores.append(f"version: se esperaba un número entero; tiene {_tipo(version)}")
     elif version not in VERSIONES_SOPORTADAS:
         errores.append(f"version: versión {version} no soportada; el componedor entiende las "
-                       f"versiones 1, 2, 3 y 4")
+                       f"versiones 1, 2, 3, 4 y 5")
 
     formato = _ruta(datos, "formato", carpeta, errores, obligatoria=True)
     plantilla = _ruta(datos, "plantilla", carpeta, errores, obligatoria=False)
@@ -146,9 +155,9 @@ def leer_plano(ruta: Path | str) -> Plano:
         vistos: dict[str, int] = {}
         for i, item in enumerate(lista):
             if v3 and isinstance(item, dict) and "origen" in item:
-                detalle = leer_pendiente(item, f"detalles[{i}]", dxfs, errores)
+                detalle = leer_pendiente(item, f"detalles[{i}]", dxfs, errores, v5)
             else:
-                detalle = _detalle(item, f"detalles[{i}]", carpeta, errores, v2)
+                detalle = _detalle(item, f"detalles[{i}]", carpeta, errores, v2, v5)
             # El id repetido se informa aunque el detalle tenga otros problemas.
             ident = item.get("id") if isinstance(item, dict) else None
             if isinstance(ident, str) and ident.strip():
@@ -171,6 +180,14 @@ def leer_plano(ruta: Path | str) -> Plano:
     rosa = _rosa(datos["rosa_vientos"], errores) if v2 and "rosa_vientos" in datos else None
     ortofoto = (leer_ortofoto(datos["ortofoto"], carpeta, errores)
                 if v4 and "ortofoto" in datos else None)
+    if "ortofoto" not in datos:
+        for d in [*detalles, *pendientes]:
+            if d.ortofoto:
+                errores.append(f"detalle '{d.id}': lleva \"ortofoto\": true, pero el plano no "
+                               f"tiene la sección \"ortofoto\" (qué ortofoto usar)")
+    elif version == 4:  # la versión 4 la ponía detrás de todos: se migra así
+        detalles = [replace(d, ortofoto=True) for d in detalles]
+        pendientes = [replace(d, ortofoto=True) for d in pendientes]
 
     if errores:
         n = len(errores)
@@ -207,14 +224,17 @@ def _rosa(valor, errores: list[str]) -> RosaPlano | None:
 
 
 def _detalle(item, donde: str, carpeta: Path, errores: list[str],
-             v2: bool = False) -> DetallePlano | None:
+             v2: bool = False, v5: bool = False) -> DetallePlano | None:
     if not isinstance(item, dict):
         errores.append(f"{donde}: se esperaba un objeto {{...}}; tiene {_tipo(item)}")
         return None
     n_errores = len(errores)
-    validas = CLAVES_DETALLE_V2 if v2 else CLAVES_DETALLE
+    validas = CLAVES_DETALLE_V5 if v5 else CLAVES_DETALLE_V2 if v2 else CLAVES_DETALLE
     for clave in sorted(set(item) - validas):
-        if clave in CLAVES_DETALLE_V2:
+        if clave == "ortofoto":
+            errores.append(f"{donde}.ortofoto: solo existe en la versión 5 del plano "
+                           f"(use \"version\": 5)")
+        elif clave in CLAVES_DETALLE_V2:
             errores.append(f"{donde}.{clave}: solo existe en la versión 2 del plano "
                            f"(use \"version\": 2)")
         else:
@@ -253,9 +273,13 @@ def _detalle(item, donde: str, carpeta: Path, errores: list[str],
     if not isinstance(etiqueta, bool):
         errores.append(f"{donde}.etiqueta_escala: se esperaba true o false; tiene {_tipo(etiqueta)}")
 
+    usa = item.get("ortofoto", False)
+    if not isinstance(usa, bool):
+        errores.append(f"{donde}.ortofoto: se esperaba true o false; tiene {_tipo(usa)}")
+
     if len(errores) > n_errores:
         return None
-    return DetallePlano(ident, manifiesto, posicion, bool(centrar), etiqueta)
+    return DetallePlano(ident, manifiesto, posicion, bool(centrar), etiqueta, usa)
 
 
 def _ruta(datos: dict, clave: str, carpeta: Path, errores: list[str], obligatoria: bool,

@@ -243,51 +243,115 @@ def test_el_catalogo_trae_la_matriz_para_la_ortofoto(entorno_editor):
     assert d["mm_por_unidad"] > 0
 
 
-def test_el_editor_escribe_la_version_4_y_python_la_lee(entorno_editor):
+def test_el_editor_escribe_la_version_5_y_python_la_lee(entorno_editor):
+    """Solo los detalles con «Usar ortofoto» llevan "ortofoto": true (versión 5)."""
     carpeta, datos = entorno_editor
     orto = {"archivo": "../data/ortofotos/Foto_tunez.tif", "bytes": 3445480,
             "modificado": "2026-11-18T21:26:25Z", "crs": None, "crs_dibujo": "EPSG:9377",
             "opacidad": 0.654}
-    texto = js("""
+    r = js("""
       const d = entrada.datos.detalles[0];
-      return L.serializarPlano([{id: "a", detalle: d, pos: [30, 40]}], entrada.datos,
-                               {ortofoto: entrada.orto});""", {"datos": datos, "orto": orto})
-    plano = json.loads(texto)
-    assert plano["version"] == 4
+      const cs = [{id: "a", detalle: d, pos: [30, 40], ortofoto: true},
+                  {id: "b", detalle: d, pos: [330, 40]}];
+      return {con: L.serializarPlano(cs, entrada.datos, {ortofoto: entrada.orto}),
+              sin: JSON.parse(L.serializarPlano(cs, entrada.datos, {}))};""",
+           {"datos": datos, "orto": orto})
+    plano = json.loads(r["con"])
+    assert plano["version"] == 5
     assert list(plano) == ["version", "formato", "plantilla", "detalles", "ortofoto"]
     assert plano["ortofoto"] == {**orto, "opacidad": 0.65}
+    assert plano["detalles"][0]["ortofoto"] is True and "ortofoto" not in plano["detalles"][1]
+    # Sin la sección "ortofoto" (se quitó), los detalles no llevan la clave.
+    assert all("ortofoto" not in d for d in r["sin"]["detalles"])
     ruta = carpeta / "editor" / "plano.json"
-    ruta.write_text(texto, encoding="utf-8")
+    ruta.write_text(r["con"], encoding="utf-8")
     leido = leer_plano(ruta)
+    assert leido.version == 5 and [d.ortofoto for d in leido.detalles] == [True, False]
     assert leido.ortofoto.archivo == (carpeta / "data" / "ortofotos" / "Foto_tunez.tif").resolve()
     assert (leido.ortofoto.crs_dibujo, leido.ortofoto.opacidad) == ("EPSG:9377", 0.65)
 
 
-def test_abrir_y_guardar_un_plano_v4_sin_tocar_nada_es_identico(entorno_editor):
+def test_un_bloque_sin_exportar_tambien_la_marca(entorno_editor):
     _, datos = entorno_editor
-    original = {"version": 4, "formato": "../formato.json", "plantilla": None,
+    sha = "4b1d" + "0" * 60
+    catalogo = {"dxf": {"nombre": "PRGD.dxf", "archivo_plano": "../dxf/PRGD.dxf", "sha256": sha,
+                        "bytes": 1}, "unidades": {"nombre": "m"}, "margen_mm": 5.0}
+    r = js("""
+      const dxf = B.entradaDxf(entrada.catalogo);
+      const c = {id: "via", escala: 500, centro: [300, 300], ortofoto: true,
+                 bloque: {dxf, nombre: "via", handle: "1B5E5", ocurrencia: 1, tamano_m: [218.4, 223.7],
+                          caja_exacta: true}};
+      const texto = L.serializarPlano([c], entrada.datos, {ortofoto: {archivo: "a.tif", opacidad: 1}});
+      const leido = L.leerPlano(texto, entrada.datos);
+      if (leido.errores.length) return {errores: leido.errores, plano: JSON.parse(texto)};
+      return {plano: JSON.parse(texto), errores: leido.errores, ortofoto: leido.colocaciones[0].ortofoto,
+              igual: L.serializarPlano(leido.colocaciones, entrada.datos,
+                                       {original: leido.original, ortofoto: leido.ortofoto}) === texto};""",
+           {"datos": datos, "catalogo": catalogo})
+    assert r["errores"] == []
+    assert r["plano"]["version"] == 5 and r["plano"]["detalles"][0]["ortofoto"] is True
+    assert r["ortofoto"] is True and r["igual"] is True
+
+
+def test_abrir_y_guardar_un_plano_v5_sin_tocar_nada_es_identico(entorno_editor):
+    _, datos = entorno_editor
+    original = {"version": 5, "formato": "../formato.json", "plantilla": None,
                 "ortofoto": {"archivo": "C:/fotos/a.tif", "crs_dibujo": "EPSG:9377"},
                 "detalles": [{"id": "a", "manifiesto": "../input/a.manifest.json",
-                              "posicion_mm": [30, 40]}]}
+                              "posicion_mm": [30, 40], "ortofoto": True},
+                             {"id": "b", "manifiesto": "../input/a.manifest.json",
+                              "posicion_mm": [330, 40]}]}
     texto = json.dumps(original, indent=2) + "\n"
     r = js("""
       const leido = L.leerPlano(entrada.texto, entrada.datos);
-      const igual = L.serializarPlano(leido.colocaciones, entrada.datos,
-                                      {original: leido.original, ortofoto: leido.ortofoto});
+      const extra = () => ({original: leido.original, ortofoto: leido.ortofoto});
+      const igual = L.serializarPlano(leido.colocaciones, entrada.datos, extra());
+      const marcas = leido.colocaciones.map((c) => c.ortofoto);
+      leido.colocaciones[0].ortofoto = false; leido.colocaciones[1].ortofoto = true;
+      const cambiada = JSON.parse(L.serializarPlano(leido.colocaciones, entrada.datos, extra()));
       const otra = JSON.parse(L.serializarPlano(leido.colocaciones, entrada.datos,
           {original: leido.original, ortofoto: Object.assign({}, leido.ortofoto, {opacidad: 0.5})}));
       const quitada = JSON.parse(L.serializarPlano(leido.colocaciones, entrada.datos,
           {original: leido.original, ortofoto: null}));
-      return {errores: leido.errores, ortofoto: leido.ortofoto, igual, otra, quitada};""",
-           {"texto": texto, "datos": datos})
-    assert r["errores"] == []
+      return {errores: leido.errores, avisos: leido.avisos, ortofoto: leido.ortofoto, igual, marcas,
+              cambiada, otra, quitada};""", {"texto": texto, "datos": datos})
+    assert r["errores"] == [] and r["avisos"] == []
     assert r["ortofoto"] == {"archivo": "C:/fotos/a.tif", "bytes": None, "modificado": None,
                              "crs": None, "crs_dibujo": "EPSG:9377", "opacidad": 1}
-    assert r["igual"] == texto  # tal como vino (sin agregar claves)
-    assert r["otra"]["ortofoto"] == {"archivo": "C:/fotos/a.tif", "bytes": None,
-                                     "modificado": None, "crs": None,
-                                     "crs_dibujo": "EPSG:9377", "opacidad": 0.5}
-    assert "ortofoto" not in r["quitada"] and r["quitada"]["version"] == 4  # no se baja
+    assert r["igual"] == texto and r["marcas"] == [True, False]  # tal como vino
+    assert ["ortofoto" in d for d in r["cambiada"]["detalles"]] == [False, True]
+    assert r["otra"]["ortofoto"]["opacidad"] == 0.5
+    assert "ortofoto" not in r["quitada"] and r["quitada"]["version"] == 5  # no se baja
+    assert all("ortofoto" not in d for d in r["quitada"]["detalles"])
+
+
+def test_un_plano_v4_se_migra_marcando_todos_los_detalles(entorno_editor):
+    """La versión 4 ponía la ortofoto detrás de TODOS: al abrirla quedan todos marcados, se avisa
+    y se guarda en versión 5 (y Python la lee igual: todos con ortofoto)."""
+    carpeta, datos = entorno_editor
+    original = {"version": 4, "formato": "../formato.json", "plantilla": None,
+                "ortofoto": {"archivo": "C:/fotos/a.tif", "crs_dibujo": "EPSG:9377"},
+                "detalles": [{"id": "a", "manifiesto": "../input/a.manifest.json",
+                              "posicion_mm": [30, 40]},
+                             {"id": "b", "manifiesto": "../input/a.manifest.json",
+                              "posicion_mm": [330, 40]}]}
+    texto = json.dumps(original, indent=2) + "\n"
+    r = js("""
+      const leido = L.leerPlano(entrada.texto, entrada.datos);
+      return {errores: leido.errores, avisos: leido.avisos, marcas: leido.colocaciones.map((c) => c.ortofoto),
+              guardado: JSON.parse(L.serializarPlano(leido.colocaciones, entrada.datos,
+                                    {original: leido.original, ortofoto: leido.ortofoto}))};""",
+           {"texto": texto, "datos": datos})
+    assert r["errores"] == [] and r["marcas"] == [True, True]
+    assert r["avisos"] == [("Plano versión 4: la ortofoto iba detrás de todos los detalles. Ahora "
+                            "se elige por detalle («Usar ortofoto»): quedan todos marcados. Se "
+                            "guardará en versión 5.")]
+    g = r["guardado"]
+    assert g["version"] == 5 and [d.get("ortofoto") for d in g["detalles"]] == [True, True]
+    assert g["ortofoto"] == original["ortofoto"]  # la sección, tal como vino
+    ruta = carpeta / "editor" / "v4.json"
+    ruta.write_text(texto, encoding="utf-8")
+    assert [d.ortofoto for d in leer_plano(ruta).detalles] == [True, True]  # Python: igual
 
 
 def test_el_editor_rechaza_la_ortofoto_mal_escrita(entorno_editor):
@@ -296,10 +360,20 @@ def test_el_editor_rechaza_la_ortofoto_mal_escrita(entorno_editor):
     planos = {"v3": {"version": 3, "ortofoto": {"archivo": "a.tif"}, "detalles": [detalle]},
               "mala": {"version": 4, "ortofoto": {"archivo": "a.tif", "opacidad": 3},
                        "detalles": [detalle]},
-              "v5": {"version": 5, "detalles": [detalle]}}
+              "marca_v4": {"version": 4, "ortofoto": {"archivo": "a.tif"},
+                           "detalles": [{**detalle, "ortofoto": True}]},
+              "marca_no_booleana": {"version": 5, "ortofoto": {"archivo": "a.tif"},
+                                    "detalles": [{**detalle, "ortofoto": "sí"}]},
+              "sin_seccion": {"version": 5, "detalles": [{**detalle, "ortofoto": True}]},
+              "v6": {"version": 6, "detalles": [detalle]}}
     r = js("""const res = {};
       for (const [k, p] of Object.entries(entrada.planos)) res[k] = L.leerPlano(JSON.stringify(p), entrada.datos).errores;
       return res;""", {"planos": planos, "datos": datos})
     assert r["v3"] == ['ortofoto: solo existe en la versión 4 del plano (use "version": 4).']
     assert r["mala"] == ["ortofoto.opacidad: se esperaba un número de 0 a 1."]
-    assert "versiones 1, 2, 3 y 4" in r["v5"][0]
+    assert r["marca_v4"] == [('detalles[0].ortofoto: solo existe en la versión 5 del plano (use '
+                              '"version": 5).')]
+    assert r["marca_no_booleana"] == ["detalles[0].ortofoto: se esperaba true o false."]
+    assert r["sin_seccion"] == [("detalles[0] ('a'): lleva \"ortofoto\": true, pero el plano no "
+                                 "tiene la sección \"ortofoto\".")]
+    assert "versiones 1, 2, 3, 4 y 5" in r["v6"][0]

@@ -186,3 +186,42 @@ def test_cli_resume_la_ortofoto(entorno, capsys):
     assert "Copia reducida escrita:" in salida
     assert "los 6 mosaico(s) de la ortofoto (los detalles siguen siendo vectores)" in salida
     assert "cada mosaico de la ortofoto es JPEG y está en su sitio (±0,1 mm)" in salida
+
+
+# --- versión 5: solo los detalles marcados ------------------------------------------------------
+
+def plano_v5(carpeta, marcas, quitar_original=False):
+    """Dos detalles del mismo paquete: «a» arriba y «b» abajo; marcas = (a, b)."""
+    leido = plano(carpeta)  # para la sección "ortofoto" con bytes y fecha
+    datos = json.loads(leido.ruta.read_text(encoding="utf-8"))
+    datos["version"] = 5
+    datos["detalles"] = [
+        {"id": "a", "manifiesto": "../input/a.manifest.json", "posicion_mm": list(OCUPADO[:2])},
+        {"id": "b", "manifiesto": "../input/a.manifest.json", "posicion_mm": [30.0, 300.0]}]
+    for d, m in zip(datos["detalles"], marcas, strict=True):
+        if m:
+            d["ortofoto"] = True
+    leido.ruta.write_text(json.dumps(datos), encoding="utf-8")
+    if quitar_original:
+        (carpeta / "fotos" / "orto.tif").unlink()
+    return leer_plano(leido.ruta)
+
+
+def test_solo_los_detalles_marcados_llevan_ortofoto(entorno):
+    r = componer_plano(plano_v5(entorno, (True, False)), entorno / "p.pdf", config_ortofoto=POCO)
+    assert list(r.ortofoto.cobertura) == ["a"]
+    assert {m.detalle for m in r.ortofoto.mosaicos} == {"a"}
+    jpeg = [i for i in imagenes_pdf(entorno / "p.pdf", ALTO) if i["filtro"] == "/DCTDecode"]
+    assert len(jpeg) == 1 and jpeg[0]["rect_mm"] == pytest.approx(OCUPADO, abs=0.01)
+    # La copia reducida solo lleva los marcados.
+    assert [d["id"] for d in leer_indice(entorno / "planos" / "plano_ortofoto")["detalles"]] == ["a"]
+    r = componer_plano(plano_v5(entorno, (True, True)), entorno / "q.pdf", config_ortofoto=POCO)
+    assert set(r.ortofoto.cobertura) == {"a", "b"}
+
+
+def test_ninguno_marcado_no_necesita_la_ortofoto(entorno):
+    """Ninguno marcado: sale sin ortofoto, con aviso, y ni siquiera hace falta el archivo."""
+    r = componer_plano(plano_v5(entorno, (False, False), quitar_original=True), entorno / "p.pdf")
+    assert r.ortofoto is None and r.copia is None
+    assert any("ningún detalle la usa" in a for a in r.advertencias)
+    assert [i for i in imagenes_pdf(entorno / "p.pdf", ALTO) if i["filtro"] == "/DCTDecode"] == []

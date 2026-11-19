@@ -2157,6 +2157,43 @@ la mesa I1.M1.PV1_12900 a 1:75; cada caso en un proceso aparte para medir su pic
   tamaño y fecha y conserva sistema y opacidad;
 - todo lo de la etapa 1 sigue igual.
 
+### Ortofoto por detalle — Etapa A (2026-11-19, sin commit)
+
+Plan aprobado por el usuario (2026-11-19): la ortofoto se elige **por detalle**; en la etapa B,
+«Extender a todo el layout» (con un solo bloque con ortofoto, al área de dibujo, mismo mapeo
+CAD→papel; los bloques sin ortofoto con fondo blanco de su página) y la cuadrícula de
+coordenadas (vectorial, debajo de los vectores, en la página del bloque, estilo leído del DXF de
+PRGD, también sin cobertura). Etapa A, ya hecha:
+
+- **plano.json versión 5**: `"ortofoto": true` en cada detalle (exportado o pendiente) que la
+  lleva detrás; sin la clave, `false`. Con la marca y sin la sección `ortofoto`: error. Una
+  versión 4 con ortofoto se lee con todos los detalles marcados (en Python y en el editor), que
+  es lo que hacía; el editor lo avisa y guarda en versión 5.
+- **`componer`**: la ortofoto, la copia reducida y la verificación, solo con los detalles
+  marcados. Si ninguno lo está: sin ortofoto, con advertencia, y no hace falta el archivo.
+- **Editor**:
+  - casilla **«Usar ortofoto»** en Selección (detalle y bloque), desactivada sin ortofoto
+    cargada;
+  - la capa y el estado del panel, solo con los marcados; el panel avisa si no hay ninguno;
+  - al exportar un bloque, el detalle nuevo conserva la marca.
+
+**Pruebas**: 1274 pasan y 1 se salta (antes 1264). ruff igual que antes (173).
+- `test_plano_v4` (+7): versión 5, migración de la 4, errores, pendiente con marca en la 4.
+- `test_componer_ortofoto` (+2): solo los marcados llevan mosaicos y copia; ninguno marcado,
+  sin archivo.
+- `test_editor_ortofoto_js`: versión 5 de ida y vuelta (Python la lee), bloque sin exportar,
+  abrir y guardar igual, migración de la 4 y errores.
+
+**Verificación en Edge** (`verificar_ortofoto.mjs`, 88 comprobaciones, todo OK):
+- **A y B**: sin marcar, nada; marcada la casilla, la ortofoto detrás de ese detalle solo. La
+  mesa de PRGD sin marcar no la lleva y su casilla sigue sin marcar. El plano guarda las
+  marcas y Python las lee.
+- **D**: `foto_google_sat.tif` (EPSG:32618) con PRGD: se reproyecta y queda solo detrás de «via
+  tunez», exactamente sobre su página. Abrir esa misma composición como versión 4 avisa la
+  migración y deja los dos marcados; al guardar, versión 5.
+- **PDF con PRGD y Google, versión 5** («via tunez» marcada, la mesa no): 36 mosaicos, todos de
+  «via tunez»; 16,8 s, 332 MB de pico, PDF de 4,6 MB, los mismos 9369 trazos.
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

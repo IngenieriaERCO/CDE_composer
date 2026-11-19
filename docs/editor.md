@@ -407,8 +407,14 @@ en la hoja.
 ## 2g. Ortofoto de fondo (con servidor local)
 
 Solo con `Abrir editor.bat`. **Cargar ortofoto**, en la barra de arriba, abre el cuadro de
-Windows para elegir un GeoTIFF (`.tif` o `.tiff`). Va **detrás de todos los detalles**, recortada
-a la página de cada uno; fuera de los detalles la hoja queda en blanco. Una ortofoto por plano.
+Windows para elegir un GeoTIFF (`.tif` o `.tiff`). Una ortofoto por plano, que va **detrás de los
+detalles que la usan**, recortada a la página de cada uno; fuera de ellos la hoja queda en blanco.
+
+**Por detalle**: seleccione el detalle y marque **«Usar ortofoto»** en el panel Selección (sirve
+para detalles exportados y para bloques del DXF sin exportar). Sin marcar, no la lleva: un perfil,
+por ejemplo. La casilla está desactivada mientras no haya ortofoto cargada. Si ninguno está
+marcado, el panel Ortofoto lo dice. Un plano versión 4 (de antes, con la ortofoto en todos) se
+abre con todos los detalles marcados, con un aviso, y se guarda en versión 5.
 
 En el panel **Ortofoto** (columna derecha) aparece su **ficha**, leída de la cabecera sin abrir
 la imagen entera (sirve igual para archivos de varios GB):
@@ -438,7 +444,7 @@ la imagen entera (sirve igual para archivos de varios GB):
   `EPSG:6247`). Solo se aceptan sistemas proyectados, en metros.
 - Si los dos sistemas son distintos, la ortofoto se **reproyecta** (aviso azul).
 
-Con los sistemas elegidos, el editor pide la ortofoto de **cada detalle**: la de la caja CAD que
+Con los sistemas elegidos, el editor pide la ortofoto de **cada detalle marcado**: la de la caja CAD que
 cubre su página en la hoja. La caja sale de la matriz del manifiesto si el detalle ya está
 exportado, y del centro y la escala si es un bloque del DXF sin exportar. Al mover un detalle, la
 ortofoto se mueve con él. Al cambiar la escala, se pide la de la caja nueva.

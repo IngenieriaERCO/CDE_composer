@@ -71,3 +71,48 @@ def test_ortofoto_invalida(tmp_path, cambio, esperado):
 def test_ortofoto_que_no_es_objeto(tmp_path):
     assert "ortofoto: se esperaba un objeto" in error(tmp_path, plano(ortofoto="a.tif"))
 
+
+
+# --- versión 5: ortofoto por detalle ------------------------------------------------------------
+
+PENDIENTE = {"id": "via", "origen": {"dxf": "d1", "bloque": "via", "handle": "1B5E5",
+                                     "ocurrencia": 1, "escala": "1:500",
+                                     "tamano_m": [218.4, 223.7]},
+             "centro_mm": [300, 300]}
+DXF = [{"id": "d1", "archivo": "prgd.dxf", "sha256": "4b1d" + "0" * 60, "margen_mm": 5}]
+
+
+def test_version_5_por_detalle(tmp_path):
+    datos = plano(version=5, ortofoto=ORTOFOTO, dxf=DXF)
+    datos["detalles"] = [{**datos["detalles"][0], "ortofoto": True},
+                         {"id": "perfil", "manifiesto": "b.manifest.json", "posicion_mm": [300, 40]},
+                         {**PENDIENTE, "ortofoto": True}]
+    p = leer_plano(escribir(tmp_path, datos))
+    assert p.version == 5 and [d.ortofoto for d in p.detalles] == [True, False]
+    assert p.pendientes[0].ortofoto is True
+
+
+def test_la_version_4_se_lee_con_todos_los_detalles(tmp_path):
+    datos = plano(ortofoto=ORTOFOTO, dxf=DXF)
+    datos["detalles"].append(PENDIENTE)
+    p = leer_plano(escribir(tmp_path, datos))
+    assert [d.ortofoto for d in p.detalles] == [True] and p.pendientes[0].ortofoto is True
+    assert [d.ortofoto for d in leer_plano(escribir(tmp_path, plano())).detalles] == [False]
+
+
+@pytest.mark.parametrize("version, detalle, seccion, esperado", [
+    (4, {"ortofoto": True}, True, "detalles[0].ortofoto: solo existe en la versión 5"),
+    (5, {"ortofoto": "sí"}, True, "detalles[0].ortofoto: se esperaba true o false"),
+    (5, {"ortofoto": True}, False, ("detalle 'd1': lleva \"ortofoto\": true, pero el plano no "
+                                    "tiene la sección \"ortofoto\"")),
+])
+def test_ortofoto_por_detalle_mal_escrita(tmp_path, version, detalle, seccion, esperado):
+    datos = plano(version=version, **({"ortofoto": ORTOFOTO} if seccion else {}))
+    datos["detalles"] = [{**datos["detalles"][0], **detalle}]
+    assert esperado in error(tmp_path, datos)
+
+
+def test_pendiente_con_ortofoto_en_la_version_4_es_error(tmp_path):
+    datos = plano(ortofoto=ORTOFOTO, dxf=DXF)
+    datos["detalles"] = [{**PENDIENTE, "ortofoto": True}]
+    assert "detalles[0].ortofoto: solo existe en la versión 5" in error(tmp_path, datos)

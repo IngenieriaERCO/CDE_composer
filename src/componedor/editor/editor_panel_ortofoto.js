@@ -16,6 +16,7 @@
  *   «Sistema del dibujo» sale prellenado con él (una vez por DXF y ortofoto; siempre editable).
  *   Si no lo trae, o si el código salió del texto de la autoridad (epsg_from "authority"),
  *   queda vacío; el aviso amarillo y «Usar EPSG:… para el dibujo» se muestran igual.
+ * - Va solo detrás de los detalles con «Usar ortofoto» (casilla en Selección, plano versión 5).
  * - Vistas previas: una por caja CAD (la página de cada detalle), pedidas 250 ms después del
  *   último cambio (al arrastrar el tirador de escala no se pide una por cada paso).
  *
@@ -191,7 +192,12 @@
   function pintarDetalles() {
     estadoDetalles.replaceChildren();
     if (!UI() || !lista()) return;
-    for (const r of UI().cajasOrtofoto()) {
+    const cajas = UI().cajasOrtofoto(); // solo los detalles con «Usar ortofoto»
+    if (!cajas.length) {
+      estadoDetalles.appendChild(nodo("li", {}, "Ningún detalle usa la ortofoto: seleccione uno y marque " +
+        "«Usar ortofoto» en Selección."));
+    }
+    for (const r of cajas) {
       let texto;
       if (!r.caja) {
         texto = r.motivo;

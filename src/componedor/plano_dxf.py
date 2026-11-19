@@ -29,6 +29,7 @@ from pathlib import Path
 
 CLAVES_DXF = {"id", "archivo", "sha256", "bytes", "unidades", "margen_mm"}
 CLAVES_PENDIENTE = {"id", "origen", "centro_mm", "etiqueta_escala"}
+CLAVES_PENDIENTE_V5 = CLAVES_PENDIENTE | {"ortofoto"}  # versión 5: ortofoto por detalle
 CLAVES_ORIGEN = {"dxf", "bloque", "handle", "ocurrencia", "escala", "tamano_m", "caja_exacta"}
 RE_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 RE_HANDLE = re.compile(r"^[0-9A-F]+$")
@@ -58,6 +59,7 @@ class BloquePendiente:
     centro_mm: tuple[float, float]
     caja_exacta: bool = True
     etiqueta_escala: bool = True
+    ortofoto: bool = False  # versión 5
 
 
 def _numero(v) -> bool:
@@ -125,10 +127,14 @@ def leer_escala(texto) -> float | None:
 
 
 def leer_pendiente(item: dict, donde: str, dxfs: dict[str, DxfPlano],
-                   errores: list[str]) -> BloquePendiente | None:
+                   errores: list[str], v5: bool = False) -> BloquePendiente | None:
     """Un detalle pendiente (con "origen"). Los problemas van a `errores`."""
     n = len(errores)
-    _desconocidas(item, CLAVES_PENDIENTE, donde, errores)
+    if not v5 and "ortofoto" in item:
+        errores.append(f"{donde}.ortofoto: solo existe en la versión 5 del plano (use "
+                       f"\"version\": 5)")
+    _desconocidas({k: v for k, v in item.items() if k != "ortofoto"} if not v5 else item,
+                  CLAVES_PENDIENTE_V5 if v5 else CLAVES_PENDIENTE, donde, errores)
     ident = item.get("id")
     if not _texto(ident):
         errores.append(f"{donde}.id: se esperaba un texto no vacío")
@@ -146,10 +152,13 @@ def leer_pendiente(item: dict, donde: str, dxfs: dict[str, DxfPlano],
     etiqueta = item.get("etiqueta_escala", True)
     if not isinstance(etiqueta, bool):
         errores.append(f"{donde}.etiqueta_escala: se esperaba true o false")
+    usa = item.get("ortofoto", False)
+    if not isinstance(usa, bool):
+        errores.append(f"{donde}.ortofoto: se esperaba true o false")
     if len(errores) > n:
         return None
     return BloquePendiente(ident, centro_mm=(float(centro[0]), float(centro[1])),
-                           etiqueta_escala=etiqueta, **datos)
+                           etiqueta_escala=etiqueta, ortofoto=usa, **datos)
 
 
 def _origen(origen: dict, donde: str, dxfs: dict[str, DxfPlano], errores: list[str]) -> dict:

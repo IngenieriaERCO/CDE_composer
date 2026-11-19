@@ -1,4 +1,4 @@
-# Formato de plano.json (versiones 1 a 4)
+# Formato de plano.json (versiones 1 a 5)
 
 Un `plano.json` dice **qué detalles van en una hoja y dónde** y, desde la versión 2, **qué
 se escribe en el rótulo** y **dónde va la rosa de los vientos**. Lo lee el comando
@@ -24,7 +24,9 @@ El editor HTML (`editor.html`) lo escribe arrastrando y soltando, pero el compon
   tiene alguno; `componer` la lee, pero no la compone hasta que estén exportados. Ver
   [Bloques de un DXF sin exportar](#bloques-de-un-dxf-sin-exportar-versión-3).
 - **Versión 4** (ortofoto, etapa 1): la versión 3 más `ortofoto`, la ortofoto de fondo del
-  plano. Ver [Ortofoto de fondo](#ortofoto-de-fondo-versión-4).
+  plano, detrás de **todos** los detalles. Ver [Ortofoto de fondo](#ortofoto-de-fondo-versión-4).
+- **Versión 5** (ortofoto por detalle): la versión 4 más `"ortofoto": true` en cada detalle que la
+  lleva detrás. Ver [Ortofoto por detalle](#ortofoto-por-detalle-versión-5).
 
 ## Ejemplo (versión 2)
 
@@ -481,6 +483,29 @@ cada uno; fuera de los detalles, nada. La elige «Cargar ortofoto» del editor
 Nunca se supone un sistema: sin `crs_dibujo` (o sin el de la ortofoto, si el archivo no lo
 trae) el editor no la ubica y lo avisa en amarillo.
 
+### Ortofoto por detalle (versión 5)
+
+Desde la versión 5 la ortofoto va solo detrás de los detalles que la piden (casilla «Usar
+ortofoto» del editor). Un perfil u otro bloque que no la necesita queda sin ella:
+
+```json
+"detalles": [
+  {"id": "via_tunez", "manifiesto": "…", "posicion_mm": [40, 90], "ortofoto": true},
+  {"id": "perfil", "manifiesto": "…", "posicion_mm": [300, 40]},
+  {"id": "mesa", "origen": {…}, "centro_mm": [560, 60], "ortofoto": true}
+]
+```
+
+- `ortofoto` (`true` o `false`, opcional): va en detalles exportados y en bloques pendientes.
+  Sin la clave es `false`.
+- Si un detalle lleva `"ortofoto": true`, el plano debe tener la sección `ortofoto`; si no, es
+  error.
+- **Migración desde la 4**: la versión 4 ponía la ortofoto detrás de todos. Un plano versión 4
+  con `ortofoto` se lee como si **todos** sus detalles la usaran (en `componer` y en el editor).
+  El editor lo avisa y lo guarda en versión 5, con todos los detalles marcados.
+- Si ninguno la usa, `componer` sale sin ortofoto (con advertencia) y ni siquiera necesita el
+  archivo.
+
 ### Cómo la pone `componer`
 
 - **Qué archivo usa**: el original, si existe y coincide con el plano (mismo tamaño y fecha, lo
@@ -489,7 +514,7 @@ trae) el editor no la ubica y lo avisa en amarillo.
   mismo sistema del dibujo), **no se compone** y el error dice qué hacer.
 - **Sistemas**: sin `crs_dibujo`, o con una ortofoto sin sistema y sin `crs`, **no se
   compone** (error claro). Nunca se supone uno. Si son distintos, se reproyecta.
-- **Dónde**: por cada detalle, su página en la hoja se lleva a CAD con la matriz de su
+- **Dónde**: por cada detalle que la usa, su página en la hoja se lleva a CAD con la matriz de su
   manifiesto; la ortofoto de esa caja va **exactamente sobre la página**, debajo del detalle.
   Orden: plantilla (con la rosa y los símbolos) → ortofoto → detalles → rótulo.
 - **Cómo**: a `ppp` píxeles por pulgada de papel (300) en **mosaicos de 1024 px**, cada uno un

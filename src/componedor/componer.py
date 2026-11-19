@@ -175,7 +175,9 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
         raise PlanoNoComponible(texto_pendientes(plano.pendientes, plano.dxf,
                                                  formato.zonas[ZONA], ZONA))
     eleccion = None
-    if plano.ortofoto is not None:
+    # Versión 5: solo los detalles marcados; versión 4: todos (plano.py ya lo migró así).
+    usan_ortofoto = [d for d in plano.detalles if d.ortofoto]
+    if plano.ortofoto is not None and usan_ortofoto:
         try:
             eleccion = elegir(plano.ortofoto, carpeta_copia(plano.ruta))
         except OrtofotoNoUsable as e:
@@ -191,9 +193,14 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
         textos, valores, avisos = _textos(plano, formato, colocados, elementos)
         advertencias += avisos
         ortofoto = None
+        if plano.ortofoto is not None and not usan_ortofoto:
+            advertencias.append(f"El plano tiene la ortofoto «{plano.ortofoto.archivo.name}», "
+                                f"pero ningún detalle la usa («Usar ortofoto» en el editor): "
+                                f"sale sin ella.")
         if eleccion is not None:
             advertencias += eleccion.avisos
-            ortofoto = _Ortofoto(eleccion, [_detalle_ortofoto(a, c) for _, a, _, c in colocados],
+            ortofoto = _Ortofoto(eleccion, [_detalle_ortofoto(a, c) for d, a, _, c in colocados
+                                            if d.ortofoto],
                                  config_ortofoto or ConfigOrtofoto(), plano.ortofoto.opacidad)
         resultado = _componer_y_verificar(formato, colocados, salida, guias, destino_rosa,
                                           textos, ortofoto)

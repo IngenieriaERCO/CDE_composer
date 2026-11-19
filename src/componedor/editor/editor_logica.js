@@ -260,7 +260,7 @@
   }
 
   // ---------------------------------------------------------------------------------------
-  // plano.json (versiones 1 a 4, docs/formato_plano.md).
+  // plano.json (versiones 1 a 5, docs/formato_plano.md).
   // ---------------------------------------------------------------------------------------
 
   /** id, id_2, id_3… el primero que no esté en `usados`. */
@@ -287,7 +287,8 @@
    * en un detalle, el plano es versión 2; si no, versión 1. Con bloques de un DXF sin
    * exportar ({id, bloque, escala, centro}), versión 3: la lista "dxf" y cada bloque con
    * "origen" y "centro_mm" (sin manifiesto). Con extra.ortofoto ({archivo, bytes, crs,
-   * crs_dibujo, opacidad}), versión 4: la sección "ortofoto".
+   * crs_dibujo, opacidad}), versión 5: la sección "ortofoto" y, en cada detalle que la usa
+   * (c.ortofoto === true), "ortofoto": true.
    */
   function serializarPlano(colocaciones, datos, extra) {
     return JSON.stringify(objetoPlano(colocaciones, datos, extra), null, 2)
@@ -311,17 +312,22 @@
     let v2 = false;
     const pendientes = colocaciones.filter((c) => c.bloque);
     B.asignarIdsDxf(pendientes.map((c) => c.bloque.dxf));
+    const conOrtofoto = !!extra.ortofoto;
+    // "ortofoto" del detalle tal como se escribirá (solo con la sección "ortofoto").
+    const usaOrtofoto = (c) => conOrtofoto && c.ortofoto === true;
+    const igualOrtofoto = (c) => usaOrtofoto(c) === (c.original.ortofoto === true);
     const detalles = colocaciones.map((c) => {
       const etiqueta = c.etiqueta_escala === false ? false : undefined;
       const etiquetaOriginal = c.original && c.original.etiqueta_escala === false ? false : undefined;
       if (c.bloque) { // sin exportar: centro y escala (no se movió ni cambió: tal como vino)
         if (c.original && mismaPos(c.centro, c.centroOriginal) && c.escala === c.escalaOriginal &&
-            etiqueta === etiquetaOriginal) {
+            etiqueta === etiquetaOriginal && igualOrtofoto(c)) {
           return JSON.parse(JSON.stringify(c.original));
         }
-        return B.pendienteParaGuardar(c);
+        return B.pendienteParaGuardar(c, conOrtofoto);
       }
-      if (c.original && mismaPos(c.pos, c.posOriginal) && etiqueta === etiquetaOriginal) {
+      if (c.original && mismaPos(c.pos, c.posOriginal) && etiqueta === etiquetaOriginal &&
+          igualOrtofoto(c)) {
         if (etiqueta === false) v2 = true;
         return JSON.parse(JSON.stringify(c.original));
       }
@@ -334,6 +340,7 @@
         d.etiqueta_escala = false;
         v2 = true;
       }
+      if (usaOrtofoto(c)) d.ortofoto = true;
       return d;
     });
     const nuevo = {
@@ -362,9 +369,9 @@
     }
     if (v2) nuevo.version = 2;
     if (pendientes.length) nuevo.version = 3;
-    if (extra.ortofoto) nuevo.version = 4;
+    if (extra.ortofoto) nuevo.version = 5; // la 4 (ortofoto en todos) se migra a la 5 al guardar
     // No se baja de versión (un plano 3 sin bloques pendientes sigue siendo válido).
-    if (original && [2, 3, 4].includes(original.version) &&
+    if (original && [2, 3, 4, 5].includes(original.version) &&
         original.version > nuevo.version) nuevo.version = original.version;
     if (!original) return nuevo;
     // Mismo orden de claves que el original; lo que no estaba, al final.
@@ -479,11 +486,12 @@
     if (!esObjeto(plano)) {
       return vacio(["El plano debe ser un objeto JSON {...}."]);
     }
-    if (![1, 2, 3, 4].includes(plano.version)) {
+    if (![1, 2, 3, 4, 5].includes(plano.version)) {
       errores.push("version: versión " + JSON.stringify(plano.version) +
-        " no soportada; el editor entiende las versiones 1, 2, 3 y 4.");
+        " no soportada; el editor entiende las versiones 1, 2, 3, 4 y 5.");
     }
-    const v4 = plano.version === 4;
+    const v5 = plano.version === 5;
+    const v4 = plano.version === 4 || v5;
     const v3 = plano.version === 3 || v4; // cada versión incluye todo lo de la anterior
     const v2 = plano.version === 2 || v3;
     if (!v4 && plano.ortofoto !== undefined) {
@@ -592,6 +600,25 @@
       colocaciones.push(colocacion);
     });
     if (errores.length) return vacio(errores);
+    // Ortofoto por detalle (versión 5). Una versión 4 con ortofoto la llevaba detrás de TODOS:
+    // se migra marcándolos a todos (y al guardar pasa a la 5).
+    for (const [i, c] of colocaciones.entries()) {
+      const item = plano.detalles[i];
+      if (!v5 && item.ortofoto !== undefined) {
+        errores.push("detalles[" + i + "].ortofoto: solo existe en la versión 5 del plano (use \"version\": 5).");
+      } else if (item.ortofoto !== undefined && typeof item.ortofoto !== "boolean") {
+        errores.push("detalles[" + i + "].ortofoto: se esperaba true o false.");
+      }
+      c.ortofoto = v5 ? item.ortofoto === true : !!ortofoto;
+      if (c.ortofoto && !ortofoto) {
+        errores.push("detalles[" + i + "] ('" + c.id + "'): lleva \"ortofoto\": true, pero el plano no tiene la sección \"ortofoto\".");
+      }
+    }
+    if (errores.length) return vacio(errores);
+    if (ortofoto && plano.version === 4) {
+      avisos.push("Plano versión 4: la ortofoto iba detrás de todos los detalles. Ahora se elige por " +
+        "detalle («Usar ortofoto»): quedan todos marcados. Se guardará en versión 5.");
+    }
     return { colocaciones, errores, avisos, rosa, rotulo, ortofoto, original: plano };
   }
 

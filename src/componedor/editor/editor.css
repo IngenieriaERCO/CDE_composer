@@ -324,3 +324,4 @@ main { flex: 1; display: flex; min-height: 0; }
 .campo-opacidad input { flex: 1; }
 .ortofoto-detalles { margin: 0; padding-left: 16px; color: var(--suave); }
 .capa-ortofoto image { pointer-events: none; }
+.casilla-ortofoto { display: flex; align-items: center; gap: 4px; margin: 6px 0; font-size: 13px; white-space: nowrap; }
