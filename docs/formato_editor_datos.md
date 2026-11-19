@@ -102,6 +102,8 @@ en ese caso reemplaza solo lo que genera (`editor_datos.json`, `plantilla.png`,
 | `detalles[].tamano_pagina_mm` | `[ancho, alto]` de la página del detalle: lo que ocupa en la hoja. |
 | `detalles[].limites_dibujo_mm` | Caja del dibujo real (`page_bounds_mm`) en mm, relativa a la **esquina inferior izquierda de la página del detalle**, Y hacia arriba. Con la página en `(x, y)`, el dibujo queda en `[x + x0, y + y0, x + x1, y + y1]`. |
 | `detalles[].cabe` | Si la página cabe por tamaño en `area_dibujo` (misma regla que `colocar`). Uno que no cabe se lista, pero no se puede colocar. |
+| `detalles[].cad_a_pagina` | **(Agregado con la ortofoto; aditivo.)** La matriz `cad_to_page` del manifiesto `[a, b, c, d, e, f]` (CAD → mm de página, origen arriba-izquierda, Y abajo). Con ella el editor sabe qué caja CAD cubre la página del detalle, para poner la ortofoto detrás. `null` si el manifiesto no la trae. |
+| `detalles[].mm_por_unidad` | **(Agregado con la ortofoto.)** mm reales por unidad CAD (`units.millimeters_per_unit`: 1000 si el dibujo está en m). |
 | `detalles[].tiene_fondo` | **(Agregado en la subfase 3.4; aditivo, el resto no cambia.)** `true` si el PDF trae el fondo blanco de página completa (paquetes antiguos del exportador), `false` si no. Misma regla con la que `componer` lo detecta (`comprobacion_dibujo.tiene_fondo_de_pagina`). Decide si la miniatura es transparente u opaca y qué advertencias de traslape aplican. Si falta (datos anteriores), el editor supone `true`. |
 | `detalles[].notas` | Notas del inventario (no cabe, escala sugerida aproximada, duplicado). |
 | `detalles[].miniatura` | PNG del detalle y su tamaño en píxeles. |

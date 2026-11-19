@@ -24,9 +24,17 @@ Subfase 4.1 (si el formato trae la sección "rotulo"):
     error con el campo, el texto y las medidas.
   - Etiqueta "ESC: 1:N" junto a cada detalle (etiquetas_escala.py); si no cabe, advertencia.
   - Los textos se verifican en el PDF guardado (posición de cada línea ±0,1 mm).
+
+Ortofoto (plano versión 4, `ortofoto_pdf`): detrás de los detalles, recortada a la página de
+cada uno. Orden en la hoja: plantilla (y rosa, símbolos) → ortofoto → detalles → rótulo. Se usa
+el original si existe y coincide con el plano; si no, la copia reducida de la carpeta del plano
+(con aviso); si no hay ninguna, no se compone (`ortofoto_fuente`). En el PDF guardado se
+verifica cada mosaico (JPEG, en su sitio ±0,1 mm) y que los detalles siguen siendo vectores. Con
+el original, después se escribe (o se deja, si está al día) la copia reducida.
 """
 
 import os
+from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -38,6 +46,7 @@ from componedor.advertencias import (
     texto_advertencia,
 )
 from componedor.cad_a_papel import limites_dibujo_en_papel
+from componedor.configuracion import ConfigOrtofoto
 from componedor.colocar import (
     DetalleInvalido,
     abrir_pdf,
@@ -58,6 +67,21 @@ from componedor.firmas import FirmaPedida, insertar_firmas, verificar_firmas
 from componedor.fuente import Fuente, FuenteInvalida, cargar_fuente
 from componedor.importador import PaqueteAceptado, PaqueteRechazado, importar_paquete
 from componedor.maquetacion import TextoMaquetado
+from componedor.ortofoto_copia import InformeCopia, carpeta_copia, escribir_copia
+from componedor.ortofoto_fuente import (
+    Eleccion,
+    OrtofotoNoUsable,
+    abrir_fuentes,
+    datos_del_archivo,
+    elegir,
+)
+from componedor.ortofoto_pdf import (
+    DetalleOrtofoto,
+    InformeOrtofoto,
+    poner_ortofoto,
+    verificar_ortofoto,
+)
+from componedor.ortofoto_render import abrir_fuente
 from componedor.plano import Plano
 from componedor.plano_dxf import texto_pendientes
 from componedor.plantilla import TOLERANCIA_MARCO_MM, InformePlantilla, buscar_marco
@@ -111,6 +135,17 @@ class ResultadoComposicion:
     notas: NotasMaquetadas | None = None  # cuántas notas, líneas y a qué altura (4.2a)
     simbolos: list[ColocacionSimbolo] = field(default_factory=list)  # convenciones (4.2b)
     firmas: list[FirmaPedida] = field(default_factory=list)  # firmas en imagen (4.2d)
+    ortofoto: InformeOrtofoto | None = None  # plano versión 4
+    copia: InformeCopia | None = None  # la copia reducida (si se compuso con el original)
+
+
+@dataclass
+class _Ortofoto:
+    """Lo que hace falta para poner la ortofoto (plano versión 4)."""
+    eleccion: Eleccion
+    detalles: list[DetalleOrtofoto]
+    config: ConfigOrtofoto
+    opacidad: float
 
 
 @dataclass
@@ -126,8 +161,10 @@ class _Textos:
 
 
 def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
-                   guias: bool = False) -> ResultadoComposicion:
-    """Compone `plano` en `salida`. Lanza `PlanoNoComponible` (o `FileExistsError`)."""
+                   guias: bool = False, config_ortofoto: ConfigOrtofoto | None = None
+                   ) -> ResultadoComposicion:
+    """Compone `plano` en `salida`. Lanza `PlanoNoComponible` (o `FileExistsError`).
+    config_ortofoto: ppp y calidad JPEG de la ortofoto (por defecto 300 y 85)."""
     salida = Path(salida)
     if salida.exists() and not sobrescribir:
         raise FileExistsError(
@@ -137,6 +174,12 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
     if plano.pendientes:  # plano versión 3 con bloques de DXF sin exportar
         raise PlanoNoComponible(texto_pendientes(plano.pendientes, plano.dxf,
                                                  formato.zonas[ZONA], ZONA))
+    eleccion = None
+    if plano.ortofoto is not None:
+        try:
+            eleccion = elegir(plano.ortofoto, carpeta_copia(plano.ruta))
+        except OrtofotoNoUsable as e:
+            raise PlanoNoComponible(f"No se compone el plano: {e}") from None
     destino_rosa = _destino_rosa(plano, formato)
     elementos = (list(formato.elementos_plantilla) if destino_rosa == MANTENER
                  else elementos_visibles(formato, destino_rosa))
@@ -147,11 +190,24 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
         advertencias = _traslapes(colocados) + _sobre_elementos(colocados, elementos)
         textos, valores, avisos = _textos(plano, formato, colocados, elementos)
         advertencias += avisos
+        ortofoto = None
+        if eleccion is not None:
+            advertencias += eleccion.avisos
+            ortofoto = _Ortofoto(eleccion, [_detalle_ortofoto(a, c) for _, a, _, c in colocados],
+                                 config_ortofoto or ConfigOrtofoto(), plano.ortofoto.opacidad)
         resultado = _componer_y_verificar(formato, colocados, salida, guias, destino_rosa,
-                                          textos)
+                                          textos, ortofoto)
     finally:
         for doc in documentos.values():
             doc.close()
+    if resultado.ortofoto is not None:
+        advertencias += resultado.ortofoto.avisos
+        if eleccion.origen == "original":
+            try:
+                resultado.copia = _copia(plano, ortofoto)
+            except (OSError, ValueError) as e:  # el PDF ya está: la copia no lo invalida
+                advertencias.append(f"No se pudo escribir la copia reducida de la ortofoto en "
+                                    f"«{carpeta_copia(plano.ruta)}»: {e}")
     resultado.advertencias = advertencias
     resultado.rotulo = valores
     resultado.etiquetas = [t.ruta.split(".", 1)[1] for t in textos.etiquetas]
@@ -159,6 +215,21 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
     resultado.simbolos = textos.simbolos
     resultado.firmas = textos.firmas
     return resultado
+
+
+def _detalle_ortofoto(aceptado: PaqueteAceptado, colocado: DetalleColocado) -> DetalleOrtofoto:
+    m = aceptado.manifiesto
+    return DetalleOrtofoto(colocado.id, colocado.ocupado, m.pdf.dibujo.matriz,
+                           m.unidades.milimetros_por_unidad, colocado.tiene_fondo)
+
+
+def _copia(plano: Plano, o: _Ortofoto) -> InformeCopia:
+    """La copia reducida en la carpeta del plano (o la que ya estaba, si está al día)."""
+    e = o.eleccion
+    with abrir_fuente(e.original, e.crs_ortofoto) as fuente:
+        return escribir_copia(carpeta_copia(plano.ruta), datos_del_archivo(e.original),
+                              o.detalles, fuente, e.crs_dibujo, o.config.ppp,
+                              o.config.calidad_jpeg)
 
 
 # --- 2. formato y plantilla ------------------------------------------------------------
@@ -326,8 +397,10 @@ def _textos(plano: Plano, formato: Formato, colocados: list[tuple],
 
 def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path,
                           guias: bool, destino_rosa: RectMM | None | str = MANTENER,
-                          textos: _Textos | None = None) -> ResultadoComposicion:
+                          textos: _Textos | None = None,
+                          ortofoto: _Ortofoto | None = None) -> ResultadoComposicion:
     textos = textos or _Textos()
+    informe_orto = None
     salida.parent.mkdir(parents=True, exist_ok=True)
     temporal = salida.with_name(f".{salida.name}.componiendo.pdf")
     try:
@@ -353,6 +426,9 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
                 dibujar_simbolos(base, textos.simbolos, textos.biblioteca, formato.alto_mm)
                 trazos_base = len(base.get_drawings())
                 imagenes_base = len(base.get_image_info())
+            if ortofoto is not None:
+                # Detrás de los detalles: va antes que ellos en el contenido de la página.
+                informe_orto = _poner_ortofoto(base, formato, ortofoto)
             trazos_por_detalle = []
             for _, _, doc_detalle, colocado in colocados:
                 trazos_por_detalle.append(len(doc_detalle[0].get_drawings()))
@@ -368,7 +444,7 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
 
         problemas = _verificar(temporal, formato, informe, [c for *_, c in colocados],
                                trazos_base, trazos_por_detalle, imagenes_base, todos,
-                               textos.notas, textos.simbolos, textos.firmas)
+                               textos.notas, textos.simbolos, textos.firmas, informe_orto)
         if problemas:
             raise PlanoNoComponible(
                 "La verificación del PDF compuesto falló; no se generó el plano:\n"
@@ -377,7 +453,24 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
     finally:
         if temporal.exists():
             temporal.unlink()  # cualquier falla: no queda un PDF a medias
-    return ResultadoComposicion(salida, informe, [c for *_, c in colocados], rosa=informe_rosa)
+    return ResultadoComposicion(salida, informe, [c for *_, c in colocados], rosa=informe_rosa,
+                                ortofoto=informe_orto)
+
+
+def _poner_ortofoto(base: pymupdf.Page, formato: Formato, o: _Ortofoto) -> InformeOrtofoto:
+    e = o.eleccion
+    try:
+        with ExitStack() as pila:
+            fuentes, avisos = pila.enter_context(abrir_fuentes(e, [d.id for d in o.detalles]))
+            informe = poner_ortofoto(base, formato.alto_mm, o.detalles, fuentes, e.crs_dibujo,
+                                     o.config.ppp, o.config.calidad_jpeg, o.opacidad)
+    except (OSError, ValueError) as err:  # OrtofotoInvalida, RasterioIOError (es OSError)
+        raise PlanoNoComponible(f"No se compone el plano: no se pudo leer la ortofoto: "
+                                f"{err}") from None
+    informe.avisos = avisos + informe.avisos
+    informe.fuente = e.origen
+    informe.archivo = str(e.original if e.origen == "original" else e.carpeta_copia)
+    return informe
 
 
 def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
@@ -386,7 +479,8 @@ def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
                textos: list[TextoMaquetado] = (),
                notas: NotasMaquetadas | None = None,
                simbolos: list[ColocacionSimbolo] = (),
-               firmas: list[FirmaPedida] = ()) -> list[str]:
+               firmas: list[FirmaPedida] = (),
+               ortofoto: InformeOrtofoto | None = None) -> list[str]:
     """Mide el PDF guardado. Devuelve la lista de problemas (vacía si todo está bien)."""
     with pymupdf.open(ruta) as final:
         page = final[0]
@@ -395,6 +489,7 @@ def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
             textos_mal += verificar_notas(page, notas, formato.alto_mm)
         textos_mal += verificar_simbolos(page, list(simbolos), formato.alto_mm)
         textos_mal += verificar_firmas(page, list(firmas), formato.alto_mm)
+        textos_mal += verificar_ortofoto(page, ortofoto, formato.alto_mm)
         trazos = page.get_drawings()
         esperados = trazos_base + sum(trazos_por_detalle)
         if len(trazos) != esperados:
@@ -430,15 +525,17 @@ def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
         if marco is None or max(abs(d) for d in marco[1]) > tolerancia:
             problemas.append(f"el marco del rótulo no está en {_rect(formato.marco)} "
                              f"(±{tolerancia} mm): el rótulo no debe moverse")
-        # Exactamente las imágenes de la hoja base (el logo) más una por firma pedida: los
-        # detalles nunca pueden traer imágenes nuevas (no se rasteriza nada).
+        # Exactamente las imágenes de la hoja base (el logo), una por firma pedida y una por
+        # mosaico de la ortofoto: los detalles nunca traen imágenes nuevas (no se rasteriza).
         imagenes = len(page.get_image_info())
-        esperadas = imagenes_base + len(firmas)
+        mosaicos = len(ortofoto.mosaicos) if ortofoto is not None else 0
+        esperadas = imagenes_base + len(firmas) + mosaicos
         if imagenes != esperadas:
             firmas_txt = f" + {len(firmas)} firma(s)" if firmas else ""
+            orto_txt = f" + {mosaicos} mosaico(s) de la ortofoto" if mosaicos else ""
             problemas.append(f"la hoja tiene {imagenes} imágenes y debía tener {esperadas} (hoja "
-                             f"base {imagenes_base}{firmas_txt}): no se debe rasterizar ningún "
-                             f"detalle")
+                             f"base {imagenes_base}{firmas_txt}{orto_txt}): no se debe "
+                             f"rasterizar ningún detalle")
         problemas += textos_mal
     return problemas
 

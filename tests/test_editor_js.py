@@ -243,7 +243,7 @@ def test_leer_plano(entorno):
     assert [c["pos"] for c in r["ok"]["colocaciones"]] == [
         [30, 40], list(posicion_centrada((260.0, 120.0), tuple(AREA)))]
     assert r["version"]["errores"] == [
-        "version: versión 9 no soportada; el editor entiende las versiones 1, 2 y 3."]
+        "version: versión 9 no soportada; el editor entiende las versiones 1, 2, 3 y 4."]
     assert "no está en el catálogo del editor" in r["desconocido"]["errores"][0]
     assert "el paquete 'malo' está rechazado" in r["rechazado"]["errores"][0]
     assert "'x' está repetido" in r["repetido"]["errores"][0]

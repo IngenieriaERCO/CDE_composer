@@ -1,4 +1,4 @@
-"""Lectura y validación del plano.json (versiones 1, 2 y 3): qué detalles van en la hoja y dónde.
+"""Lectura y validación del plano.json (versiones 1 a 4): qué detalles van en la hoja y dónde.
 
 Formato: docs/formato_plano.md. Todas las rutas son relativas a la carpeta del plano.json.
 Las posiciones van en mm de papel (origen en la esquina inferior izquierda de la hoja, Y
@@ -17,6 +17,8 @@ Versión 3 (etapa 2 de la integración con el exportador) = versión 2 más la l
 "detalles", bloques de un DXF todavía SIN exportar ("origen" + "centro_mm", sin "manifiesto"):
 ver plano_dxf.py. Se lee igual, pero `componer` no la compone hasta que estén exportados.
 
+Versión 4 (ortofoto) = versión 3 más "ortofoto": la ortofoto de fondo (plano_ortofoto.py).
+
 El plano.json lo escribe el editor HTML, pero el componedor SIEMPRE lo revalida: el editor
 nunca es la fuente de la verdad. Los campos desconocidos se rechazan (un error de tipeo como
 "centar" no debe pasar en silencio). Todos los problemas se juntan en un solo
@@ -34,13 +36,15 @@ from componedor.plano_dxf import (
     leer_lista_dxf,
     leer_pendiente,
 )
+from componedor.plano_ortofoto import OrtofotoPlano, leer_ortofoto
 
-VERSIONES_SOPORTADAS = (1, 2, 3)
+VERSIONES_SOPORTADAS = (1, 2, 3, 4)
 CLAVES_PLANO = {"version", "formato", "plantilla", "detalles"}
 CLAVES_DETALLE = {"id", "manifiesto", "posicion_mm", "centrar"}
 CLAVES_PLANO_V2 = CLAVES_PLANO | {"rotulo", "rosa_vientos"}
 CLAVES_DETALLE_V2 = CLAVES_DETALLE | {"etiqueta_escala"}
 CLAVES_PLANO_V3 = CLAVES_PLANO_V2 | {"dxf"}
+CLAVES_PLANO_V4 = CLAVES_PLANO_V3 | {"ortofoto"}
 CLAVES_ROSA = {"visible", "posicion_mm"}
 
 
@@ -74,6 +78,7 @@ class Plano:
     rosa: RosaPlano | None = None  # versión 2: None = la rosa como viene (visible, en su sitio)
     dxf: tuple[DxfPlano, ...] = ()  # versión 3: los DXF de los bloques pendientes
     pendientes: tuple[BloquePendiente, ...] = ()  # versión 3: bloques sin exportar
+    ortofoto: OrtofotoPlano | None = None  # versión 4: la ortofoto de fondo
 
     @property
     def carpeta(self) -> Path:
@@ -99,12 +104,16 @@ def leer_plano(ruta: Path | str) -> Plano:
 
     errores: list[str] = []
     carpeta = ruta.parent
-    v3 = datos.get("version") == 3
-    v2 = datos.get("version") == 2 or v3  # la versión 3 incluye todo lo de la 2
-    validas = CLAVES_PLANO_V3 if v3 else CLAVES_PLANO_V2 if v2 else CLAVES_PLANO
+    v4 = datos.get("version") == 4
+    v3 = datos.get("version") == 3 or v4  # cada versión incluye todo lo de la anterior
+    v2 = datos.get("version") == 2 or v3
+    validas = (CLAVES_PLANO_V4 if v4 else CLAVES_PLANO_V3 if v3 else CLAVES_PLANO_V2 if v2
+               else CLAVES_PLANO)
 
     for clave in sorted(set(datos) - validas):
-        if clave == "dxf":
+        if clave == "ortofoto":
+            errores.append("ortofoto: solo existe en la versión 4 del plano (use \"version\": 4)")
+        elif clave == "dxf":
             errores.append("dxf: solo existe en la versión 3 del plano (use \"version\": 3)")
         elif clave in CLAVES_PLANO_V2:
             errores.append(f"{clave}: solo existe en la versión 2 del plano (use \"version\": 2)")
@@ -119,7 +128,7 @@ def leer_plano(ruta: Path | str) -> Plano:
         errores.append(f"version: se esperaba un número entero; tiene {_tipo(version)}")
     elif version not in VERSIONES_SOPORTADAS:
         errores.append(f"version: versión {version} no soportada; el componedor entiende las "
-                       f"versiones 1, 2 y 3")
+                       f"versiones 1, 2, 3 y 4")
 
     formato = _ruta(datos, "formato", carpeta, errores, obligatoria=True)
     plantilla = _ruta(datos, "plantilla", carpeta, errores, obligatoria=False)
@@ -160,6 +169,8 @@ def leer_plano(ruta: Path | str) -> Plano:
             errores.append(f"rotulo: se esperaba un objeto {{...}} con los valores del rótulo; "
                            f"tiene {_tipo(rotulo)}")
     rosa = _rosa(datos["rosa_vientos"], errores) if v2 and "rosa_vientos" in datos else None
+    ortofoto = (leer_ortofoto(datos["ortofoto"], carpeta, errores)
+                if v4 and "ortofoto" in datos else None)
 
     if errores:
         n = len(errores)
@@ -168,7 +179,7 @@ def leer_plano(ruta: Path | str) -> Plano:
             + "\n".join(f"- {e}" for e in errores)
         )
     return Plano(ruta, version, formato, plantilla, tuple(detalles), rotulo, rosa,
-                 tuple(dxfs.values()), tuple(pendientes))
+                 tuple(dxfs.values()), tuple(pendientes), ortofoto)
 
 
 def _rosa(valor, errores: list[str]) -> RosaPlano | None:

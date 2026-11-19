@@ -30,8 +30,8 @@ def ruta_para_el_editor(ruta: Path, carpeta_editor: Path) -> str:
 
 def detalle_para_editor(aceptado: PaqueteAceptado, ident: str, carpeta_editor: Path,
                         zona: RectMM, max_px: int = MAX_PX_MINIATURA) -> dict:
-    """{id, manifiesto, bloque, escala, tamano_pagina_mm, limites_dibujo_mm, cabe, tiene_fondo,
-    notas, miniatura: {data_url, ancho_px, alto_px}}."""
+    """{id, manifiesto, bloque, escala, tamano_pagina_mm, limites_dibujo_mm, cad_a_pagina,
+    mm_por_unidad, cabe, tiene_fondo, notas, miniatura: {data_url, ancho_px, alto_px}}."""
     paquete = aceptado.paquete
     m = paquete.manifiesto
     ancho, alto = m.pdf.tamano_pagina_mm
@@ -49,6 +49,9 @@ def detalle_para_editor(aceptado: PaqueteAceptado, ident: str, carpeta_editor: P
         "tamano_pagina_mm": [ancho, alto],
         "limites_dibujo_mm": list(limites_dibujo_en_papel(m.pdf.dibujo.limites_pagina_mm, alto,
                                                           (0.0, 0.0))),
+        "cad_a_pagina": [m.pdf.dibujo.matriz.a, m.pdf.dibujo.matriz.b, m.pdf.dibujo.matriz.c,
+                         m.pdf.dibujo.matriz.d, m.pdf.dibujo.matriz.e, m.pdf.dibujo.matriz.f],
+        "mm_por_unidad": m.unidades.milimetros_por_unidad,
         "cabe": exceso_de_tamano((ancho, alto), zona) == (0.0, 0.0),
         "tiene_fondo": fondo,
         "notas": [],

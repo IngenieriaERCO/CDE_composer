@@ -109,7 +109,11 @@ En la carpeta `trabajo`:
   Ninguna ruta recibe rutas ni opciones para el comando del exportador: el DXF lo elige el
   cuadro nativo y se valida (archivo que existe, extensión `.dxf`) antes de mandarlo al
   trabajador. Lo único que el editor manda en un cuerpo es el `ref` de un bloque de la carpeta
-  ya cargada.
+  ya cargada (y, para «Exportar», la lista de bloques del plano).
+- **Ortofoto**: igual que el DXF, la elige el cuadro nativo (se valida: archivo que existe,
+  `.tif`/`.tiff`, GeoTIFF georreferenciado). Para su vista previa el editor manda solo números y
+  códigos `EPSG:<código>` (validados con GDAL: proyectados); el PNG se hace en memoria y se
+  entrega por su id, con el token.
 - El PNG no se puede pedir con un `<image href>` directo (no lleva la cabecera del token): el
   editor lo baja con `fetch` y lo muestra como `blob:`. Así el token nunca va en una dirección.
 - **Firmas**: no cambia nada. El servidor no tiene ninguna ruta hacia `firmas/` y el HTML solo
@@ -251,6 +255,11 @@ bloque:
 | `POST /api/tareas/<id>/cancelar` | Cancela la tarea. |
 | `POST /api/trabajador/reiniciar` | Sale del estado «detenido»: el próximo pedido lanza otro trabajador. |
 | `POST /api/latido` | Señal del editor (cada minuto). Cualquier pedido de la API también cuenta. |
+| `GET /api/ortofoto` | `{ortofoto}`: la ortofoto de esta sesión (`ficha`, `archivo_plano`, `cambio`, `sistemas`) o `null`. También va en `/api/estado`. |
+| `POST /api/ortofoto/elegir` | Cuerpo opcional `{"archivo_plano": "<la ruta que guardó el plano>"}`: solo para abrir el cuadro en esa carpeta (si existe); no se lee nada con ella. Abre el cuadro nativo (`.tif`/`.tiff`), lee solo la cabecera y la deja como la ortofoto de la sesión. `{elegida, ortofoto}` (la ficha trae `bytes` y `modificado`: el editor compara con el plano). 400 si no sirve; 409 si ya hay un cuadro abierto. No usa el trabajador. |
+| `POST /api/ortofoto/previa` | Cuerpo `{caja_cad: [x0, y0, x1, y1], mm_por_unidad, crs_dibujo, crs_ortofoto?, px?}` (solo números y códigos EPSG): la ortofoto en esa caja CAD, leída por ventanas y reproyectada. Responde `{id, url, px, cobertura, caja_cad}`. 400 si falta un sistema o no es válido; 409 sin ortofoto o si cambió en el disco. Se atiende en el mismo pedido, de a una, y las hechas se guardan (las últimas 64). |
+| `GET /api/ortofoto/previas/<id>` | El PNG (con transparencia donde no hay foto) de esa vista previa. 404 si ya no está. |
+| `POST /api/ortofoto/quitar` | Olvida la ortofoto de la sesión (el archivo no se toca). |
 
 ## Pruebas
 

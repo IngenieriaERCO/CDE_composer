@@ -1,4 +1,4 @@
-# Formato de plano.json (versiones 1, 2 y 3)
+# Formato de plano.json (versiones 1 a 4)
 
 Un `plano.json` dice **qué detalles van en una hoja y dónde** y, desde la versión 2, **qué
 se escribe en el rótulo** y **dónde va la rosa de los vientos**. Lo lee el comando
@@ -23,6 +23,8 @@ El editor HTML (`editor.html`) lo escribe arrastrando y soltando, pero el compon
   colocados en el editor y **todavía sin exportar**. El editor la escribe solo cuando el plano
   tiene alguno; `componer` la lee, pero no la compone hasta que estén exportados. Ver
   [Bloques de un DXF sin exportar](#bloques-de-un-dxf-sin-exportar-versión-3).
+- **Versión 4** (ortofoto, etapa 1): la versión 3 más `ortofoto`, la ortofoto de fondo del
+  plano. Ver [Ortofoto de fondo](#ortofoto-de-fondo-versión-4).
 
 ## Ejemplo (versión 2)
 
@@ -449,10 +451,80 @@ Error: No se compone el plano: tiene 2 bloque(s) de DXF sin exportar todavía (p
 Expórtelos primero (desde el editor, cuando esté la exportación —etapa 3—, o con cde-exporter) y vuelva a componer.
 ```
 
+## Ortofoto de fondo (versión 4)
+
+Una ortofoto (GeoTIFF) por plano, **detrás de todos los detalles** y recortada a la página de
+cada uno; fuera de los detalles, nada. La elige «Cargar ortofoto» del editor
+([editor.md](editor.md#2g-ortofoto-de-fondo-con-servidor-local)):
+
+```json
+{
+  "version": 4,
+  "formato": "../formatos/A1_ERCO.json",
+  "detalles": [ … ],
+  "ortofoto": {"archivo": "../data/input/ortofotos/Foto_tunez.tif", "bytes": 3445480,
+               "modificado": "2026-11-18T21:26:25Z", "crs": null,
+               "crs_dibujo": "EPSG:9377", "opacidad": 0.6}
+}
+```
+
+- `archivo` (obligatorio): el `.tif`/`.tiff`, relativo a la carpeta del plano (o absoluto).
+- `bytes` y `modificado` (fecha de modificación, UTC, al segundo): los del archivo cuando se
+  eligió. Opcionales. Sirven para saber si el archivo que hay es el mismo.
+- `crs`: el sistema de la ortofoto **elegido a mano**, solo cuando el archivo no trae el suyo
+  (si lo trae, manda el del archivo y aquí va `null`). Siempre `"EPSG:<código>"`.
+- `crs_dibujo`: el sistema de coordenadas del DXF. El editor lo prellena con el del DXF
+  (`dxf.crs`, del GEODATA), pero lo que se guarda es lo que quedó en el selector. `null`
+  mientras no se elija.
+- `opacidad`: de 0 a 1 (1 = opaca, por defecto).
+
+Nunca se supone un sistema: sin `crs_dibujo` (o sin el de la ortofoto, si el archivo no lo
+trae) el editor no la ubica y lo avisa en amarillo.
+
+### Cómo la pone `componer`
+
+- **Qué archivo usa**: el original, si existe y coincide con el plano (mismo tamaño y fecha, lo
+  que el plano guardó). Si no está o cambió, usa la **copia reducida** de la carpeta del plano
+  y lo dice en una advertencia. Si tampoco hay copia que sirva (de esa misma ortofoto y en el
+  mismo sistema del dibujo), **no se compone** y el error dice qué hacer.
+- **Sistemas**: sin `crs_dibujo`, o con una ortofoto sin sistema y sin `crs`, **no se
+  compone** (error claro). Nunca se supone uno. Si son distintos, se reproyecta.
+- **Dónde**: por cada detalle, su página en la hoja se lleva a CAD con la matriz de su
+  manifiesto; la ortofoto de esa caja va **exactamente sobre la página**, debajo del detalle.
+  Orden: plantilla (con la rosa y los símbolos) → ortofoto → detalles → rótulo.
+- **Cómo**: a `ppp` píxeles por pulgada de papel (300) en **mosaicos de 1024 px**, cada uno un
+  JPEG (calidad `calidad_jpeg`, 85) que entra tal cual en el PDF. Donde no hay foto, o con
+  opacidad menor que 1, el mosaico lleva una máscara de transparencia. Un mosaico sin foto no
+  se pone. Se lee la ortofoto **por ventanas** (solo lo de cada mosaico, reducido con las
+  pirámides si las hay), así la memoria no depende del tamaño del archivo.
+- **Los detalles siguen siendo vectores**: la ortofoto son imágenes aparte. La verificación
+  del PDF cuenta exactamente las imágenes de la plantilla, las firmas y los mosaicos (cada uno
+  JPEG y en su rectángulo, ±0,1 mm), y mide el dibujo de cada detalle como siempre.
+- **Avisos**: la ortofoto no cubre un detalle; un detalle con fondo blanco (paquete antiguo)
+  la tapa; un dibujo girado en su página no la lleva.
+
+### Copia reducida (`<plano>_ortofoto/`)
+
+Cada vez que compone con el original, `componer` deja al lado del plano.json la carpeta
+`<nombre del plano>_ortofoto/` con:
+
+- un GeoTIFF por detalle (JPEG en mosaicos de 512 px, con máscara), ya en el sistema del
+  dibujo. Cubre la página del detalle **más un 10 % por lado** (aguanta mover el detalle o
+  cambiarle algo la escala);
+- con la resolución que pide el PDF, pero **nunca más fina que la ortofoto original**
+  (agrandarla no agrega nada);
+- `indice.json`: de qué ortofoto salió (nombre, tamaño, fecha), sistema, ppp y la caja de cada
+  archivo.
+
+Si la copia ya está al día no se reescribe. Si cambió, la nueva se escribe aparte y reemplaza a
+la vieja (es un archivo generado, como el PDF). Con ella se puede volver a componer el plano en
+otro PC sin la ortofoto original, que puede pesar varios GB.
+
 ## Qué hace `componer` con el plano
 
 1. Lee y valida el plano.json. Si es versión 3 y tiene bloques sin exportar, se detiene y dice
-   cuáles (sección anterior).
+   cuáles (sección anterior). Si es versión 4 con ortofoto, elige el original o la copia (o se
+   detiene si no hay ninguna que sirva).
 2. Carga el formato y decide dónde va la rosa (o si va oculta).
 3. Cada detalle pasa por `importar_paquete` (la única puerta: completo, íntegro y
    coherente, con escala física garantizada). Si hay paquetes rechazados **no se genera
@@ -466,12 +538,14 @@ Expórtelos primero (desde el editor, cuando esté la exportación —etapa 3—
 6. **Rótulo y etiquetas**: valida los valores del rótulo, calcula ESCALA y REV., acomoda cada
    texto en su celda y coloca las etiquetas «ESC: 1:N». Un texto que no cabe es error (no se
    genera el PDF); una etiqueta que no cabe, advertencia.
-7. Crea la hoja con la plantilla, quita la rosa y la vuelve a dibujar donde corresponda,
-   inserta los detalles en orden (sin reescalar, como vector) y escribe los textos.
+7. Crea la hoja con la plantilla, quita la rosa y la vuelve a dibujar donde corresponda, pone
+   la ortofoto (si hay), inserta los detalles en orden (sin reescalar, como vector) y escribe
+   los textos.
 8. Guarda en un archivo temporal y **verifica** el PDF: el dibujo de cada detalle está donde
    dice el plano (±0,1 mm, medido con `get_drawings()` sin el fondo blanco), el marco del
-   rótulo no se movió, no hay más imágenes que las de la plantilla y una por cada firma en
-   imagen (cada firma en su celda, con su máscara y la del archivo), la rosa quedó donde se pidió (sus trazos son
+   rótulo no se movió, no hay más imágenes que las de la plantilla, una por cada firma en
+   imagen (cada firma en su celda, con su máscara y la del archivo) y una por cada mosaico de
+   la ortofoto (JPEG, en su rectángulo ±0,1 mm), la rosa quedó donde se pidió (sus trazos son
    los originales trasladados, ±0,1 mm) y, para cada línea de texto (campos, tablas y
    etiquetas «ESC: 1:N»), leyendo los caracteres del PDF con `get_text("rawdict")`:
    - **posición**: su primer carácter está en la base esperada y el texto leído es el

@@ -92,7 +92,9 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
 
-Su única dependencia es PyMuPDF (y pytest para las pruebas).
+Sus dependencias son PyMuPDF y rasterio (y pytest para las pruebas). rasterio lee las ortofotos
+GeoTIFF; trae GDAL y numpy ya compilados (unos 44 MB de descarga y 150 MB instalado), así que no
+hay que instalar GDAL aparte.
 
 **Archivos de ERCO que NO están en git** (son confidenciales o datos personales). Hay que
 copiarlos a mano, con estos nombres exactos, desde donde los tenga el equipo:

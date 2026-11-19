@@ -23,6 +23,7 @@ from componedor.configuracion import (
     leer_config_componer,
     leer_config_editor,
     leer_config_exportador,
+    leer_config_ortofoto,
 )
 from componedor.editor_html import ARCHIVO_HTML, datos_incrustados, generar_editor
 from componedor.datos_editor import (
@@ -395,6 +396,26 @@ def texto_inventario(entradas: list[EntradaInventario], carpeta: Path, recursivo
     return "\n".join(lineas)
 
 
+def texto_ortofoto(r: ResultadoComposicion) -> list[str]:
+    """Las líneas de la ortofoto en el resumen de `componer` (nada si el plano no tiene)."""
+    o = r.ortofoto
+    if o is None:
+        return []
+    de = "la copia reducida" if o.fuente == "copia" else "el original"
+    lineas = ["", (f"Ortofoto ({de}: {o.archivo}): {len(o.mosaicos)} mosaico(s) JPEG a "
+                   f"{o.ppp} ppp, calidad {o.calidad_jpeg}, opacidad {o.opacidad * 100:.0f} %, "
+                   f"{o.bytes_jpeg / 1024 / 1024:.1f} MB.")]
+    for ident, cobertura in o.cobertura.items():
+        ancho, alto = o.px[ident]
+        lineas.append(f"  {ident}: {ancho} × {alto} px, cubre el {cobertura * 100:.0f} % de su "
+                      f"página")
+    if r.copia is not None:
+        estado = "escrita" if r.copia.escrita else "ya estaba al día"
+        lineas.append(f"  Copia reducida {estado}: {r.copia.carpeta} ({r.copia.archivos} "
+                      f"archivo(s), {r.copia.bytes / 1024 / 1024:.1f} MB).")
+    return lineas
+
+
 def texto_composicion(plano_ruta: Path, r: ResultadoComposicion) -> str:
     """Resumen de `componer`: detalles y su posición final, advertencias y ruta del PDF."""
     lineas = [f"Plano: {plano_ruta} ({len(r.detalles)} detalle(s))",
@@ -406,13 +427,19 @@ def texto_composicion(plano_ruta: Path, r: ResultadoComposicion) -> str:
                       f"({x0:.2f}, {y0:.2f}) mm; página X {x0:.2f} a {x1:.2f}, "
                       f"Y {y0:.2f} a {y1:.2f}")
     lineas += texto_rosa_y_rotulo(r)
+    lineas += texto_ortofoto(r)
     if r.advertencias:
         lineas += ["", f"Advertencias ({len(r.advertencias)}):"]
         lineas += [f"  - {a}" for a in r.advertencias]
     else:
         lineas += ["", "Advertencias: ninguna (sin traslapes entre detalles)."]
-    imagenes = (f"no hay más imágenes que las de la plantilla y las {len(r.firmas)} firma(s)"
-                if r.firmas else "no hay imágenes nuevas")
+    extras = []
+    if r.firmas:
+        extras.append(f"las {len(r.firmas)} firma(s)")
+    if r.ortofoto is not None and r.ortofoto.mosaicos:
+        extras.append(f"los {len(r.ortofoto.mosaicos)} mosaico(s) de la ortofoto")
+    imagenes = (f"no hay más imágenes que las de la plantilla y {' y '.join(extras)} (los "
+                f"detalles siguen siendo vectores)" if extras else "no hay imágenes nuevas")
     verificado = ("el dibujo de cada detalle está donde dice el plano (±0,1 mm), el marco del "
                   f"rótulo no se movió y {imagenes}")
     if r.rosa is not None:
@@ -422,6 +449,8 @@ def texto_composicion(plano_ruta: Path, r: ResultadoComposicion) -> str:
     if r.simbolos:
         verificado += ("; cada símbolo de convenciones tiene sus trazos y está donde debía en su "
                        "casilla (±0,1 mm)")
+    if r.ortofoto is not None and r.ortofoto.mosaicos:
+        verificado += "; cada mosaico de la ortofoto es JPEG y está en su sitio (±0,1 mm)"
     if r.firmas:
         verificado += ("; cada firma en imagen está dentro de su caja en la columna FIRMA sin "
                        "pisar el encabezado (±0,1 mm), con su máscara de transparencia y es la "
@@ -935,7 +964,9 @@ def main(argv: list[str] | None = None) -> int:
             if error:
                 print(f"Error: {error}", file=sys.stderr)
                 return 2
-            resultado = componer_plano(plano, salida, args.sobrescribir, args.guias)
+            config_orto = leer_config_ortofoto(args.config) if args.config else None
+            resultado = componer_plano(plano, salida, args.sobrescribir, args.guias,
+                                       config_orto)
             print(texto_composicion(args.plano, resultado))
             if args.codigo_avisos and resultado.advertencias:
                 return CODIGO_AVISOS

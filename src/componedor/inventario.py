@@ -43,6 +43,16 @@ class EntradaInventario:
     ruta_pdf: Path | None = None
     ruta_manifiesto: Path | None = None
     limites_pagina_mm: tuple[float, float, float, float] | None = None  # page_bounds_mm, Y abajo
+    # cad_to_page [a, b, c, d, e, f] y mm reales por unidad CAD: para ubicar la ortofoto.
+    cad_a_pagina: tuple[float, float, float, float, float, float] | None = None
+    mm_por_unidad: float | None = None
+
+
+def _matriz(m) -> tuple[float, ...] | None:
+    if m is None:
+        return None
+    k = m.pdf.dibujo.matriz
+    return (k.a, k.b, k.c, k.d, k.e, k.f)
 
 
 def construir_inventario(carpeta: Path | str, formato: Formato | None = None,
@@ -75,6 +85,8 @@ def construir_inventario(carpeta: Path | str, formato: Formato | None = None,
             ruta_pdf=paquete.ruta_pdf,
             ruta_manifiesto=paquete.ruta_manifiesto,
             limites_pagina_mm=m.pdf.dibujo.limites_pagina_mm if m else None,
+            cad_a_pagina=_matriz(m),
+            mm_por_unidad=m.unidades.milimetros_por_unidad if m else None,
         )
         if rect_zona is not None and m is not None:
             _evaluar_cabida(entrada, m, zona, rect_zona)

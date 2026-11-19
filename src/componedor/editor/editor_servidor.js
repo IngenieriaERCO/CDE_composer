@@ -81,6 +81,13 @@
       cancelar: (id) => pedir("POST", tarea(id) + "/cancelar"),
       reiniciar: () => pedir("POST", "/api/trabajador/reiniciar"),
       latido: () => pedir("POST", "/api/latido"),
+      // Ortofoto: el cuadro nativo la elige; el editor manda solo números y códigos EPSG.
+      ortofoto: () => pedir("GET", "/api/ortofoto"),
+      // archivoPlano: la ruta que guardó el plano, solo para abrir el cuadro en su carpeta.
+      elegirOrtofoto: (archivoPlano) => pedir("POST", "/api/ortofoto/elegir",
+        archivoPlano ? { archivo_plano: archivoPlano } : {}),
+      quitarOrtofoto: () => pedir("POST", "/api/ortofoto/quitar"),
+      previaOrtofoto: (cuerpo) => pedir("POST", "/api/ortofoto/previa", cuerpo),
     };
   }
 

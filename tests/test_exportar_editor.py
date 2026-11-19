@@ -80,6 +80,8 @@ def test_exportar_un_bloque(armar, tmp_path):
     assert d["manifiesto"] == r["manifiesto"] and d["escala"] == 5000.0 and d["cabe"] is True
     assert d["tamano_pagina_mm"] == pytest.approx([201.436, 280.0038])
     assert d["tiene_fondo"] is False and d["miniatura"]["data_url"].startswith("data:image/png;base64,")
+    # Para la ortofoto detrás del detalle: su matriz CAD → página y los mm por unidad.
+    assert len(d["cad_a_pagina"]) == 6 and d["mm_por_unidad"] > 0
     assert sorted(p.name for p in salida.iterdir()) == [
         "BLOQUE1_1-5000.manifest.json", "BLOQUE1_1-5000.pdf", "BLOQUE1_1-5000.txt"]  # sin la preparación
 

@@ -64,7 +64,7 @@ def test_catalogo_de_un_bloque():
     assert c["dxf"] == {"nombre": "obra.dxf", "ruta": "C:\\obras\\obra.dxf", "bytes": 6781020,
                         "sha256": "4b1d", "huella": "8f0c",
                         "modificado": "2026-11-12T16:17:03-05:00", "version_dxf": "AC1032",
-                        "segundos_lectura": 1.5, "copia_reducida": False}
+                        "segundos_lectura": 1.5, "copia_reducida": False, "crs": None}
     assert c["unidades"] == {"nombre": "m", "mm_por_unidad": 1000.0, "verificadas": True,
                              "estado": "declaradas en el DXF y coherentes", "avisos": []}
     assert c["escalas"] == list(ESCALAS_ESTANDAR)
@@ -236,3 +236,12 @@ def test_caja_cad_para_poner_la_vista_previa(caja, esperada):
     """La caja de load (marco único del contrato): su centro va al centro de la página."""
     (b,) = catalogo_dxf(respuesta(bloque(bounds=caja)), ZONA_A1)["bloques"]
     assert b["caja_cad"] == esperada
+
+
+
+def test_el_sistema_del_dxf_llega_a_la_carpeta():
+    """dxf.crs de load (GEODATA, sin interpretar) → la carpeta; se interpreta en sistema_dxf."""
+    assert catalogo_dxf(respuesta(), ZONA_A1)["dxf"]["crs"] is None
+    r = respuesta()
+    r["dxf"]["crs"] = {"source": "GEODATA", "name": "MAGNA.Columbia-Bogota", "epsg": 3116}
+    assert catalogo_dxf(r, ZONA_A1)["dxf"]["crs"]["codigo"] == "EPSG:3116"

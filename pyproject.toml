@@ -8,8 +8,9 @@ version = "0.1.0"
 description = "Componedor de planos PDF A1 a partir de detalles vectoriales del Exportador Vectorial (ERCO)."
 readme = "README.md"
 requires-python = ">=3.12"
-# Misma versión mayor que el Exportador Vectorial (PyMuPDF>=1.24.0,<2.0.0).
-dependencies = ["pymupdf>=1.24,<2"]
+# PyMuPDF: misma versión mayor que el Exportador Vectorial (PyMuPDF>=1.24.0,<2.0.0).
+# rasterio (trae GDAL y numpy): leer las ortofotos GeoTIFF por ventanas y reproyectarlas.
+dependencies = ["pymupdf>=1.24,<2", "rasterio>=1.4,<2"]
 
 [project.optional-dependencies]
 dev = ["pytest"]

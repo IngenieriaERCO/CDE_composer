@@ -15,6 +15,7 @@
   <input id="archivo-plano" type="file" accept=".json,application/json" hidden>
   <button id="btn-guardar" type="button" class="principal" title="Guardar el plano (Ctrl+S)">Guardar plano</button>
   <button id="btn-cargar-dxf" type="button" disabled>Cargar DXF</button>
+  <button id="btn-cargar-ortofoto" type="button" disabled>Cargar ortofoto</button>
   <span class="separador"></span>
   <button id="btn-alejar" type="button" title="Alejar">−</button>
   <button id="btn-acercar" type="button" title="Acercar">+</button>
@@ -61,6 +62,8 @@
     <div id="panel-convenciones" class="form-rotulo"></div>
     <h2>Rosa de los vientos</h2>
     <div id="panel-rosa" class="propiedades"></div>
+    <h2>Ortofoto <small>(detrás de los detalles)</small></h2>
+    <div id="panel-ortofoto" class="panel-ortofoto"></div>
     <h2>En el plano <small>(el último queda encima)</small></h2>
     <ol id="lista-plano" class="lista-plano"></ol>
     <h2>Advertencias</h2>
@@ -86,6 +89,9 @@
 </script>
 <script>
 /*@@JS_BLOQUES@@*/
+</script>
+<script>
+/*@@JS_ORTOFOTO@@*/
 </script>
 <script>
 /*@@JS_LOGICA@@*/
@@ -137,6 +143,9 @@
 </script>
 <script>
 /*@@JS_PANEL_DXF@@*/
+</script>
+<script>
+/*@@JS_PANEL_ORTOFOTO@@*/
 </script>
 </body>
 </html>

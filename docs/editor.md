@@ -404,6 +404,68 @@ en la hoja.
   el texto técnico y la ruta del registro (`data\cache_exportador\trabajador.log`).
 - Si el DXF cambió en el disco, no se exporta: **Volver a cargar** primero.
 
+## 2g. Ortofoto de fondo (con servidor local)
+
+Solo con `Abrir editor.bat`. **Cargar ortofoto**, en la barra de arriba, abre el cuadro de
+Windows para elegir un GeoTIFF (`.tif` o `.tiff`). Va **detrás de todos los detalles**, recortada
+a la página de cada uno; fuera de los detalles la hoja queda en blanco. Una ortofoto por plano.
+
+En el panel **Ortofoto** (columna derecha) aparece su **ficha**, leída de la cabecera sin abrir
+la imagen entera (sirve igual para archivos de varios GB):
+
+- nombre, tamaño en disco y si es BigTIFF; píxeles, color (RGB, RGBA, gris, paleta) y tipo;
+- **sistema de coordenadas** (el del archivo, o «el archivo no lo dice»);
+- tamaño del píxel en m, cuánto terreno cubre y si está girada;
+- pirámides, mosaicos o franjas y compresión (de eso depende la velocidad);
+- si tiene fondo transparente (banda alfa, «nodata» o máscara).
+
+**Sistemas de coordenadas: nunca se supone ninguno.**
+
+- **Sistema del dibujo (DXF)**: si el DXF cargado trae su sistema (el GEODATA, que el
+  Exportador manda en `dxf.crs`) y el código salió de un **Alias** del GEODATA
+  (`epsg_from: "alias"`), el selector sale **prellenado** con ese código y un aviso azul lo dice;
+  siempre se puede cambiar. Si el código salió del texto de la **autoridad**
+  (`epsg_from: "authority"`), o si el DXF no trae sistema, el selector queda **vacío** y un aviso
+  amarillo pide elegirlo (no se dibuja la ortofoto hasta entonces).
+- **El código del DXF puede estar mal**: el Componedor compara la zona que dice el nombre del
+  GEODATA con la del código. En PRGD el nombre dice «Colombia CTM12» (EPSG:9377) pero el código
+  es 3115 (Colombia West zone, sacado de la autoridad): el selector queda vacío, sale un **aviso
+  amarillo** y el botón **Usar EPSG:9377 para el dibujo**. Con 3115 la ortofoto caería a cientos
+  de km: «no cubre» ningún detalle.
+- **Sistema de la ortofoto**: solo se pide si el archivo no trae el suyo (aviso amarillo).
+- El selector trae los de Colombia (EPSG:9377 Origen-Nacional, 3116 Bogotá, 3115 Oeste, 3117,
+  3118, 3114) y «Otro (código EPSG)…» para escribir cualquiera (`epsg:6247`, `6247` o
+  `EPSG:6247`). Solo se aceptan sistemas proyectados, en metros.
+- Si los dos sistemas son distintos, la ortofoto se **reproyecta** (aviso azul).
+
+Con los sistemas elegidos, el editor pide la ortofoto de **cada detalle**: la de la caja CAD que
+cubre su página en la hoja. La caja sale de la matriz del manifiesto si el detalle ya está
+exportado, y del centro y la escala si es un bloque del DXF sin exportar. Al mover un detalle, la
+ortofoto se mueve con él. Al cambiar la escala, se pide la de la caja nueva.
+
+- Debajo, el estado de cada detalle: «la ortofoto cubre todo el detalle», «cubre el 40 %», «no
+  cubre este detalle» o por qué no se puede (p. ej. un bloque cuyo DXF no está cargado).
+- **Opacidad**: de 0 a 100 % (100 % por defecto). Se guarda en el plano.
+- **Quitar ortofoto**: la saca del plano (el archivo no se toca).
+
+Se guarda en el plano.json (versión 4) con la ruta del archivo, su tamaño y su fecha, los
+sistemas y la opacidad ([formato_plano.md](formato_plano.md#ortofoto-de-fondo-versión-4)). Al
+abrir un plano con ortofoto:
+
+- si el servidor ya la tiene cargada, aparece de nuevo;
+- si no, el panel dice cuál usa el plano: **Cargar ortofoto** abre el cuadro **en la carpeta
+  donde estaba** (el editor solo le pasa esa ruta al cuadro: no se lee nada con ella);
+- si la elegida **no coincide** con la del plano en nombre, tamaño o fecha, el plano **no
+  cambia**: el panel dice qué difiere y ofrece **Usar la cargada en el plano** (toma la nueva y
+  conserva sistemas y opacidad).
+
+Sin servidor (doble clic en `editor.html`) el panel dice qué ortofoto usa el plano y la conserva
+al guardar, pero no la dibuja.
+
+En el PDF la pone `componer` (o `Componer.bat`), detrás de los detalles y recortada igual que
+en el editor, a 300 ppp en JPEG (`componedor.json` → `ortofoto`). Ver
+[formato_plano.md](formato_plano.md#ortofoto-de-fondo-versión-4).
+
 ## 3. Qué se ve en la hoja
 
 | Elemento | Aspecto |

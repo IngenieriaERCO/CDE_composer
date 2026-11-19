@@ -10,9 +10,11 @@ from componedor.cli import CODIGO_AVISOS, main
 from componedor.configuracion import (
     ConfigExportador,
     ConfigInvalida,
+    ConfigOrtofoto,
     leer_config_componer,
     leer_config_editor,
     leer_config_exportador,
+    leer_config_ortofoto,
 )
 from conftest import crear_paquete_real, crear_plantilla_sintetica, escribir_formato
 
@@ -214,6 +216,33 @@ def test_umbral_de_bloques_anonimos(entorno):
 def test_exportador_invalido(entorno, seccion, mensaje):
     with pytest.raises(ConfigInvalida, match=mensaje):
         leer_config_exportador(_config(entorno, EDITOR, COMPONER, exportador=seccion))
+
+
+# --- sección ortofoto ----------------------------------------------------------------------------
+
+def test_ortofoto_por_defecto_y_del_repositorio(entorno):
+    assert leer_config_ortofoto(_config(entorno, EDITOR, COMPONER)) == ConfigOrtofoto(300, 85)
+    assert leer_config_ortofoto(RAIZ / "componedor.json") == ConfigOrtofoto(300, 85)
+    ruta = _config(entorno, EDITOR, COMPONER, ortofoto={"ppp": 200, "calidad_jpeg": 70})
+    assert leer_config_ortofoto(ruta) == ConfigOrtofoto(200, 70)
+    assert leer_config_ortofoto(_config(entorno, EDITOR, COMPONER, ortofoto={"ppp": 150})).calidad_jpeg == 85
+    # Con la sección nueva, las demás se leen igual.
+    assert leer_config_editor(ruta).paquetes == entorno / "input"
+
+
+@pytest.mark.parametrize("seccion, mensaje", [
+    ("x", '"ortofoto" debe ser un objeto'),
+    ({"ppp": 50}, "ortofoto.ppp: se esperaba un entero de 72 a 1200"),
+    ({"ppp": 2000}, "ortofoto.ppp"),
+    ({"ppp": 300.5}, "ortofoto.ppp"),
+    ({"ppp": True}, "ortofoto.ppp"),
+    ({"calidad_jpeg": 0}, "ortofoto.calidad_jpeg: se esperaba un entero de 1 a 100"),
+    ({"calidad_jpeg": 101}, "ortofoto.calidad_jpeg"),
+    ({"dpi": 300}, "ortofoto.dpi: clave desconocida"),
+])
+def test_ortofoto_invalida(entorno, seccion, mensaje):
+    with pytest.raises(ConfigInvalida, match=mensaje):
+        leer_config_ortofoto(_config(entorno, EDITOR, COMPONER, ortofoto=seccion))
 
 
 # --- editor --config ----------------------------------------------------------------------------

@@ -290,3 +290,57 @@ def test_exportar_y_detener(tmp_path):
     finally:
         s.detener()
         app.cerrar()
+
+
+# --- ortofoto ---------------------------------------------------------------------------------
+
+@pytest.fixture
+def servidor_ortofoto(tmp_path):
+    from ortofoto_sintetica import crear_geotiff
+
+    (tmp_path / "editor.html").write_text(HTML, encoding="utf-8")
+    tif = crear_geotiff(tmp_path / "orto.tif")
+    # Sin sección «exportador»: la ortofoto no usa el trabajador y funciona igual.
+    app = AplicacionEditor(tmp_path / "editor.html", ZONA_A1, None,
+                           elegir_ortofoto=lambda inicial: tif)
+    s = ServidorEditor(app)
+    s.iniciar()
+    yield s
+    s.detener()
+    app.cerrar()
+
+
+def test_ortofoto_por_http(servidor_ortofoto):
+    from ortofoto_sintetica import ORIGEN
+
+    s = servidor_ortofoto
+    assert pedido(s, "GET", "/api/ortofoto") == (200, {"ortofoto": None})
+    estado, r = pedido(s, "POST", "/api/ortofoto/elegir")
+    assert estado == 200 and r["elegida"] == "orto.tif"
+    assert r["ortofoto"]["archivo_plano"] == "orto.tif"
+    assert pedido(s, "GET", "/api/estado")[1]["ortofoto"]["ficha"]["px"] == [400, 300]
+    x0, y1 = ORIGEN
+    cuerpo = json.dumps({"caja_cad": [x0 + 100, y1 - 200, x0 + 200, y1 - 100],
+                         "mm_por_unidad": 1000, "crs_dibujo": "EPSG:9377", "px": 64}).encode()
+    estado, previa = pedido(s, "POST", "/api/ortofoto/previa", cuerpo=cuerpo)
+    assert estado == 200 and previa["px"] == [64, 64] and previa["cobertura"] == 1.0
+    estado, png = pedido(s, "GET", previa["url"])
+    assert estado == 200 and png.startswith(b"\x89PNG")
+    assert pedido(s, "GET", previa["url"], token=False)[0] == 403  # también con token
+    assert pedido(s, "GET", "/api/ortofoto/previas/o-99")[0] == 404
+    assert pedido(s, "GET", "/api/ortofoto/previas/../x")[0] == 404
+    malo = json.dumps({"caja_cad": [0, 0, 1, 1], "crs_dibujo": "EPSG:4326"}).encode()
+    estado, r = pedido(s, "POST", "/api/ortofoto/previa", cuerpo=malo)
+    assert estado == 400 and "proyectado" in r["error"]
+    assert pedido(s, "POST", "/api/ortofoto/quitar") == (200, {"quitada": True})
+    estado, r = pedido(s, "POST", "/api/ortofoto/previa", cuerpo=cuerpo)
+    assert estado == 409 and "Cargar ortofoto" in r["error"]
+
+
+def test_las_rutas_de_la_ortofoto_piden_token_y_origen(servidor_ortofoto):
+    s = servidor_ortofoto
+    assert pedido(s, "GET", "/api/ortofoto", token=False)[0] == 403
+    assert pedido(s, "POST", "/api/ortofoto/elegir", origen=False)[0] == 403
+    assert pedido(s, "POST", "/api/ortofoto/elegir",
+                  cabeceras={"Origin": "http://evil.example"})[0] == 403
+    assert pedido(s, "GET", "/api/ortofoto/elegir")[0] == 404  # solo POST

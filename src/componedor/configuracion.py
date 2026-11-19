@@ -31,11 +31,17 @@ Esquema (versión 1):
                                                 al menos esas entidades visibles se ofrecen
                                                 en «Anónimos (opcionales)» de la carpeta; va
                                                 en load como anonymous_min_entities; 100)
+      },
+      "ortofoto": {                            (opcional: la ortofoto de fondo en el PDF)
+        "ppp": 300,                            (opcional: resolución con que se pone en el PDF,
+                                                en píxeles por pulgada de papel; de 72 a 1200;
+                                                300)
+        "calidad_jpeg": 85                     (opcional: calidad JPEG de 1 a 100; 85)
       }
     }
 
 Cada comando lee solo su sección (`leer_config_editor`, `leer_config_componer`,
-`leer_config_exportador`) y el formato.
+`leer_config_exportador`, `leer_config_ortofoto`) y el formato.
 Las rutas relativas se toman desde la carpeta donde está el archivo de configuración (no desde
 donde se ejecuta el comando), así los accesos directos funcionan desde cualquier lado. Una
 opción opcional en null (o ausente) no se usa. A diferencia del manifiesto del exportador, aquí
@@ -48,7 +54,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 VERSION = 1
-CLAVES_GENERALES = ("version", "formato", "editor", "componer", "exportador")
+CLAVES_GENERALES = ("version", "formato", "editor", "componer", "exportador", "ortofoto")
 # Por sección: (obligatorias, opcionales, {clave: "carpeta" | "archivo"} de las que deben existir).
 SECCIONES = {
     "editor": (("paquetes", "salida"), ("notas", "firmas", "proyecto"),
@@ -96,12 +102,21 @@ class ConfigExportador:
         return ("--preview-cache-mb", str(self.cache_previas_mb))
 
 
+@dataclass(frozen=True)
+class ConfigOrtofoto:
+    """Cómo va la ortofoto en el PDF (la usa componer, etapa 2)."""
+    ppp: int = 300
+    calidad_jpeg: int = 85
+
+
 CLAVES_EXPORTADOR = ("comando", "trabajo", "margen_mm", "cache_previas_mb", "paquetes",
                      "para_borrar", "anonimos_min_entidades")
 PAQUETES_POR_DEFECTO = "data/input/dxf"
 PARA_BORRAR_POR_DEFECTO = "_para_borrar"
 MARGEN_MM_POR_DEFECTO = 5.0
 ANONIMOS_MIN_POR_DEFECTO = 100
+CLAVES_ORTOFOTO = ("ppp", "calidad_jpeg")
+PPP_LIMITES = (72, 1200)
 
 
 def leer_config_editor(ruta: Path | str, verificar_rutas: bool = True) -> ConfigEditor:
@@ -161,6 +176,32 @@ def leer_config_exportador(ruta: Path | str) -> ConfigExportador | None:
                              + "\n".join(f"- {p}" for p in problemas))
     return ConfigExportador(comando, trabajo, float(margen), cache, paquetes, para_borrar,
                             anonimos)
+
+
+def leer_config_ortofoto(ruta: Path | str) -> ConfigOrtofoto:
+    """La sección "ortofoto" (opcional: sin ella, 300 ppp y calidad JPEG 85)."""
+    ruta = Path(ruta)
+    seccion = _leer_json(ruta).get("ortofoto")
+    if seccion is None:
+        return ConfigOrtofoto()
+    if not isinstance(seccion, dict):
+        raise ConfigInvalida(f"'{ruta}': \"ortofoto\" debe ser un objeto con "
+                             f"{', '.join(CLAVES_ORTOFOTO)}.")
+    problemas = [f"ortofoto.{clave}: clave desconocida (se admiten "
+                 f"{', '.join(CLAVES_ORTOFOTO)})." for clave in sorted(set(seccion) - set(CLAVES_ORTOFOTO))]
+    ppp = seccion.get("ppp", ConfigOrtofoto.ppp)
+    if (isinstance(ppp, bool) or not isinstance(ppp, int)
+            or not PPP_LIMITES[0] <= ppp <= PPP_LIMITES[1]):
+        problemas.append(f"ortofoto.ppp: se esperaba un entero de {PPP_LIMITES[0]} a "
+                         f"{PPP_LIMITES[1]} (píxeles por pulgada de papel).")
+    calidad = seccion.get("calidad_jpeg", ConfigOrtofoto.calidad_jpeg)
+    if isinstance(calidad, bool) or not isinstance(calidad, int) or not 1 <= calidad <= 100:
+        problemas.append("ortofoto.calidad_jpeg: se esperaba un entero de 1 a 100.")
+    if problemas:
+        raise ConfigInvalida(f"El archivo de configuración '{ruta}' tiene "
+                             f"{len(problemas)} problema(s):\n"
+                             + "\n".join(f"- {p}" for p in problemas))
+    return ConfigOrtofoto(ppp, calidad)
 
 
 def _leer_seccion(ruta: Path | str, nombre: str, verificar_rutas: bool) -> dict[str, Path | None]:

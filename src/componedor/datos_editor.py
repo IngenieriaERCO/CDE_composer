@@ -96,6 +96,9 @@ def construir_datos_editor(carpeta_paquetes: Path | str, ruta_formato: Path | st
             "escala": e.escala,
             "tamano_pagina_mm": [ancho, alto],
             "limites_dibujo_mm": list(dibujo),
+            # Para la ortofoto (caja CAD de la página en la hoja): cad_to_page y mm por unidad.
+            "cad_a_pagina": list(e.cad_a_pagina) if e.cad_a_pagina else None,
+            "mm_por_unidad": e.mm_por_unidad,
             "cabe": bool(e.cabe),
             "tiene_fondo": tiene_fondo,
             "notas": list(e.notas),

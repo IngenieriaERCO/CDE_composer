@@ -16,5 +16,9 @@
     "trabajo": "data/cache_exportador",
     "margen_mm": 5,
     "anonimos_min_entidades": 100
+  },
+  "ortofoto": {
+    "ppp": 300,
+    "calidad_jpeg": 85
   }
 }

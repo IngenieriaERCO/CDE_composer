@@ -46,6 +46,9 @@
     // guardarlo idéntico si no se cambia nada.
     rotulo: R.crearModelo(null, DEFINICION_ROTULO),
     original: null,
+    // Ortofoto del plano (versión 4): {archivo, bytes, crs, crs_dibujo, opacidad} o null. Se
+    // conserva aunque el editor esté sin servidor (se guarda igual).
+    ortofoto: null,
     paso: 1,
     cambios: false,
     vista: { x: 0, y: 0, ancho: ANCHO_PX, alto: ALTO_PX },
@@ -103,6 +106,8 @@
     : B.escalaSugerida(c.bloque.tamano_m, c.bloque.dxf.margen_mm, ZONA, escalasDe(c));
   const escalasDe = (c) => c.bloque.escalas || B.ESCALAS;
   const P = () => window.EditorPanelDxf || null; // el panel del DXF (vista previa); null sin él
+  const PO = () => window.EditorPanelOrtofoto || null; // el panel de la ortofoto; null sin él
+  const O = window.EditorOrtofoto;
 
   /** Estado de la vista previa de un bloque: {estado, url, datos, caja_cad, mm_por_unidad, mensaje}. */
   function previaDe(c) {
@@ -170,6 +175,8 @@
   // Vista previa (4.3f), en el orden de componer: los símbolos de convenciones son parte de la
   // hoja base (debajo de los detalles); textos, etiquetas «ESC» y firmas van encima.
   const capasVistaPrevia = { simbolos: nodoSvg("g", { class: "vp-capa" }, svg) };
+  // La ortofoto, detrás de TODOS los detalles (como en el PDF): recortada a la página de cada uno.
+  const capaOrtofoto = nodoSvg("g", { class: "capa-ortofoto" }, svg);
   const capaDetalles = nodoSvg("g", {}, svg);
   capasVistaPrevia.textos = nodoSvg("g", { class: "vp-capa" }, svg);
   capasVistaPrevia.etiquetas = nodoSvg("g", { class: "vp-capa" }, svg);
@@ -294,6 +301,52 @@
 
   const ORDEN_NIVEL = { aviso: 1, fuerte: 2, muy_fuerte: 3 };
 
+  /**
+   * Para la ortofoto: por cada colocación, la página en la hoja y la caja CAD que la cubre
+   * {id, pagina, caja, mm_por_unidad, motivo} (motivo: por qué no hay caja, o null).
+   */
+  function cajasOrtofoto() {
+    return estado.colocaciones.map((c) => {
+      const pagina = paginaDe(c);
+      const r = { id: c.id, pagina, caja: null, mm_por_unidad: null, motivo: null };
+      if (esBloque(c)) {
+        const p = previaDe(c);
+        if (!p.caja_cad || !p.mm_por_unidad) {
+          r.motivo = "sin la caja CAD del bloque: cargue su DXF";
+          return r;
+        }
+        r.caja = O.cajaCadBloque(pagina, c.centro, B.centroCaja(p.caja_cad), B.mmPorUnidadCad(p.mm_por_unidad, c.escala));
+        r.mm_por_unidad = p.mm_por_unidad;
+        return r;
+      }
+      const d = c.detalle;
+      if (!d.cad_a_pagina || !d.mm_por_unidad) {
+        r.motivo = "el catálogo no trae su matriz CAD (vuelva a generar el editor)";
+        return r;
+      }
+      r.caja = O.cajaCadDetalle(pagina, d.cad_a_pagina);
+      r.mm_por_unidad = d.mm_por_unidad;
+      if (!r.caja) r.motivo = "su dibujo está girado en la página: sin ortofoto en el editor";
+      return r;
+    });
+  }
+
+  function dibujarOrtofoto() {
+    capaOrtofoto.replaceChildren();
+    const panel = PO();
+    if (!estado.ortofoto || !panel) return;
+    capaOrtofoto.setAttribute("opacity", String(estado.ortofoto.opacidad));
+    for (const r of cajasOrtofoto()) {
+      if (!r.caja) continue;
+      const p = panel.previa(r.caja, r.mm_por_unidad, r.id);
+      if (p.estado !== "lista" || !p.url || !(p.cobertura > 0)) continue; // sin foto: nada
+      const pantalla = L.rectPapelAPantalla(r.pagina, ESCALA);
+      const imagen = nodoSvg("image", { x: pantalla.x, y: pantalla.y, width: pantalla.ancho, height: pantalla.alto,
+        preserveAspectRatio: "none", class: "ortofoto", "data-id": r.id }, capaOrtofoto);
+      imagen.setAttribute("href", p.url);
+    }
+  }
+
   function dibujarDetalles(niveles) {
     capaDetalles.replaceChildren();
     for (const c of estado.colocaciones) {
@@ -378,6 +431,7 @@
     }
     for (const [nombre, rect] of nodosElementos) rect.classList.toggle("tapado", tapados.has(nombre));
     dibujarRosa(tapados.has(L.ROSA));
+    dibujarOrtofoto();
     dibujarDetalles(niveles);
     pintarRosa();
     pintarPropiedades();
@@ -387,6 +441,8 @@
     programarVistaPrevia();
     const panelDxf = P();
     if (panelDxf && panelDxf.alCambiarPlano) panelDxf.alCambiarPlano(); // «Exportar (N)»
+    const panelOrtofoto = PO();
+    if (panelOrtofoto && panelOrtofoto.alCambiarPlano) panelOrtofoto.alCambiarPlano();
   }
 
   // ---------------------------------------------------------------------------------------
@@ -1190,7 +1246,8 @@
    *  Sin los campos retirados del rótulo (disenador, revisor): R.paraGuardar los quita. */
   function textoPlano() {
     return L.serializarPlano(estado.colocaciones, DATOS, {
-      rosa: estado.rosa, rotulo: R.paraGuardar(estado.rotulo), original: estado.original });
+      rosa: estado.rosa, rotulo: R.paraGuardar(estado.rotulo), original: estado.original,
+      ortofoto: estado.ortofoto });
   }
 
   function guardado(nombre, descargado) {
@@ -1226,6 +1283,8 @@
     if (ROSA) estado.rosa = resultado.rosa || { visible: true, pos: ROSA_ORIGEN.slice() };
     estado.rotulo = R.crearModelo(resultado.rotulo, DEFINICION_ROTULO); // se conserva al guardar
     estado.original = resultado.original;
+    estado.ortofoto = resultado.ortofoto || null;
+    if (PO() && PO().repintar) PO().repintar();
     pintarRotulo();
     estado.cambios = resultado.avisos.length > 0; // si se ajustó algo, hay cambios por guardar
     actualizar();
@@ -1349,8 +1408,16 @@
     return true;
   }
 
+  /** La ortofoto del plano cambió (panel de la ortofoto): {archivo, …} o null para quitarla. */
+  function fijarOrtofoto(o) {
+    estado.ortofoto = o;
+    marcarCambios();
+    actualizar();
+  }
+
   window.EditorUI = { agregarBloque, catalogoCambiado, refrescar: () => actualizar(),
-    colocaciones: () => estado.colocaciones, zona: () => ZONA, aplicarExportado, registrarDetalles };
+    colocaciones: () => estado.colocaciones, zona: () => ZONA, aplicarExportado, registrarDetalles,
+    ortofoto: () => estado.ortofoto, fijarOrtofoto, cajasOrtofoto };
 
   // Para la verificación automática del reporte (no la usa la interfaz).
   window.EditorPrueba = { estado, agregar: (id) => agregar(CATALOGO.find((d) => d.id === id)),

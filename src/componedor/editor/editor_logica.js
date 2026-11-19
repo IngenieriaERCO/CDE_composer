@@ -31,6 +31,9 @@
   // editor_bloques.js: en el navegador ya está cargado (va antes en editor.html).
   const B = typeof module === "object" && module.exports
     ? require("./editor_bloques.js") : self.EditorBloques;
+  // editor_ortofoto.js (plano versión 4), igual.
+  const O = typeof module === "object" && module.exports
+    ? require("./editor_ortofoto.js") : self.EditorOrtofoto;
 
   const EPS_MM = 1e-6; // igual que formato.EPS_MM: solo ruido numérico
   const ZONA_EDITABLE = "area_dibujo";
@@ -257,7 +260,7 @@
   }
 
   // ---------------------------------------------------------------------------------------
-  // plano.json (versiones 1, 2 y 3, docs/formato_plano.md).
+  // plano.json (versiones 1 a 4, docs/formato_plano.md).
   // ---------------------------------------------------------------------------------------
 
   /** id, id_2, id_3… el primero que no esté en `usados`. */
@@ -283,7 +286,8 @@
    * cual (el editor no lo edita). Con alguna de esas claves, o con "etiqueta_escala": false
    * en un detalle, el plano es versión 2; si no, versión 1. Con bloques de un DXF sin
    * exportar ({id, bloque, escala, centro}), versión 3: la lista "dxf" y cada bloque con
-   * "origen" y "centro_mm" (sin manifiesto).
+   * "origen" y "centro_mm" (sin manifiesto). Con extra.ortofoto ({archivo, bytes, crs,
+   * crs_dibujo, opacidad}), versión 4: la sección "ortofoto".
    */
   function serializarPlano(colocaciones, datos, extra) {
     return JSON.stringify(objetoPlano(colocaciones, datos, extra), null, 2)
@@ -340,6 +344,13 @@
     };
     if (pendientes.length) nuevo.dxf = dxfParaGuardar(pendientes, original);
     nuevo.detalles = detalles;
+    if (extra.ortofoto) {
+      const o = O.ortofotoParaGuardar(extra.ortofoto);
+      const previa = original && esObjeto(original.ortofoto) ? original.ortofoto : null;
+      // Sin cambios: tal como vino (abrir y guardar da el mismo JSON).
+      nuevo.ortofoto = previa && JSON.stringify(O.ortofotoParaGuardar(
+        O.leerOrtofoto(previa, []) || {})) === JSON.stringify(o) ? JSON.parse(JSON.stringify(previa)) : o;
+    }
     const rosa = rosaParaGuardar(extra.rosa, datos, zona, original);
     if (rosa !== undefined) {
       nuevo.rosa_vientos = rosa;
@@ -351,15 +362,16 @@
     }
     if (v2) nuevo.version = 2;
     if (pendientes.length) nuevo.version = 3;
+    if (extra.ortofoto) nuevo.version = 4;
     // No se baja de versión (un plano 3 sin bloques pendientes sigue siendo válido).
-    if (original && (original.version === 2 || original.version === 3) &&
+    if (original && [2, 3, 4].includes(original.version) &&
         original.version > nuevo.version) nuevo.version = original.version;
     if (!original) return nuevo;
     // Mismo orden de claves que el original; lo que no estaba, al final.
     const salida = {};
     for (const clave of Object.keys(original)) {
       if (clave in nuevo) salida[clave] = nuevo[clave];
-      else if (!["rosa_vientos", "rotulo", "dxf"].includes(clave)) salida[clave] = original[clave];
+      else if (!["rosa_vientos", "rotulo", "dxf", "ortofoto"].includes(clave)) salida[clave] = original[clave];
     }
     for (const clave of Object.keys(nuevo)) {
       // "plantilla": null es lo mismo que no tenerla: si el original no la traía, no se agrega.
@@ -451,13 +463,14 @@
    * Lee un plano.json contra el catálogo del editor. Devuelve
    * {colocaciones, errores, avisos, rosa, rotulo}: con errores no se carga nada; los avisos
    * (p. ej. un detalle fuera del área que se ajustó) se cargan igual. rosa: {visible, pos} o
-   * null (sin "rosa_vientos"); rotulo: el objeto "rotulo" tal cual, o null.
+   * null (sin "rosa_vientos"); rotulo: el objeto "rotulo" tal cual, o null; ortofoto: la
+   * sección "ortofoto" de un plano versión 4 ({archivo, bytes, crs, crs_dibujo, opacidad}) o null.
    */
   function leerPlano(texto, datos) {
     const errores = [];
     const avisos = [];
     let plano;
-    const vacio = (lista) => ({ colocaciones: [], errores: lista, avisos, rosa: null, rotulo: null });
+    const vacio = (lista) => ({ colocaciones: [], errores: lista, avisos, rosa: null, rotulo: null, ortofoto: null });
     try {
       plano = JSON.parse(texto);
     } catch (e) {
@@ -466,12 +479,17 @@
     if (!esObjeto(plano)) {
       return vacio(["El plano debe ser un objeto JSON {...}."]);
     }
-    if (![1, 2, 3].includes(plano.version)) {
+    if (![1, 2, 3, 4].includes(plano.version)) {
       errores.push("version: versión " + JSON.stringify(plano.version) +
-        " no soportada; el editor entiende las versiones 1, 2 y 3.");
+        " no soportada; el editor entiende las versiones 1, 2, 3 y 4.");
     }
-    const v3 = plano.version === 3;
-    const v2 = plano.version === 2 || v3; // la 3 incluye todo lo de la 2
+    const v4 = plano.version === 4;
+    const v3 = plano.version === 3 || v4; // cada versión incluye todo lo de la anterior
+    const v2 = plano.version === 2 || v3;
+    if (!v4 && plano.ortofoto !== undefined) {
+      errores.push("ortofoto: solo existe en la versión 4 del plano (use \"version\": 4).");
+    }
+    const ortofoto = v4 && plano.ortofoto !== undefined ? O.leerOrtofoto(plano.ortofoto, errores) : null;
     if (!v3 && plano.dxf !== undefined) {
       errores.push("dxf: solo existe en la versión 3 del plano (use \"version\": 3).");
     }
@@ -574,7 +592,7 @@
       colocaciones.push(colocacion);
     });
     if (errores.length) return vacio(errores);
-    return { colocaciones, errores, avisos, rosa, rotulo, original: plano };
+    return { colocaciones, errores, avisos, rosa, rotulo, ortofoto, original: plano };
   }
 
   return {

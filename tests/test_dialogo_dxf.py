@@ -109,3 +109,40 @@ def test_elegir_dxf_lanza_el_proceso_del_cuadro(monkeypatch, tmp_path):
     assert argv == comando_dialogo(tmp_path)
     assert kw["env"]["PYTHONUTF8"] == "1"
     assert kw["env"]["PYTHONPATH"].split(";")[0].endswith("src")
+
+
+def test_cuadro_de_la_ortofoto(tk_falso, tmp_path, capsys, monkeypatch):
+    tk_falso["elegido"] = "C:/fotos/Túnez.tif"
+    assert dialogo_dxf.main(["--tipo", "ortofoto"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"ruta": "C:/fotos/Túnez.tif"}
+    kw = tk_falso["kw"]
+    assert kw["title"] == "Cargar ortofoto"
+    assert kw["filetypes"][0] == ("Ortofotos GeoTIFF", "*.tif *.tiff")
+    assert comando_dialogo(tmp_path, "ortofoto") == [
+        sys.executable, "-m", "componedor.dialogo_dxf", "--tipo", "ortofoto", "--inicial",
+        str(tmp_path)]
+
+
+def test_elegir_ortofoto(monkeypatch, tmp_path):
+    from componedor.ortofoto import OrtofotoInvalida
+
+    tif = tmp_path / "a.TIFF"
+    tif.write_bytes(b"x")
+    salida = {"ruta": str(tif)}
+
+    def run(argv, **kw):
+        assert argv[3:5] == ["--tipo", "ortofoto"]
+        return types.SimpleNamespace(returncode=0, stderr=b"",
+                                     stdout=json.dumps(salida).encode())
+
+    monkeypatch.setattr(dialogo_dxf.subprocess, "run", run)
+    assert dialogo_dxf.elegir_ortofoto() == tif.resolve()
+    salida["ruta"] = None
+    assert dialogo_dxf.elegir_ortofoto() is None
+    salida["ruta"] = str(tmp_path / "foto.jpg")
+    with pytest.raises(OrtofotoInvalida, match="no es un GeoTIFF"):
+        dialogo_dxf.elegir_ortofoto()
+    monkeypatch.setattr(dialogo_dxf.subprocess, "run", lambda argv, **kw: types.SimpleNamespace(
+        returncode=1, stdout=b"", stderr=b"TclError: sin pantalla\n"))
+    with pytest.raises(OrtofotoInvalida, match="elegir la ortofoto .*sin pantalla"):
+        dialogo_dxf.elegir_ortofoto()

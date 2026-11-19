@@ -395,7 +395,9 @@
     anfitrion.hidden = !seccion;
   }
 
-  window.EditorPanelDxf = { previa, soltar, reintentar, alCambiarPlano: () => pintarExportar() };
+  window.EditorPanelDxf = { previa, soltar, reintentar, alCambiarPlano: () => pintarExportar(),
+    // La carpeta del DXF cargado (o null): el panel de la ortofoto toma de aquí dxf.crs.
+    catalogo: () => (vista.estado && vista.estado.dxf) || null };
 
   // ---------------------------------------------------------------------------------------
   // Exportar (etapa 3).

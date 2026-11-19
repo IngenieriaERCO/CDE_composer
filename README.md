@@ -20,7 +20,8 @@ python -m pip install -e ".[dev]"
 
 1. **`Abrir editor.bat`**: genera el editor con las rutas de `componedor.json` y lo abre en el
    navegador con un **servidor local** (solo en esta computadora, `127.0.0.1`) que habilita
-   **«Cargar DXF»**. Deje abierta esa ventana negra mientras usa el editor: al cerrarla se apaga
+   **«Cargar DXF»** y **«Cargar ortofoto»** (un GeoTIFF de fondo, detrás de los detalles; ver
+   [docs/editor.md](docs/editor.md#2g-ortofoto-de-fondo-con-servidor-local)). Deje abierta esa ventana negra mientras usa el editor: al cerrarla se apaga
    el servidor. Si el servidor no puede arrancar, el `.bat` abre el editor sin servidor, como
    antes. Arme el plano y guarde el `plano.json` en `editor\` (al lado de `editor.html`) o en
    `planos\`: las dos carpetas están al mismo nivel, así que el plano funciona en cualquiera.
@@ -36,8 +37,8 @@ editor nunca borra los `plano.json` que usted guardó.
 
 | Carpeta | Qué guarda | ¿Va a git? |
 |---|---|---|
-| `planos/` | sus `plano.json` | no (datos de ERCO) |
-| `editor/` | `editor.html`, el único archivo que genera el editor (todo va incrustado dentro) | no (se regenera) |
+| `planos/` | sus `plano.json` (y, si llevan ortofoto, su copia reducida `<plano>_ortofoto/`, que deja `componer`) | no (datos de ERCO) |
+| `editor/` | `editor.html`, el único archivo que genera el editor (todo va incrustado dentro); y los planos que usted guarde ahí, con su `<plano>_ortofoto/` | no (se regenera) |
 | `resultados/` | los PDF que deja `Componer.bat` | no |
 | `firmas/<persona>/firma.png` | las firmas en imagen, una carpeta por persona | no (datos personales) |
 | `notas/<grupo>/*.txt` | el catálogo de notas típicas (cada subcarpeta es un grupo) | no, hasta que se decida |
@@ -64,7 +65,8 @@ componer siempre con el mismo formato. Las rutas son relativas a la carpeta del 
   "editor": {"paquetes": "data/input", "salida": "editor", "notas": "notas",
              "firmas": "firmas", "proyecto": null},
   "componer": {"resultados": "resultados"},
-  "exportador": {"comando": "cde-exporter", "trabajo": "data/cache_exportador", "margen_mm": 5}
+  "exportador": {"comando": "cde-exporter", "trabajo": "data/cache_exportador", "margen_mm": 5},
+  "ortofoto": {"ppp": 300, "calidad_jpeg": 85}
 }
 ```
 
@@ -81,6 +83,13 @@ publica «Exportar»; `para_borrar` (opcional, `_para_borrar`), adónde se mueve
 `anonimos_min_entidades` (opcional, 100), cuántas entidades visibles debe dibujar un bloque
 anónimo `*U` para ofrecerlo en «Anónimos (opcionales)».
 Ver [docs/servidor_editor.md](docs/servidor_editor.md).
+
+La sección `ortofoto` es opcional (sin ella, los mismos valores): `ppp` (de 72 a 1200) es la
+resolución con que va la ortofoto en el PDF, en píxeles por pulgada de papel, y `calidad_jpeg`
+(de 1 a 100), su calidad. `componer --config` (y `Componer.bat`) las usa; sin `--config`, 300 y
+85. Al componer con la ortofoto original, `componer` deja una **copia reducida** en
+`<nombre del plano>_ortofoto/`, al lado del plano.json, para poder volver a componerlo sin el
+original (ver [docs/formato_plano.md](docs/formato_plano.md#ortofoto-de-fondo-versión-4)).
 
 ## Comandos
 

@@ -1936,6 +1936,227 @@ falso): todo OK.
 `verificar_bloques_dxf.mjs` se ajustó (cada tarjeta tiene ahora dos botones); las de las etapas
 1, 2 y 3 siguen todo OK con el falso.
 
+### Ortofoto de fondo — Etapa 1: cargar, ficha y vista previa (2026-11-18, aprobada; sin commit)
+
+Decisiones del usuario (2026-11-18):
+1. una ortofoto por plano, detrás de todos los detalles y recortada a la caja de cada uno;
+   fuera de los detalles, en blanco;
+2. reproyectar, y si un sistema no se puede determinar, no suponer: aviso amarillo y selector;
+3. en el PDF, 300 ppp y JPEG calidad 85, configurables;
+4. una copia reducida (etapa 2);
+5. opacidad por plano, 100 % por defecto;
+6. sin GEODATA, el selector;
+7. funcionar con BigTIFF de varios GB, leyendo por ventanas;
+8. rasterio.
+
+**Instalación**: `rasterio>=1.4,<2` en el `.venv` (quedó la 1.5.2 con GDAL 3.12.2, numpy 2.5.5,
+affine, attrs, certifi, click y pyparsing: 7 paquetes nuevos, ninguno existente cambió; 150 MB).
+Agregada a `pyproject.toml`; `pip check` sin problemas.
+
+**Hallazgo**: el Exportador no informaba el sistema del DXF (`load` y el manifiesto no lo
+traían). Por eso el sistema del dibujo lo elegía el usuario siempre. (Ya lo informa desde su
+58fc279: ver la etapa 2.) **Para el Exportador**: que `load`
+devuelva el sistema del DXF (de `GEODATA`). Ojo: el `GEODATA` de PRGD dice «CTM12», pero trae
+la autoridad 3115, así que el selector debe dejar corregirlo igual.
+
+**Qué se hizo**
+- `ortofoto.py`: lee solo la cabecera con rasterio y arma la ficha con sus avisos («error»,
+  «elegir», «aviso»).
+  - Un archivo sin georreferencia se rechaza.
+  - El sistema sale del archivo o queda en `null`, sin suponer.
+  - Avisa si está girada, si le faltan pirámides o mosaicos en archivos grandes, si tiene más
+    de 3 bandas o si no es de 8 bits.
+  - `leer_sistema("EPSG:n")` acepta solo sistemas proyectados. `SISTEMAS_COMUNES` (Colombia)
+    son los del selector.
+- `previa_ortofoto.py`: el PNG RGBA de una caja CAD.
+  - La caja se lleva al sistema de la ortofoto y se lee solo esa ventana, reducida con
+    `out_shape`, que usa las pirámides.
+  - Se reproyecta con `reproject`: bilineal para la imagen y vecino más cercano para la máscara.
+    La máscara va como 1 (sin foto) y 2 (con foto), porque GDAL cambia los 0 de la fuente.
+  - Lo que no tiene foto queda transparente: fuera de la imagen, alfa, «nodata» o máscara.
+  - Paleta, gris, 16 bits (brillo 2–98 % calculado una vez para toda la ortofoto, el mismo en
+    todos los detalles) y girada.
+  - Devuelve también la cobertura.
+- `ortofoto_editor.py` (servidor, sin HTTP):
+  - elegir con el cuadro nativo (`dialogo_dxf --tipo ortofoto`), estado y quitar;
+  - la vista previa se hace en el mismo pedido, de a una, y se guardan las últimas 64;
+  - detecta que el archivo cambió en el disco y responde 409.
+
+  Rutas `/api/ortofoto…` con los mismos controles (token, Host, Origin). No usa el trabajador y
+  funciona sin la sección `exportador`.
+- `componedor.json` → `ortofoto: {ppp: 300, calidad_jpeg: 85}` (`leer_config_ortofoto`). Se lee
+  y valida; se usará en la etapa 2.
+- plano.json **versión 4** (`plano_ortofoto.py`): `ortofoto: {archivo, bytes, crs, crs_dibujo,
+  opacidad}`. `componer` la valida y por ahora compone sin ella, con una advertencia.
+- Catálogo del editor: cada detalle trae `cad_a_pagina` (la matriz del manifiesto) y
+  `mm_por_unidad`, para saber qué caja CAD cubre su página.
+- Editor:
+  - `editor_ortofoto.js` es la lógica pura: caja CAD de un detalle exportado (inversa de
+    `cad_to_page`) o de un bloque (inversa de `cadAPapel`), ficha, avisos y versión 4.
+  - `editor_panel_ortofoto.js`: botón «Cargar ortofoto», panel «Ortofoto», selectores
+    («Otro (código EPSG)…»), opacidad, estado por detalle y quitar. Pide las vistas previas
+    250 ms después del último cambio, para no pedir una por cada paso del tirador.
+  - En la hoja, la capa `capa-ortofoto` va debajo de los detalles, con una imagen exactamente
+    sobre la página de cada uno.
+
+**Pruebas**: 1208 pasan y 1 se salta (antes 1131). ruff igual que antes (173).
+- `tests/ortofoto_sintetica.py` crea GeoTIFF sintéticos con rasterio: cada píxel dice su
+  columna y su fila.
+- `test_ortofoto` (11): ficha de cada variante.
+  - Mosaicos LZW y JPEG, pirámides, BigTIFF.
+  - Sin sistema, sin georreferencia, girada.
+  - Gris, 16 bits, RGBA, «nodata», paleta, 5 bandas.
+  - Grande sin pirámides; sistemas; `Foto_tunez.tif`.
+- `test_previa_ortofoto` (12):
+  - cada píxel cae donde va;
+  - reducida con pirámides y ampliada;
+  - a medias y fuera;
+  - reproyección 9377 → 3116;
+  - sistema elegido o propio, dibujo en mm;
+  - transparencias, paleta, 16 bits con el mismo brillo en dos cajas;
+  - girada 90°, BigTIFF con JPEG y pirámides;
+  - `Foto_tunez.tif` (cubierta toda y 25 % en la esquina).
+- `test_ortofoto_editor` (17), `test_plano_v4` (13), `test_editor_ortofoto_js` (11, Node contra
+  Python).
+- Además: servidor (2), cuadro (2), configuración (9), el detalle exportado trae la matriz, y
+  dos pruebas ajustadas por la versión 4.
+
+**Verificación en Edge** (`data/verificacion/verificar_ortofoto.mjs`, todo OK):
+- **A. Trabajador falso + GeoTIFF sintético sin sistema**:
+  - dos avisos amarillos y dos selectores; sin sistemas no se dibuja nada;
+  - con EPSG:3116 en los dos, la imagen cubre exactamente la página de BLOQUE1 (cubierta
+    97,9 %);
+  - plano versión 4 con `crs` y `crs_dibujo`.
+- **B. Exportador real + PRGD + `Foto_tunez.tif`**:
+  - la ficha dice EPSG:9377 y solo pide el sistema del dibujo;
+  - con 9377, la ortofoto cae en «via tunez»: caja CAD con el mismo centro que el bloque, que
+    contiene la del bloque más 2,5 m por lado (5 mm a 1:500), cubierta 100 %;
+  - la mesa `I1.M1.PV1_12900`, al este de la foto, «no cubre este detalle» y no dibuja nada;
+  - la capa va debajo de los detalles; opacidad al 60 %; a 1:1000 la caja crece 2,5 m por lado;
+  - el plano.json lo lee Python y la ruta lleva al archivo;
+  - al recargar la página, «Usar en este plano»; al abrir el plano vuelven el sistema, la
+    opacidad y la imagen; abrir y guardar da el mismo JSON;
+  - «Quitar ortofoto».
+- **C. Sin servidor (file://)**: el botón está desactivado, el panel dice qué ortofoto usa el
+  plano y la conserva al guardar.
+- Sin errores de JavaScript. Capturas en `data/verificacion/ortofoto_salida/`.
+
+### Ortofoto de fondo — Etapa 2: la ortofoto en el PDF y la copia reducida (2026-11-18, sin commit)
+
+Decisiones del usuario (2026-11-18), al aprobar la etapa 1:
+1. empezar la etapa 2;
+2. sin excepciones a la regla de seguridad: «Cargar ortofoto» abre el cuadro en la carpeta
+   guardada en el plano y avisa si lo elegido no coincide en nombre, tamaño o fecha;
+3. el Exportador agrega `dxf.crs` en `load`: el selector sale prellenado y siempre editable;
+   sin él, vacío como antes.
+
+**Qué se hizo**
+- `ortofoto_render.py` (nuevo) es el pintado común a la vista previa, el PDF y la copia.
+  - Lee solo la ventana de la caja, reducida con `out_shape` (usa las pirámides).
+  - Para el PDF y la copia, la reducción es un **factor entero** para todo el detalle y la
+    ventana se alinea a múltiplos de él: dos mosaicos vecinos leen la misma grilla y no hay
+    costuras. Probado: pintar la caja en dos mitades da lo mismo que entera (diferencia ≤ 1 de
+    255), también reproyectando.
+  - `previa_ortofoto.py` pasa a usarlo, sin cambiar lo que hace.
+- `ortofoto_pdf.py` (nuevo), para cada detalle:
+  - su página en la hoja → CAD con la inversa de su `cad_to_page`;
+  - una cuadrícula a `ppp` en mosaicos de 1024 px, cada uno JPEG (`calidad_jpeg`) con
+    `insert_image`, que entra tal cual (DCTDecode);
+  - la máscara (SMask) va donde no hay foto o con opacidad menor que 1; un mosaico sin foto no
+    se pone;
+  - avisos: no cubre el detalle, el detalle tiene fondo blanco (la tapa), dibujo girado;
+  - `verificar_ortofoto`: en el PDF guardado, cada mosaico es un JPEG justo en su rectángulo
+    (±0,1 mm).
+- `ortofoto_copia.py` (nuevo): la copia reducida en `<plano>_ortofoto/`.
+  - Un GeoTIFF por detalle, ya en el sistema del dibujo: la página más 10 % por lado.
+  - Resolución: la del PDF, pero nunca más fina que la ortofoto original.
+  - JPEG en mosaicos de 512 px, con máscara interna, escrito por mosaicos.
+  - `indice.json` con el original (nombre, bytes, fecha), el sistema y las cajas.
+  - Si está al día no se reescribe; si cambió, se escribe aparte y reemplaza a la vieja (es un
+    archivo generado, como el PDF: la vieja se borra, no pasa por `_para_borrar`).
+- `ortofoto_fuente.py` (nuevo) decide de dónde sale la ortofoto:
+  - el original si existe y coincide (bytes y fecha que guardó el plano);
+  - si no, la copia, con advertencia;
+  - si tampoco, error claro, igual que sin `crs_dibujo` o con una ortofoto sin sistema y sin
+    `crs`.
+- `componer`:
+  - orden plantilla (rosa, símbolos) → ortofoto → detalles → rótulo;
+  - la verificación cuenta las imágenes: plantilla + firmas + mosaicos;
+  - con el original, escribe la copia al final (si falla, advertencia: el PDF ya está);
+  - `componer_plano(..., config_ortofoto)`, y el CLI con `--config` lee `ortofoto.ppp` y
+    `calidad_jpeg`. El resumen dice los mosaicos, el ppp, los MB, la cobertura de cada detalle
+    y la copia.
+- plano.json versión 4: `ortofoto.modificado` (fecha UTC al segundo), en Python y en el editor.
+- Editor:
+  - **«Cargar ortofoto»** manda la ruta del plano solo para abrir el cuadro en esa carpeta (el
+    servidor no lee nada con ella).
+  - Si lo elegido **no coincide** (nombre, tamaño o fecha), el plano no cambia: el panel lista
+    qué difiere y ofrece «Usar la cargada en el plano».
+  - **`dxf.crs`**: `sistema_dxf.py` (nuevo) lee el objeto del Exportador. El selector «Sistema
+    del dibujo» sale prellenado con el código (una vez por DXF y ortofoto; siempre editable;
+    vacío si no viene o no sirve). Además se compara la zona del nombre del GEODATA con la del
+    código.
+
+**Hallazgo con el Exportador real (58fc279)**: ya manda `dxf.crs`. Para PRGD trae
+`name: "Colombia CTM12"`, `epsg: 3115` (de `authority`). 3115 es Colombia West zone; CTM12 es
+EPSG:9377. Con 3115 la ortofoto cae a cientos de km y no cubre nada. Por eso, cuando nombre y
+código no coinciden:
+- sale un **aviso amarillo** que lo explica;
+- y un botón **«Usar EPSG:9377 para el dibujo»**.
+
+Ajuste del usuario al aprobar la etapa 2: el selector se preselecciona solo si el código salió
+de un `Alias` del GEODATA (`epsg_from: "alias"`); si salió de la autoridad (`"authority"`, como
+en PRGD), queda vacío. El aviso amarillo y el botón se mantienen. Edge: 70 comprobaciones, todo
+OK.
+
+**Pruebas**: 1264 pasan y 1 se salta (antes 1208). ruff igual que antes (173).
+- `test_ortofoto_render` (7): factor entero, ventana alineada, mosaicos sin costuras (con y sin
+  reproyección), sin sistema, fuera.
+- `test_ortofoto_pdf` (7):
+  - cuadrícula exacta y caja CAD de ida y vuelta;
+  - **la foto cae donde predice el CAD**: cada píxel del JPEG del PDF, comparado con la
+    ortofoto muestreada aparte (bilineal propia, sin el código del Componedor) en el punto CAD
+    de ese píxel, da un error medio de 1,1 / 255; corrida 1 mm, más de 8 veces mayor;
+  - máscara y opacidad, mosaicos vacíos, girado y fondo, un mosaico que falta.
+- `test_componer_ortofoto` (11):
+  - mismos trazos y textos que sin ortofoto, y el orden plantilla → JPEG → detalle;
+  - la copia (y «al día»), y sin el original o con el original cambiado, la copia con aviso;
+  - sin nada que sirva, copia de otro sistema, sin `crs_dibujo`, ortofoto sin sistema;
+  - opacidad con paquete con fondo; las diferencias; el resumen del CLI.
+- `test_ortofoto_copia` (2), `test_sistema_dxf` (23, con los `dxf.crs` reales de PRGD y GUAMO),
+  y más casos en `test_bloques_dxf`, `test_ortofoto_editor`, `test_editor_ortofoto_js` y
+  `test_plano_v4`.
+
+**Verificación con PRGD** (`data/verificacion/verificar_ortofoto_pdf.py`; «via tunez» a 1:500 y
+la mesa I1.M1.PV1_12900 a 1:75; cada caso en un proceso aparte para medir su pico de memoria):
+
+| | sin ortofoto | `Foto_tunez.tif` (3,3 MB) | BigTIFF sintético de 3,0 GB (32 768² px, 4 cm, sin pirámides ni compresión) |
+|---|---|---|---|
+| tiempo de componer | 8,2 s | 11,7 s | 15,8 s (21,7 s escribiendo la copia) |
+| pico de memoria | 226 MB | 322 MB | 332 MB |
+| PDF | 2,35 MB | 3,16 MB | 9,55 MB |
+| JPEG de la ortofoto | — | 0,8 MB, 36 mosaicos | 7,2 MB, 36 mosaicos |
+| copia reducida | — | 0,03 MB (a 1,08 m: la de la foto) | 6,9 MB (a 4,2 cm: la del PDF) |
+| trazos / textos | 9369 | 9369, iguales | 9369, iguales |
+| imágenes | 1 (logo) | 1 + 36 JPEG | 1 + 36 JPEG |
+| error de posición (0–255) | — | 0,41 (corrida 1 m: 3,59) | 1,50 (corrida 1 m: 61,5) |
+
+- «via tunez»: 5278 × 5401 px, cubierto al 100 %. La mesa queda fuera de la foto: no lleva
+  mosaicos y avisa.
+- Con 3 GB la memoria es la misma que con 3 MB: se lee por ventanas.
+- `Foto_tunez.tif` tiene píxeles de 1,08 m, que a 1:500 son 2,2 mm de papel (unos 12 ppp). A
+  300 ppp se agranda 25 veces: se ve suave, no pixelada, y pesa poco, porque el JPEG de una
+  imagen suave es chico. La copia queda a la resolución de la foto.
+
+**Verificación en Edge** (`verificar_ortofoto.mjs`, 69 comprobaciones, todo OK):
+- **falso con `dxf.crs` EPSG:3116**: el selector sale prellenado con aviso azul; si se cambia,
+  avisa que no es el del DXF;
+- **real**: EPSG:3115 prellenado, el aviso amarillo de CTM12 y «Usar EPSG:9377»;
+- **plano con tamaño y fecha distintos**: dice qué difiere y no dibuja. «Cargar ortofoto» abre
+  el cuadro en `data/input/ortofotos` y no cambia el plano. «Usar la cargada en el plano» toma
+  tamaño y fecha y conserva sistema y opacidad;
+- todo lo de la etapa 1 sigue igual.
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

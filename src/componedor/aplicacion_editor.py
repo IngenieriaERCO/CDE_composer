@@ -58,6 +58,7 @@ from componedor.formato import RectMM
 from componedor.importador import importar_paquete
 from componedor.inventario import ESCALA_MAXIMA
 from componedor.mensajes_trabajador import para_el_usuario
+from componedor.ortofoto_editor import OrtofotoEditor
 from componedor.previa_dxf import (
     CARPETA_PREVIAS,
     leer_previa,
@@ -96,8 +97,12 @@ class ErrorAplicacion(Exception):
 class AplicacionEditor:
     def __init__(self, ruta_html: Path, zona: RectMM, config: ConfigExportador | None,
                  elegir: Callable[[Path | None], Path | None] = elegir_dxf,
-                 fabrica: Callable[[], Trabajador] | None = None):
+                 fabrica: Callable[[], Trabajador] | None = None,
+                 elegir_ortofoto: Callable[[Path | None], Path | None] | None = None):
         self.ruta_html = Path(ruta_html)
+        # «Cargar ortofoto» no usa el trabajador: funciona aunque falte la sección exportador.
+        self.ortofoto = (OrtofotoEditor(self.ruta_html.parent, elegir_ortofoto)
+                         if elegir_ortofoto else OrtofotoEditor(self.ruta_html.parent))
         self.zona = zona
         self.config = config
         self._elegir = elegir
@@ -152,7 +157,8 @@ class AplicacionEditor:
         return {"servidor": True,
                 "exportador": {"disponible": motivo is None, "mensaje": motivo,
                                "trabajador": trabajador},
-                "dxf": dxf, "tarea": tarea.foto() if tarea else None}
+                "dxf": dxf, "tarea": tarea.foto() if tarea else None,
+                "ortofoto": self.ortofoto.estado()}
 
     def elegir_y_cargar(self) -> dict:
         """Abre el cuadro; si se elige un DXF, encola su carga. {"elegido", "tarea"}."""

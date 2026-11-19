@@ -35,6 +35,7 @@ MARCADORES = {
     "/*@@CSS@@*/": "editor.css",
     "/*@@JS_SIN_AUTORRELLENO@@*/": "editor_sin_autorrelleno.js",  # el primero: vigila los cuadros
     "/*@@JS_BLOQUES@@*/": "editor_bloques.js",  # antes de la lógica: la usa (plano versión 3)
+    "/*@@JS_ORTOFOTO@@*/": "editor_ortofoto.js",  # antes de la lógica: la usa (plano versión 4)
     "/*@@JS_LOGICA@@*/": "editor_logica.js",
     "/*@@JS_ROTULO@@*/": "editor_rotulo.js",
     "/*@@JS_MAQUETACION@@*/": "editor_maquetacion.js",
@@ -52,6 +53,7 @@ MARCADORES = {
     "/*@@JS_SERVIDOR@@*/": "editor_servidor.js",
     "/*@@JS_DXF@@*/": "editor_dxf.js",
     "/*@@JS_PANEL_DXF@@*/": "editor_panel_dxf.js",
+    "/*@@JS_PANEL_ORTOFOTO@@*/": "editor_panel_ortofoto.js",
 }
 MARCADOR_DATOS = "@@DATOS_EDITOR@@"
 # Lo que dejaban versiones anteriores junto a editor.html; se quita al regenerar.

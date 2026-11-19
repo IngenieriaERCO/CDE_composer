@@ -14,12 +14,14 @@ Controles de cada pedido (`motivo_rechazo`), en este orden:
    viene, debe ser `same-origin` (o `none`: la barra de direcciones, solo para la página).
 5. POST: cuerpo JSON (`Content-Type: application/json`) de hasta 64 KB.
 
-Ninguna ruta entrega archivos del disco salvo editor.html y el PNG de una vista previa
+Ninguna ruta entrega archivos del disco salvo editor.html, el PNG de una vista previa
 terminada (y solo si está dentro de la carpeta de vistas previas del trabajador: lo comprueba
-`aplicacion_editor`); ninguna recibe rutas ni opciones para el comando del exportador. Lo único
-que el editor manda en un cuerpo es el `ref` de un bloque de la carpeta ya cargada y, para
-«Exportar», la lista de bloques del plano (id, handle, sha256, escala, centro): la carpeta de
-salida y los nombres de paquete los decide el servidor.
+`aplicacion_editor`) y el PNG de una vista previa de la ortofoto (hecho en memoria); ninguna
+recibe rutas ni opciones para el comando del exportador. Lo único que el editor manda en un
+cuerpo es el `ref` de un bloque de la carpeta ya cargada; para «Exportar», la lista de bloques
+del plano (id, handle, sha256, escala, centro): la carpeta de salida y los nombres de paquete
+los decide el servidor; y para la vista previa de la ortofoto, números y códigos EPSG (la caja
+CAD de un detalle, mm por unidad, sistemas): la ortofoto la eligió el cuadro nativo.
 """
 
 import json
@@ -33,6 +35,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from componedor.aplicacion_editor import AplicacionEditor, ErrorAplicacion
+from componedor.ortofoto_editor import ErrorOrtofoto
 
 HOST = "127.0.0.1"
 CABECERA_TOKEN = "X-Componedor-Token"
@@ -40,14 +43,17 @@ LIMITE_CUERPO = 64 * 1024
 RUTA_TAREA = re.compile(r"^/api/tareas/(t-\d+)$")
 RUTA_CANCELAR = re.compile(r"^/api/tareas/(t-\d+)/cancelar$")
 RUTA_PNG = re.compile(r"^/api/previas/(t-\d+)$")
-RUTAS_GET = ("/", "/api/estado", "/api/exportados")
+RUTA_PNG_ORTOFOTO = re.compile(r"^/api/ortofoto/previas/(o-\d+)$")
+RUTAS_GET = ("/", "/api/estado", "/api/exportados", "/api/ortofoto")
 RUTAS_POST = ("/api/dxf/elegir", "/api/dxf/recargar", "/api/previa", "/api/exportar",
-              "/api/trabajador/reiniciar", "/api/trabajador/detener", "/api/latido")
+              "/api/trabajador/reiniciar", "/api/trabajador/detener", "/api/latido",
+              "/api/ortofoto/elegir", "/api/ortofoto/quitar", "/api/ortofoto/previa")
 
 
 def ruta_conocida(metodo: str, ruta: str) -> bool:
     if metodo == "GET":
-        return ruta in RUTAS_GET or bool(RUTA_TAREA.match(ruta) or RUTA_PNG.match(ruta))
+        return ruta in RUTAS_GET or bool(RUTA_TAREA.match(ruta) or RUTA_PNG.match(ruta)
+                                         or RUTA_PNG_ORTOFOTO.match(ruta))
     if metodo == "POST":
         return ruta in RUTAS_POST or bool(RUTA_CANCELAR.match(ruta))
     return False
@@ -186,8 +192,11 @@ def _manejador(servidor: ServidorEditor):
                 if m := RUTA_PNG.match(ruta):
                     self._enviar(200, servidor.app.png_previa(m.group(1)), "image/png")
                     return
+                if m := RUTA_PNG_ORTOFOTO.match(ruta):
+                    self._enviar(200, servidor.app.ortofoto.png(m.group(1)), "image/png")
+                    return
                 self._responder(200, self._api(metodo, ruta, cuerpo))
-            except ErrorAplicacion as e:
+            except (ErrorAplicacion, ErrorOrtofoto) as e:
                 self._responder(e.estado_http, {"error": e.mensaje})
             except Exception as e:  # noqa: BLE001 - un pedido no tumba el servidor
                 servidor.anotar(f"error interno en {metodo} {ruta}: {e!r}")
@@ -215,6 +224,14 @@ def _manejador(servidor: ServidorEditor):
                 return app.reiniciar()
             if ruta == "/api/latido":
                 return app.latido()
+            if ruta == "/api/ortofoto":
+                return {"ortofoto": app.ortofoto.estado()}
+            if ruta == "/api/ortofoto/elegir":
+                return app.ortofoto.elegir(cuerpo.get("archivo_plano"))
+            if ruta == "/api/ortofoto/quitar":
+                return app.ortofoto.quitar()
+            if ruta == "/api/ortofoto/previa":
+                return app.ortofoto.previa(cuerpo)
             m = RUTA_CANCELAR.match(ruta)
             return app.cancelar(m.group(1))
 

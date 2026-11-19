@@ -29,6 +29,7 @@ import math
 from componedor.colocar import exceso_de_tamano
 from componedor.formato import RectMM
 from componedor.inventario import ESCALAS_ESTANDAR
+from componedor.sistema_dxf import sistema_del_dxf
 
 
 class RespuestaInvalida(ValueError):
@@ -221,7 +222,10 @@ def catalogo_dxf(datos: dict, zona: RectMM, zona_nombre: str = "el área de dibu
                 "version_dxf": _texto(dxf.get("dxf_version")),
                 "segundos_lectura": dxf.get("read_seconds") if _numero(
                     dxf.get("read_seconds")) else None,
-                "copia_reducida": isinstance(dxf.get("source_copy"), dict)},
+                "copia_reducida": isinstance(dxf.get("source_copy"), dict),
+                # El sistema de coordenadas del DXF (de GEODATA), si el Exportador lo da: el
+                # editor lo usa para prellenar «Sistema del dibujo» (siempre editable).
+                "crs": sistema_del_dxf(dxf.get("crs"))},
         "unidades": _unidades(datos.get("units")),
         "margen_mm": float(margen),
         "escalas": list(ESCALAS_ESTANDAR),

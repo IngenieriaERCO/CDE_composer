@@ -307,3 +307,20 @@ main { flex: 1; display: flex; min-height: 0; }
 .detalle-error summary { cursor: pointer; color: var(--suave); }
 .detalle-error pre { white-space: pre-wrap; word-break: break-word; font-size: 11px; max-height: 200px;
   overflow: auto; background: #fff; border: 1px solid #e5e7eb; padding: 4px; margin: 4px 0 0; }
+
+/* Ortofoto (panel derecho): ficha, avisos por nivel, sistemas, opacidad y estado por detalle. */
+.panel-ortofoto { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.panel-ortofoto .ayuda { color: var(--suave); margin: 0; }
+.ficha-ortofoto { border: 1px solid var(--borde); border-radius: 4px; padding: 6px; background: #f9fafb;
+  font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.aviso-ortofoto { border: 1px solid #d1d5db; border-radius: 4px; padding: 6px; }
+.aviso-ortofoto.elegir, .aviso-ortofoto.aviso { border-color: #fde68a; background: #fffbeb; }
+.aviso-ortofoto.error { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
+.aviso-ortofoto.info { border-color: #bfdbfe; background: #eff6ff; }
+.aviso-ortofoto button { display: block; margin-top: 4px; }
+.campo-sistema { display: flex; flex-direction: column; gap: 2px; }
+.campo-sistema select, .campo-sistema input { width: 100%; box-sizing: border-box; }
+.campo-opacidad { display: flex; align-items: center; gap: 6px; }
+.campo-opacidad input { flex: 1; }
+.ortofoto-detalles { margin: 0; padding-left: 16px; color: var(--suave); }
+.capa-ortofoto image { pointer-events: none; }
