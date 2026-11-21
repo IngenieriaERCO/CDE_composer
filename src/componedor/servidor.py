@@ -46,7 +46,7 @@ RUTA_CANCELAR = re.compile(r"^/api/tareas/(t-\d+)/cancelar$")
 RUTA_PNG = re.compile(r"^/api/previas/(t-\d+)$")
 RUTA_PNG_ORTOFOTO = re.compile(r"^/api/ortofoto/previas/(o-\d+)$")
 RUTAS_GET = ("/", "/api/estado", "/api/exportados", "/api/ortofoto", "/api/localizacion",
-              "/api/localizacion/imagen")
+              "/api/localizacion/imagen", "/api/estilos")
 RUTAS_POST = ("/api/dxf/elegir", "/api/dxf/recargar", "/api/previa", "/api/exportar",
               "/api/trabajador/reiniciar", "/api/trabajador/detener", "/api/latido",
               "/api/ortofoto/elegir", "/api/ortofoto/quitar", "/api/ortofoto/previa",
@@ -214,6 +214,8 @@ def _manejador(servidor: ServidorEditor):
                 return app.estado()
             if metodo == "GET" and ruta == "/api/exportados":
                 return app.exportados()
+            if metodo == "GET" and ruta == "/api/estilos":
+                return app.estilos()
             if metodo == "GET" and (m := RUTA_TAREA.match(ruta)):
                 return app.tarea(m.group(1))
             if ruta == "/api/dxf/elegir":
@@ -221,9 +223,9 @@ def _manejador(servidor: ServidorEditor):
             if ruta == "/api/dxf/recargar":
                 return app.recargar()
             if ruta == "/api/previa":
-                return app.pedir_previa(cuerpo.get("ref"))
+                return app.pedir_previa(cuerpo.get("ref"), cuerpo.get("estilo"))
             if ruta == "/api/exportar":
-                return app.exportar(cuerpo.get("bloques"))
+                return app.exportar(cuerpo.get("bloques"), cuerpo.get("estilo"))
             if ruta == "/api/trabajador/detener":
                 return app.detener()
             if ruta == "/api/trabajador/reiniciar":

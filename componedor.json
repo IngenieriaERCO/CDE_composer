@@ -15,7 +15,10 @@
     "comando": "cde-exporter",
     "trabajo": "data/cache_exportador",
     "margen_mm": 5,
-    "anonimos_min_entidades": 100
+    "anonimos_min_entidades": 100,
+    "carpeta_ctb": "../Exportador Vectorial/data/input/ctb",
+    "estilo_impresion": "CTB_ERCO_derivada_PRGD.ctb",
+    "imprimir_transparencia": false
   },
   "ortofoto": {
     "ppp": 300,

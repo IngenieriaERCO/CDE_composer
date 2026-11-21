@@ -2320,6 +2320,83 @@ ortofoto, la cuadrícula y los dos detalles):
 - PNG sintético 3000 × 2000 reducido a 1818 × 1212 (300 ppp), con aviso de «DEFINIR»;
 - verificación OK; copias `plano_loc_*_localizacion.*` junto al plano.
 
+### Estilo de impresión al exportar: CTB y transparencia — Fase 7 ✅ (2026-11-21)
+
+Usa las opciones del Exportador `plot_style` y `print_transparency` (manifiesto 1.4, commit
+7154704; CTB derivada de PRGD en e8422a4).
+
+**Decisiones del usuario**
+1. La CTB se lee de la carpeta del Exportador (`carpeta_ctb`).
+2. El nombre del paquete se marca con el hash.
+3. La elección no se guarda en el plano.json.
+4. Los detalles ya exportados se quedan como están, con aviso y sin botón de reexportar.
+5. «Sin CTB» está en el selector.
+
+**Qué se hizo**
+- `estilos_impresion.py` (nuevo):
+  - lista las `.ctb` de la carpeta (nombre, SHA-256 y descripción);
+  - `elegir` acepta solo un nombre de esa lista: nunca una ruta del editor;
+  - `marca` arma `_p<sha6>` y `_t`; `opciones` arma lo que va al trabajador;
+  - lee el estilo de `options` del manifiesto (1.3: sin CTB y con transparencia).
+- `componedor.json` → `exportador`: `carpeta_ctb`, `estilo_impresion` e `imprimir_transparencia`
+  (validados; `estilo_impresion` pide `carpeta_ctb`).
+- `nombres_paquete.nombre_paquete(…, marca)`: la marca va al final, junto a la escala, y se
+  respetan los 60 caracteres.
+- `exportar_dxf.Pedido`: incluye el SHA-256 de la CTB y la transparencia. Un paquete con otro estilo
+  no sirve de caché y, si recién se exportó, no pasa la verificación.
+- Servidor:
+  - `GET /api/estilos`;
+  - `estilo` en `/api/previa` y `/api/exportar`;
+  - la clave de las vistas previas y de las exportaciones en curso incluye el estilo;
+  - el resultado y el detalle traen `estilo`, que también va en el catálogo de `editor.html`.
+- Editor:
+  - recuadro «Estilo de impresión» (selector y casilla);
+  - las vistas previas se piden con el estilo;
+  - «Exportar» dice con qué estilo exporta;
+  - en la tarjeta y en Selección, «Estilo: …»;
+  - aviso cuando un detalle salió con otro estilo;
+  - lógica en `editor_dxf.js` (`textoEstilo`, `claveEstilo`, `mismoEstilo`).
+- Trabajador falso de las pruebas: escribe `plot_style` y `print_transparency` como el real, y
+  tiene un modo «ignorar_estilo».
+
+**Pruebas**: 1338 pasan y 1 se salta (antes 1319). ruff igual que antes (173).
+- `test_estilos_impresion` (8): lista, solo nombres, marca, nombre largo, manifiesto 1.3/1.4,
+  motivos y configuración;
+- `test_exportar_estilo` (9):
+  - lista y valores por defecto;
+  - exportar con CTB, con la caché;
+  - convive con el viejo sin CTB, y `_t` solo;
+  - si la CTB cambia, sale otro paquete;
+  - sin `estilo` en el pedido, el de componedor.json;
+  - rutas rechazadas;
+  - el paquete sin el estilo pedido no vale;
+  - vista previa;
+  - HTTP;
+- `test_editor_estilo_js` (3): cliente, textos y comparación;
+- `test_configuracion` actualizado: `componedor.json` trae las tres claves.
+
+**Verificación con PRGD y el Exportador real** (`data/verificacion/verificar_estilo.mjs`, 28 comprobaciones, todo OK):
+- el selector trae «Sin CTB», `CTB_ERCO_derivada_PRGD.ctb` (por defecto) y `CTB_ERCO_V2.ctb`, con
+  la transparencia sin marcar; una ruta enviada a mano da 400;
+- las tres mesas a 1:75: las vistas previas se dibujaron con la CTB (caché `_pb4a909_t`);
+- se exportaron `I1.M1.PV1_12900_1-75_pb4a909_t`, `I1.M1.PV2_12962_1-75_pb4a909_t` e
+  `I1.M2.PV4_129C4_1-75_pb4a909_t`;
+- el paquete viejo `I1.M1.PV1_12900_1-75` (1.3, sin CTB) quedó con los mismos bytes y no se movió
+  nada a `_para_borrar`;
+- en Selección sale «Estilo: …»; al elegir «Sin CTB», el aviso aparece en los tres detalles, y al
+  volver a la CTB, se va; el plano.json no guarda el estilo;
+- colores en los PDF (234 trazos cada uno, 0,709 pt, 0 rellenos transparentes):
+
+| Mesa | Color de los trazos |
+|---|---|
+| PV1_12900 | (184, 138, 92) |
+| PV2_12962 | (110, 138, 221) |
+| PV4_129C4 | (115, 184, 92) |
+
+  El paquete viejo de PV1 tenía (127, 95, 63) y 78 rellenos transparentes. El TXT dice
+  `PLOT_STYLE_APPLIED` y `HATCH_TRANSPARENT_OMITTED`. Un plano con las tres mesas se compone y
+  pasa la verificación.
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

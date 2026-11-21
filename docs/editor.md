@@ -404,6 +404,34 @@ en la hoja.
   el texto técnico y la ruta del registro (`data\cache_exportador\trabajador.log`).
 - Si el DXF cambió en el disco, no se exporta: **Volver a cargar** primero.
 
+### Estilo de impresión (CTB y transparencia)
+
+Entre la carpeta del DXF y «Exportar», el recuadro **Estilo de impresión**:
+
+- **Tabla (CTB)**: «Sin CTB» o una de las tablas `.ctb` de la carpeta de `componedor.json`
+  (`exportador.carpeta_ctb`, hoy la del Exportador). Debajo, su descripción (p. ej. «Derivada del
+  PDF de AutoCAD…») y su SHA-256. Con la tabla, el dibujo sale con sus colores, grises y grosores,
+  como al imprimir en AutoCAD.
+- **Imprimir transparencia**: sin marcar, no se dibujan los rellenos con transparencia del 80 % o
+  más (las veladuras casi invisibles de los paneles de PVcase, que el PDF de AutoCAD tampoco lleva).
+- Al abrir el editor salen los valores de `componedor.json` (hoy `CTB_ERCO_derivada_PRGD.ctb` y sin
+  transparencia). Lo que se elija **no se guarda en el plano.json**.
+- Vale para las **vistas previas** (cada estilo tiene la suya) y para **Exportar**; la sección
+  «Exportar» dice con qué estilo va a exportar.
+- El editor solo manda el **nombre** de la tabla; la ruta la pone el servidor (si alguien manda
+  una ruta, la rechaza).
+
+El nombre del paquete lleva la marca del estilo: `_p` y 6 cifras del SHA-256 de la tabla, y `_t`
+si no imprime transparencia. Por ejemplo `I1.M1.PV1_12900_1-75_pb4a909_t`. Así **no choca** con el
+paquete viejo sin CTB del mismo bloque y escala (`I1.M1.PV1_12900_1-75`, que se queda donde está), y
+si la tabla cambia en el disco sale otro paquete. Un paquete ya publicado se reutiliza solo si su
+manifiesto trae el mismo estilo; si el exportador publicara uno con otro estilo, no se usa.
+
+Cada detalle dice con qué estilo se exportó (en «Detalles disponibles» y en el panel Selección:
+«Estilo: CTB_ERCO_derivada_PRGD.ctb (b4a909…), sin transparencia» o «sin CTB»). Si es distinto del
+elegido, **se queda como está**, con un aviso en Selección y en las advertencias; para cambiarlo,
+hay que volver a exportarlo.
+
 ## 2g. Ortofoto de fondo (con servidor local)
 
 Solo con `Abrir editor.bat`. **Cargar ortofoto**, en la barra de arriba, abre el cuadro de

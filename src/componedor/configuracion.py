@@ -27,10 +27,19 @@ Esquema (versión 1):
                                                 paquetes, en <paquetes>/<dxf>/; ese valor)
         "para_borrar": "_para_borrar",         (opcional: adónde se MUEVEN los paquetes viejos
                                                 que se reemplazan; ese valor)
-        "anonimos_min_entidades": 100          (opcional: los bloques anónimos *U que dibujan
+        "anonimos_min_entidades": 100,         (opcional: los bloques anónimos *U que dibujan
                                                 al menos esas entidades visibles se ofrecen
                                                 en «Anónimos (opcionales)» de la carpeta; va
                                                 en load como anonymous_min_entities; 100)
+        "carpeta_ctb": "../Exportador Vectorial/data/input/ctb",
+                                               (opcional: carpeta de las tablas de estilos
+                                                de impresión .ctb que ofrece el editor al
+                                                exportar; sin ella, solo «sin CTB»)
+        "estilo_impresion": "CTB_ERCO_derivada_PRGD.ctb",
+                                               (opcional: la tabla elegida al abrir el editor,
+                                                por NOMBRE, de esa carpeta; null: sin CTB)
+        "imprimir_transparencia": false        (opcional: con false no se dibujan los rellenos
+                                                con transparencia del 80 % o más; true)
       },
       "ortofoto": {                            (opcional: la ortofoto de fondo en el PDF)
         "ppp": 300,                            (opcional: resolución con que se pone en el PDF,
@@ -54,6 +63,8 @@ una clave desconocida es error: el archivo lo escribe una persona y una clave ma
 import json
 from dataclasses import dataclass
 from pathlib import Path
+
+from componedor.estilos_impresion import nombre_valido
 
 VERSION = 1
 CLAVES_GENERALES = ("version", "formato", "editor", "componer", "exportador", "ortofoto")
@@ -96,6 +107,9 @@ class ConfigExportador:
     paquetes: Path | None = None  # «Exportar»: <paquetes>/<dxf>/ (None: no se puede exportar)
     para_borrar: Path | None = None  # adónde se mueven los paquetes viejos
     anonimos_min_entidades: int = 100  # load: anonymous_min_entities
+    carpeta_ctb: Path | None = None  # tablas .ctb que ofrece el editor (estilos_impresion)
+    estilo_impresion: str | None = None  # la elegida por defecto (nombre de archivo)
+    imprimir_transparencia: bool = True  # por defecto (print_transparency)
 
     def opciones_trabajador(self) -> tuple[str, ...]:
         """Lo que va después de `worker --work-dir <trabajo>`."""
@@ -113,7 +127,8 @@ class ConfigOrtofoto:
 
 
 CLAVES_EXPORTADOR = ("comando", "trabajo", "margen_mm", "cache_previas_mb", "paquetes",
-                     "para_borrar", "anonimos_min_entidades")
+                     "para_borrar", "anonimos_min_entidades", "carpeta_ctb", "estilo_impresion",
+                     "imprimir_transparencia")
 PAQUETES_POR_DEFECTO = "data/input/dxf"
 PARA_BORRAR_POR_DEFECTO = "_para_borrar"
 MARGEN_MM_POR_DEFECTO = 5.0
@@ -173,12 +188,26 @@ def leer_config_exportador(ruta: Path | str) -> ConfigExportador | None:
     if isinstance(anonimos, bool) or not isinstance(anonimos, int) or anonimos < 1:
         problemas.append("exportador.anonimos_min_entidades: se esperaba un entero ≥ 1 (entidades "
                          "visibles que debe dibujar un bloque anónimo para ofrecerlo).")
+    carpeta_ctb = _ruta(seccion.get("carpeta_ctb"), "exportador.carpeta_ctb", False, ruta.parent,
+                        problemas)
+    estilo = seccion.get("estilo_impresion")
+    if estilo is not None:
+        if not nombre_valido(estilo):
+            problemas.append("exportador.estilo_impresion: se esperaba el NOMBRE de una tabla .ctb "
+                             "de carpeta_ctb (sin carpetas, p. ej. \"CTB_ERCO_derivada_PRGD.ctb\") "
+                             "o null.")
+        elif "carpeta_ctb" not in seccion or seccion.get("carpeta_ctb") is None:
+            problemas.append("exportador.estilo_impresion: falta exportador.carpeta_ctb (la "
+                             "carpeta donde está la tabla).")
+    transparencia = seccion.get("imprimir_transparencia", True)
+    if not isinstance(transparencia, bool):
+        problemas.append("exportador.imprimir_transparencia: se esperaba true o false.")
     if problemas:
         raise ConfigInvalida(f"El archivo de configuración '{ruta}' tiene "
                              f"{len(problemas)} problema(s):\n"
                              + "\n".join(f"- {p}" for p in problemas))
     return ConfigExportador(comando, trabajo, float(margen), cache, paquetes, para_borrar,
-                            anonimos)
+                            anonimos, carpeta_ctb, estilo, transparencia)
 
 
 def leer_config_ortofoto(ruta: Path | str) -> ConfigOrtofoto:

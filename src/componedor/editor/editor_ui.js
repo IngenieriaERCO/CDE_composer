@@ -499,7 +499,7 @@
     // Mismos elementos que usa componer: la rosa en su posición actual (oculta: no cuenta).
     const elementos = L.elementosVisibles(DATOS.elementos_plantilla, rosaParaLogica());
     const lista = L.advertencias(colocadosParaAdvertencias(), elementos, DATOS.advertencias)
-      .concat(advertenciasBloques());
+      .concat(advertenciasBloques(), advertenciasEstilo());
     // Etiquetas «ESC: 1:N» (4.3f): las mismas que pondría componer, con sus avisos al final.
     etiquetasActuales = calcularEtiquetas(elementos);
     for (const aviso of etiquetasActuales.avisos) lista.push({ nivel: "aviso", texto: aviso, ids: [] });
@@ -605,6 +605,9 @@
       "1:" + detalle.escala + " · página " + mm(detalle.tamano_pagina_mm[0]) + " × " +
       mm(detalle.tamano_pagina_mm[1]) + " mm"));
     info.appendChild(nodo("div", { class: "dato" }, detalle.cabe ? "Cabe en el área de dibujo" : "NO cabe"));
+    if (detalle.estilo && window.EditorDxf) {
+      info.appendChild(nodo("div", { class: "dato estilo-detalle" }, "Estilo: " + window.EditorDxf.textoEstilo(detalle.estilo)));
+    }
     const boton = nodo("button", { type: "button" }, "Agregar al plano");
     boton.disabled = !habilitada;
     boton.addEventListener("click", () => agregar(detalle));
@@ -667,6 +670,7 @@
         ", Y " + mm(pagina[1]) + " a " + mm(pagina[3]) + " mm"),
       nodo("div", { class: "medida" }, "Dibujo: X " + mm(dibujo[0]) + " a " + mm(dibujo[2]) +
         ", Y " + mm(dibujo[1]) + " a " + mm(dibujo[3]) + " mm"),
+      ...filasEstilo(c),
     ];
     filas[0].appendChild(nodo("strong", {}, c.id));
     filas[0].appendChild(nodo("span", { class: "medida" }, " · " + c.detalle.id + " · 1:" + c.detalle.escala));
@@ -683,6 +687,30 @@
       botones.appendChild(b);
     }
     panel.replaceChildren(...filas, casillaOrtofoto(c), botones);
+  }
+
+  // Estilo de impresión con que se exportó cada detalle (de su manifiesto) frente al elegido en
+  // el panel del DXF. Los que difieren se quedan como están, con aviso.
+  const DX = () => window.EditorDxf || null;
+  const estiloElegido = () => (P() && P().estilo ? P().estilo() : null);
+
+  function filasEstilo(c) {
+    if (!c.detalle.estilo || !DX()) return [];
+    const filas = [nodo("div", { class: "medida estilo-detalle" }, "Estilo: " + DX().textoEstilo(c.detalle.estilo))];
+    const elegido = estiloElegido();
+    if (DX().mismoEstilo(c.detalle.estilo, elegido) === false) {
+      filas.push(nodo("div", { class: "medida aviso-escala" }, "Exportado con otro estilo que el elegido para " +
+        "exportar (" + DX().textoEstilo(elegido) + "): se queda así."));
+    }
+    return filas;
+  }
+
+  function advertenciasEstilo() {
+    const elegido = estiloElegido();
+    if (!elegido || !DX()) return [];
+    return estado.colocaciones.filter((c) => !esBloque(c) && DX().mismoEstilo(c.detalle.estilo, elegido) === false)
+      .map((c) => ({ nivel: "aviso", ids: [], texto: "'" + c.id + "': exportado con " + DX().textoEstilo(c.detalle.estilo) +
+        ", distinto del estilo elegido para exportar (" + DX().textoEstilo(elegido) + "): se queda así." }));
   }
 
   /** «Usar ortofoto» del detalle (versión 5): solo los marcados la llevan detrás. */

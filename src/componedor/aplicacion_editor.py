@@ -17,6 +17,11 @@ se publicó y pasó la verificación (`exportar_dxf.verificar`), el viejo se mue
 Después se calcula su posición por el centro CAD. «Detener a la
 fuerza» cierra el trabajador sin esperar (`Canal.detener`).
 
+Estilo de impresión (estilos_impresion.py): `estilos()` da la lista de tablas .ctb de
+`exportador.carpeta_ctb` y los valores por defecto. El editor manda en cada vista previa y
+exportación `estilo: {"ctb": <nombre de la lista> | null, "transparencia": bool}` (sin él, los
+de componedor.json); la ruta de la tabla la pone el servidor.
+
 Datos: aquí no pasa nada de `firmas/` (el editor ya trae solo los nombres) y la única ruta que
 se carga es la que eligió el cuadro; el editor nunca manda rutas.
 """
@@ -29,6 +34,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import ClassVar
 
+from componedor import estilos_impresion as impresion
 from componedor.bloques_dxf import catalogo_dxf, pagina_mm
 from componedor.canal_trabajador import (
     EN_COLA,
@@ -246,19 +252,67 @@ class AplicacionEditor:
         except ValueError:  # otro disco (Windows)
             return str(ruta)
 
+    # --- estilo de impresión (CTB y transparencia) ------------------------------------------
+
+    def estilos(self) -> dict:
+        """Lo que ofrece el selector del editor: {estilos: [{nombre, sha256, descripcion}],
+        por_defecto: {ctb, transparencia}, aviso}. Nunca rutas."""
+        carpeta = self.config.carpeta_ctb if self.config else None
+        lista = impresion.listar(carpeta)
+        defecto = self.config.estilo_impresion if self.config else None
+        transparencia = self.config.imprimir_transparencia if self.config else True
+        aviso = None
+        if carpeta is None:
+            aviso = ("componedor.json no dice dónde están las tablas de estilos "
+                     "(exportador.carpeta_ctb): solo «sin CTB».")
+        elif not carpeta.is_dir():
+            aviso = f"No existe la carpeta de tablas de estilos «{carpeta}»: solo «sin CTB»."
+        elif not lista:
+            aviso = f"La carpeta de tablas de estilos «{carpeta}» no tiene ninguna .ctb."
+        elegida = next((e for e in lista if defecto and e.nombre.lower() == defecto.lower()), None)
+        if defecto is not None and elegida is None and aviso is None:
+            aviso = (f"La tabla por defecto «{defecto}» (componedor.json) no está en la carpeta "
+                     f"de tablas: se empieza con «sin CTB».")
+        return {"estilos": [e.para_el_editor() for e in lista],
+                "por_defecto": {"ctb": elegida.nombre if elegida else None,
+                                "transparencia": transparencia},
+                "aviso": aviso}
+
+    def _estilo(self, valor) -> tuple[impresion.EstiloImpresion | None, bool]:
+        """(tabla o None, imprimir transparencia) del pedido; sin `estilo`, los de
+        componedor.json. Solo nombres de la lista (ErrorAplicacion 400 si no)."""
+        carpeta = self.config.carpeta_ctb if self.config else None
+        if valor is None:
+            defecto = self.config.estilo_impresion if self.config else None
+            transparencia = self.config.imprimir_transparencia if self.config else True
+            try:
+                return impresion.elegir(carpeta, defecto), transparencia
+            except impresion.EstiloInvalido as e:
+                raise ErrorAplicacion(409, f"{e} Revise exportador.estilo_impresion en "
+                                           f"componedor.json.") from None
+        if not (isinstance(valor, dict) and set(valor) <= {"ctb", "transparencia"}
+                and isinstance(valor.get("transparencia", True), bool)):
+            raise ErrorAplicacion(400, "«estilo» debe ser {\"ctb\": <nombre de la tabla> o "
+                                       "null, \"transparencia\": true o false}.")
+        try:
+            return impresion.elegir(carpeta, valor.get("ctb")), valor.get("transparencia", True)
+        except impresion.EstiloInvalido as e:
+            raise ErrorAplicacion(400, str(e)) from None
+
     # --- vista previa (etapa 2) ----------------------------------------------------------------
 
     @property
     def carpeta_previas(self) -> Path | None:
         return self.config.trabajo / CARPETA_PREVIAS if self.config else None
 
-    def pedir_previa(self, ref) -> dict:
+    def pedir_previa(self, ref, estilo=None) -> dict:
         """Encola `preview` de un bloque de la carpeta actual. {"tarea": foto}. Si ya hay una
         tarea en cola o en curso para ese bloque en esta sesión, devuelve esa. Una terminada no
         se reutiliza: el trabajador la devuelve de su caché enseguida y, de paso, comprueba que
         el DXF no cambió en el disco (DXF_CHANGED)."""
         if not isinstance(ref, str) or not ref:
             raise ErrorAplicacion(400, "Falta «ref» (el bloque de la carpeta del DXF).")
+        tabla, transparencia = self._estilo(estilo)
         dxf = self.estado()["dxf"]
         if dxf is None:
             raise ErrorAplicacion(409, "Todavía no se cargó ningún DXF: use «Cargar DXF».")
@@ -269,13 +323,15 @@ class AplicacionEditor:
         if bloque is None:
             raise ErrorAplicacion(404, f"El bloque «{ref}» no está en la carpeta del DXF "
                                        f"cargado.")
-        clave = (dxf["sesion"], ref)
+        clave = (dxf["sesion"], ref, impresion.marca(tabla.sha256 if tabla else None,
+                                                   transparencia))
         with self._candado:
             previa = self.canal.tarea(self._previa_por_ref.get(clave, ""))
             if previa is not None and previa.estado in (EN_COLA, EN_CURSO):
                 return {"tarea": previa.foto()}
             tarea = self.canal.encolar(
-                "previa", "preview", pedido_previa(dxf["sesion"], bloque["handle"]),
+                "previa", "preview", {**pedido_previa(dxf["sesion"], bloque["handle"]),
+                                      **impresion.opciones(tabla, transparencia)},
                 procesar=lambda data, t: self._al_previar(data, t, ref))
             self._previa_por_ref[clave] = tarea.id
         return {"tarea": tarea.foto()}
@@ -302,9 +358,10 @@ class AplicacionEditor:
     OPCIONES_EXPORT: ClassVar[dict] = {"solids": "footprint", "omit_unsupported": True, "overwrite": False,
                        "write_summary": False}  # las recomendadas por el contrato (§5)
 
-    def exportar(self, bloques) -> dict:
+    def exportar(self, bloques, estilo=None) -> dict:
         """Un pedido `export` (un trabajo) por bloque. bloques: [{id, handle, sha256, escala,
-        centro_mm}] del plano. {"tareas": [foto, …]} en el mismo orden."""
+        centro_mm}] del plano; estilo: {ctb, transparencia} (sin él, el de componedor.json).
+        {"tareas": [foto, …]} en el mismo orden."""
         if self.config is None or self.config.paquetes is None:
             raise ErrorAplicacion(409, SIN_SECCION)
         if not isinstance(bloques, list) or not bloques or len(bloques) > self.MAX_BLOQUES:
@@ -320,10 +377,12 @@ class AplicacionEditor:
             # La misma regla del trabajador (§9), también para lo que sale de la caché.
             raise ErrorAplicacion(409, "El DXF cambió en el disco desde que se cargó: vuelva a "
                                        "cargarlo («Volver a cargar») y exporte de nuevo.")
+        tabla, transparencia = self._estilo(estilo)
         pedidos = [self._leer_bloque(b, dxf) for b in bloques]  # todo validado antes de encolar
         carpeta = carpeta_del_dxf(self.config.paquetes, dxf["dxf"]["nombre"])
         carpeta.mkdir(parents=True, exist_ok=True)
-        return {"tareas": [self._exportar_uno(p, dxf, carpeta) for p in pedidos]}
+        return {"tareas": [self._exportar_uno(p, dxf, carpeta, tabla, transparencia)
+                           for p in pedidos]}
 
     def _leer_bloque(self, b, dxf: dict) -> dict:
         if not isinstance(b, dict):
@@ -354,12 +413,15 @@ class AplicacionEditor:
         return {"id": ident, "bloque": bloque, "n": float(n), "centro": tuple(centro),
                 "pagina": pagina}
 
-    def _exportar_uno(self, p: dict, dxf: dict, carpeta) -> dict:
+    def _exportar_uno(self, p: dict, dxf: dict, carpeta, tabla=None,
+                      transparencia: bool = True) -> dict:
         b, n = p["bloque"], p["n"]
-        paquete = nombre_del_paquete(b["archivo"] or b["nombre"], n)
+        sha_ctb = tabla.sha256 if tabla else None
+        marca = impresion.marca(sha_ctb, transparencia)
+        paquete = nombre_del_paquete(b["archivo"] or b["nombre"], n, marca)
         pedido = Pedido(dxf["dxf"]["sha256"], b["handle"], n, dxf["margen_mm"],
-                        tuple(p["pagina"]), b["caja_exacta"])
-        clave = (pedido.sha256, pedido.handle, n)
+                        tuple(p["pagina"]), b["caja_exacta"], sha_ctb, transparencia)
+        clave = (pedido.sha256, pedido.handle, n, marca)
         with self._candado:
             vivo = self.canal.tarea(self._exportacion.get(clave, "")) if self.canal else None
             if vivo is not None and vivo.estado in (EN_COLA, EN_CURSO):
@@ -377,7 +439,7 @@ class AplicacionEditor:
                  # Por el handle solo (no el ref, que en un *U cambia entre sesiones).
                  "jobs": [{"job": "j1", "handle": b["handle"], "scale": f"1:{n:g}",
                            "package": paquete}],
-                 "options": dict(self.OPCIONES_EXPORT)},
+                 "options": {**self.OPCIONES_EXPORT, **impresion.opciones(tabla, transparencia)}},
                 procesar=lambda data, t: self._al_exportar(data, t, p, pedido, carpeta,
                                                            preparacion, paquete))
             self._exportacion[clave] = tarea.id
@@ -434,6 +496,7 @@ class AplicacionEditor:
             "id": p["id"], "handle": p["bloque"]["handle"], "escala": p["n"],
             "paquete": prefijo,
             "manifiesto": detalle["manifiesto"],
+            "estilo": detalle["estilo"],
             "posicion_mm": list(posicion),
             # Esquina = centro − esto: sirve para cualquier copia del bloque a esta escala.
             "desde_centro_mm": [p["centro"][0] - posicion[0], p["centro"][1] - posicion[1]],

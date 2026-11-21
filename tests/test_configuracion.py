@@ -149,7 +149,8 @@ def test_componedor_json_del_repositorio():
     x = leer_config_exportador(RAIZ / "componedor.json")
     assert x == ConfigExportador(("cde-exporter",), RAIZ / "data" / "cache_exportador", 5.0,
                                  None, RAIZ / "data" / "input" / "dxf", RAIZ / "_para_borrar",
-                                 100)
+                                 100, RAIZ / "../Exportador Vectorial/data/input/ctb",
+                                 "CTB_ERCO_derivada_PRGD.ctb", False)
 
 
 # --- sección exportador («Cargar DXF») ----------------------------------------------------------

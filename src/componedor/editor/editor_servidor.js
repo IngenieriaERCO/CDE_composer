@@ -70,11 +70,14 @@
       estado: () => pedir("GET", "/api/estado"),
       elegirDxf: () => pedir("POST", "/api/dxf/elegir"),
       recargarDxf: () => pedir("POST", "/api/dxf/recargar"),
-      previa: (ref) => pedir("POST", "/api/previa", { ref }),
+      // estilo: {ctb: <nombre de la lista de /api/estilos> | null, transparencia}; sin él, el
+      // de componedor.json. Nunca rutas: la de la tabla la pone el servidor.
+      previa: (ref, estilo) => pedir("POST", "/api/previa", estilo ? { ref, estilo } : { ref }),
+      estilos: () => pedir("GET", "/api/estilos"),
       // El PNG de una vista previa terminada (url: la que dio la tarea, /api/previas/<id>).
       png: (url) => pedir("GET", url, null, true),
       // Etapa 3: un pedido «export» por bloque; «Detener a la fuerza»; lo ya exportado.
-      exportar: (bloques) => pedir("POST", "/api/exportar", { bloques }),
+      exportar: (bloques, estilo) => pedir("POST", "/api/exportar", estilo ? { bloques, estilo } : { bloques }),
       detener: () => pedir("POST", "/api/trabajador/detener"),
       exportados: () => pedir("GET", "/api/exportados"),
       tarea: (id) => pedir("GET", tarea(id)),

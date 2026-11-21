@@ -83,8 +83,13 @@ exportará (por defecto 5 mm); `cache_previas_mb` (opcional), el tope de la cach
 del trabajador (por defecto, el suyo: 500 MB); `paquetes` (opcional, `data/input/dxf`), dónde
 publica «Exportar»; `para_borrar` (opcional, `_para_borrar`), adónde se mueven los paquetes viejos;
 `anonimos_min_entidades` (opcional, 100), cuántas entidades visibles debe dibujar un bloque
-anónimo `*U` para ofrecerlo en «Anónimos (opcionales)».
-Ver [docs/servidor_editor.md](docs/servidor_editor.md).
+anónimo `*U` para ofrecerlo en «Anónimos (opcionales)»; `carpeta_ctb` (opcional), la carpeta de
+las tablas de estilos de impresión `.ctb` (hoy la del Exportador:
+`../Exportador Vectorial/data/input/ctb`), `estilo_impresion` (opcional), la tabla elegida al
+abrir el editor, por nombre (`CTB_ERCO_derivada_PRGD.ctb`), e `imprimir_transparencia`
+(opcional, `true`; hoy `false`: no se dibujan los rellenos con transparencia del 80 % o más).
+Ver [docs/servidor_editor.md](docs/servidor_editor.md) y
+[docs/editor.md](docs/editor.md#estilo-de-impresión-ctb-y-transparencia).
 
 La sección `ortofoto` es opcional (sin ella, los mismos valores): `ppp` (de 72 a 1200) es la
 resolución con que va la ortofoto en el PDF, en píxeles por pulgada de papel, y `calidad_jpeg`

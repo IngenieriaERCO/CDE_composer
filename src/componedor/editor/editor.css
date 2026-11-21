@@ -335,3 +335,8 @@ main { flex: 1; display: flex; min-height: 0; }
 /* Imagen de localización: la imagen en su recuadro, o un recuadro punteado si no está cargada. */
 .capa-localizacion { pointer-events: none; }
 .localizacion-pendiente { fill: none; stroke: #6b7280; stroke-dasharray: 4 3; stroke-width: 1; }
+/* Estilo de impresión al exportar (CTB y transparencia). */
+.estilo-dxf { border: 1px solid var(--borde, #d1d5db); border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
+.estilo-dxf .fila { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
+.estilo-dxf select { flex: 1; min-width: 0; }
+.estilo-dxf .casilla-transparencia { display: block; margin: 4px 0; }

@@ -5,7 +5,10 @@ la orden `export` del trabajador.
   (`paquetes` = `exportador.paquetes`, por defecto `data/input/dxf`). Nombre del paquete:
   `nombres_paquete.nombre_paquete`.
 - **Caché**: si ese paquete ya está publicado y es el de este bloque (mismo SHA-256 del DXF,
-  mismo handle, misma escala y mismo margen) y pasa `importar_paquete`, se usa sin exportar.
+  mismo handle, misma escala, mismo margen y mismo estilo de impresión: CTB por su SHA-256 y
+  transparencia) y pasa `importar_paquete`, se usa sin exportar.
+- **Estilo de impresión** (estilos_impresion.py): el nombre lleva la marca `_p<sha6>` / `_t`,
+  así un paquete con CTB no pisa el viejo sin CTB del mismo bloque y escala.
 - **Paquetes viejos**: si en su lugar hay otro (de otra versión del DXF, a medio publicar…), sus
   archivos se MUEVEN a `_para_borrar/paquetes_<fecha>/<ruta relativa>` (nunca se borran) y
   recién entonces se exporta.
@@ -30,6 +33,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from componedor.estilos_impresion import estilo_del_manifiesto, texto_estilo
 from componedor.importador import PaqueteAceptado, PaqueteRechazado, importar_paquete
 from componedor.nombres_paquete import limpiar, nombre_paquete
 
@@ -47,6 +51,8 @@ class Pedido:
     margen_mm: float
     pagina_max_mm: tuple[float, float]  # la caja del editor (con caja aproximada, un máximo)
     caja_exacta: bool = True
+    ctb_sha256: str | None = None  # la tabla de estilos pedida (None: sin CTB)
+    imprimir_transparencia: bool = True
 
 
 class PaqueteNoValido(ValueError):
@@ -62,9 +68,9 @@ def carpeta_del_dxf(paquetes: Path, nombre_dxf: str) -> Path:
     return Path(paquetes) / limpiar(Path(nombre_dxf).stem)
 
 
-def nombre_del_paquete(file_stem: str, denominador: float) -> str:
+def nombre_del_paquete(file_stem: str, denominador: float, marca: str = "") -> str:
     n = int(denominador) if float(denominador).is_integer() else denominador
-    return nombre_paquete(file_stem, n)
+    return nombre_paquete(file_stem, n, marca)
 
 
 def archivos_del_paquete(carpeta: Path, paquete: str) -> list[Path]:
@@ -119,6 +125,14 @@ def motivos_de_otro_pedido(datos: dict, pedido: Pedido) -> list[str]:
             elif pedido.caja_exacta and medido < maximo - TOL_MM:
                 motivos.append(f"la página mide {medido:.2f} mm de {eje} y la caja exacta "
                                f"{maximo:.2f} mm")
+    estilo = estilo_del_manifiesto(datos)
+    if estilo["sha256"] != pedido.ctb_sha256:
+        motivos.append(f"tiene otro estilo de impresión ({texto_estilo(estilo)}; se pidió "
+                       + (f"la CTB {pedido.ctb_sha256[:6]}…)" if pedido.ctb_sha256 else "sin CTB)"))
+    if estilo["transparencia"] != pedido.imprimir_transparencia:
+        motivos.append("imprime la transparencia de los rellenos y se pidió que no"
+                       if estilo["transparencia"] else
+                       "no imprime la transparencia de los rellenos y se pidió que sí")
     return motivos
 
 

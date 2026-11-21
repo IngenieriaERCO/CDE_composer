@@ -66,7 +66,9 @@ menor: el editor escribe «página ≤ …». La caja exacta la dará el manifie
 
 ```json
 "exportador": {"comando": "cde-exporter", "trabajo": "data/cache_exportador", "margen_mm": 5,
-               "anonimos_min_entidades": 100}
+               "anonimos_min_entidades": 100,
+               "carpeta_ctb": "../Exportador Vectorial/data/input/ctb",
+               "estilo_impresion": "CTB_ERCO_derivada_PRGD.ctb", "imprimir_transparencia": false}
 ```
 
 | Clave | Obligatoria | Qué es |
@@ -78,6 +80,9 @@ menor: el editor escribe «página ≤ …». La caja exacta la dará el manifie
 | `paquetes` | no (`data/input/dxf`) | Dónde «Exportar» publica: `<paquetes>/<nombre del DXF>/`. Al generar el editor se miran también las subcarpetas de `editor.paquetes`, así que con el valor por defecto los paquetes exportados aparecen en «Detalles disponibles». |
 | `para_borrar` | no (`_para_borrar`) | Adónde se **mueven** (nunca se borran) los paquetes viejos que «Exportar» reemplaza. |
 | `anonimos_min_entidades` | no (100) | Entero ≥ 1. Los bloques anónimos `*U` del Model Space que dibujan al menos esas entidades visibles se ofrecen en «Anónimos (opcionales)»; los más pequeños solo se cuentan. Se manda en `load` como `anonymous_min_entities`. |
+| `carpeta_ctb` | no | Carpeta de las tablas de estilos de impresión `.ctb` que ofrece el editor (solo ese nivel). Sin ella, solo «sin CTB». |
+| `estilo_impresion` | no (null) | La tabla elegida al abrir el editor: el NOMBRE de un `.ctb` de `carpeta_ctb` (sin carpetas). Pide `carpeta_ctb`. Si no está en la carpeta, el editor empieza con «sin CTB» y lo avisa. |
+| `imprimir_transparencia` | no (true) | Con `false`, el editor empieza sin imprimir los rellenos con transparencia del 80 % o más (`print_transparency: false`). |
 
 Sin la sección, el editor funciona igual, sin «Cargar DXF», y lo dice.
 
@@ -246,8 +251,9 @@ bloque:
 | `GET /api/estado` | Exportador disponible o por qué no, estado del trabajador, la carpeta del último DXF (`sesion_activa`) y la última tarea de carga. |
 | `POST /api/dxf/elegir` | Abre el cuadro nativo; si se elige un DXF, encola `load`. Responde `{elegido, tarea}`. 409 si ya hay un cuadro abierto o una carga en curso. |
 | `POST /api/dxf/recargar` | «Volver a cargar»: `load` otra vez con la ruta del último DXF elegido. 409 si no hay ninguno o ya se está cargando. |
-| `POST /api/previa` | Cuerpo `{"ref": "<ref de la carpeta>"}`: encola `preview`. Responde `{tarea}`. 409 sin DXF o con la sesión vencida; 404 si el `ref` no está en la carpeta. El resultado de la tarea trae `px`, `cad_a_px`, `caja_cad`, `omitidos`, `en_cache` y `url` (nunca la ruta del PNG). |
-| `POST /api/exportar` | Cuerpo `{"bloques": [{"id", "handle", "sha256", "escala", "centro_mm"}]}` (hasta 200): una tarea por bloque, `{tareas}` en el mismo orden. El resultado de cada una trae `paquete`, `manifiesto` (relativo a la carpeta del editor), `posicion_mm`, `desde_centro_mm`, `detalle` (la entrada del catálogo, con su miniatura), `en_cache`, `movidos` y `avisos`. 409 sin DXF, con la sesión vencida, con el DXF cambiado o de otro DXF; 404 si el bloque no está; 400 si no cabe. |
+| `GET /api/estilos` | `{estilos: [{nombre, sha256, descripcion}], por_defecto: {ctb, transparencia}, aviso}`: las tablas `.ctb` de `carpeta_ctb` y los valores de `componedor.json`. Nunca rutas. |
+| `POST /api/previa` | Cuerpo `{"ref": "<ref de la carpeta>", "estilo"?: {"ctb": <nombre de /api/estilos> \| null, "transparencia": bool}}` (sin `estilo`, el de `componedor.json`; un nombre que no es de la lista o una ruta: 400): encola `preview` con `plot_style` (la ruta la pone el servidor) y `print_transparency`. Responde `{tarea}`. 409 sin DXF o con la sesión vencida; 404 si el `ref` no está en la carpeta. El resultado de la tarea trae `px`, `cad_a_px`, `caja_cad`, `omitidos`, `en_cache` y `url` (nunca la ruta del PNG). |
+| `POST /api/exportar` | Cuerpo `{"bloques": [{"id", "handle", "sha256", "escala", "centro_mm"}], "estilo"?: {"ctb", "transparencia"}}` (hasta 200; `estilo` como en `/api/previa`): una tarea por bloque, `{tareas}` en el mismo orden. El paquete lleva la marca del estilo (`_p<sha6>`, `_t`) y se verifica que su manifiesto traiga ese estilo. El resultado de cada una trae `paquete`, `manifiesto` (relativo a la carpeta del editor), `estilo` (`{ctb, sha256, transparencia}` del manifiesto), `posicion_mm`, `desde_centro_mm`, `detalle` (la entrada del catálogo, con su miniatura y su `estilo`), `en_cache`, `movidos` y `avisos`. 409 sin DXF, con la sesión vencida, con el DXF cambiado o de otro DXF; 404 si el bloque no está; 400 si no cabe. |
 | `POST /api/trabajador/detener` | «Detener a la fuerza». `{detenido}`. |
 | `GET /api/exportados` | Las entradas de catálogo de lo exportado en esta sesión del servidor (para el editor que se recarga). |
 | `GET /api/previas/<id>` | El PNG (`image/png`) de esa tarea de vista previa, con el token en la cabecera. 404 si no existe o ya no está en la caché. |

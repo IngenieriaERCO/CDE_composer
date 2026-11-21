@@ -8,6 +8,10 @@
  * Bloques anónimos (*U ofrecidos por el trabajador): van aparte, en «Anónimos (opcionales)»,
  * con su etiqueta (capa + handle) como nombre y un filtro por texto (separarBloques,
  * filtrarBloques, textosAnonimos).
+ *
+ * Estilo de impresión al exportar (CTB y transparencia): el editor elige la tabla por NOMBRE de
+ * la lista del servidor ({ctb, transparencia}; nunca rutas). textoEstilo, claveEstilo (para las
+ * vistas previas: cada estilo es otra) y mismoEstilo (el de un detalle frente al elegido).
  */
 (function (raiz, fabrica) {
   "use strict";
@@ -197,7 +201,32 @@
     return e.detalle + (e.registro ? "\n\nRegistro del trabajador: " + e.registro : "");
   }
 
-  return { ETAPAS, SIN_NOTICIAS_S, LIMITE_TARJETAS, textoDetalle, tamanoArchivo, textoUnidades, textoTamano,
+  /**
+   * «CTB_ERCO_derivada_PRGD.ctb (b4a909…), sin transparencia» o «sin CTB».
+   * estilo: {ctb, sha256?, transparencia} (el de un manifiesto o el elegido); null: «desconocido».
+   */
+  function textoEstilo(estilo) {
+    if (!estilo) return "desconocido";
+    const base = estilo.ctb ? estilo.ctb + (estilo.sha256 ? " (" + String(estilo.sha256).slice(0, 6) + "…)" : "")
+      : "sin CTB";
+    return base + (estilo.transparencia === false ? ", sin transparencia" : "");
+  }
+
+  /** Lo que distingue una vista previa de otra del mismo bloque: tabla y transparencia. */
+  function claveEstilo(estilo) {
+    if (!estilo) return "";
+    return (estilo.ctb || "-") + "|" + (estilo.transparencia === false ? "t" : "");
+  }
+
+  /** ¿El detalle (estilo de su manifiesto) se exportó con el estilo elegido? Por el SHA-256 de
+   *  la tabla (si cambió en el disco, es otra) y la transparencia. null si no se sabe. */
+  function mismoEstilo(delDetalle, elegido) {
+    if (!delDetalle || !elegido) return null;
+    return (delDetalle.sha256 || null) === (elegido.sha256 || null) &&
+      (delDetalle.transparencia !== false) === (elegido.transparencia !== false);
+  }
+
+  return { ETAPAS, SIN_NOTICIAS_S, LIMITE_TARJETAS, textoDetalle, textoEstilo, claveEstilo, mismoEstilo, tamanoArchivo, textoUnidades, textoTamano,
     textoOcurrencia, textoEscala, nombreBloque, lineasBloque, separarBloques, filtrarBloques, textosAnonimos,
     resumenDxf, detalleDxf, textoAvance, textoError };
 });

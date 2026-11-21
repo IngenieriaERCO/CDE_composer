@@ -35,6 +35,7 @@ from componedor.datos_rotulo_editor import (
     tabla_anchos,
 )
 from componedor.firmas import personas_firmas
+from componedor.estilos_impresion import leer_estilo_del_manifiesto
 from componedor.formato import Formato, cargar_formato
 from componedor.fuente import FuenteInvalida, cargar_fuente
 from componedor.proyecto import ProyectoInvalido, leer_proyecto
@@ -102,6 +103,8 @@ def construir_datos_editor(carpeta_paquetes: Path | str, ruta_formato: Path | st
             "cabe": bool(e.cabe),
             "tiene_fondo": tiene_fondo,
             "notas": list(e.notas),
+            # Con qué estilo de impresión se exportó (CTB y transparencia, del manifiesto 1.4).
+            "estilo": leer_estilo_del_manifiesto(e.ruta_manifiesto),
             "miniatura": {"archivo": f"{CARPETA_MINIATURAS}/{ident}.png"},
         })
 

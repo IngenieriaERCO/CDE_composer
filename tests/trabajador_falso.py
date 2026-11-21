@@ -30,6 +30,11 @@ usan las etapas 1 a 3 (`load`, `preview`, `export`, `status`, `cancel`, `close`)
   Comprueba antes: sesión, DXF cambiado, referencias, escala, nombres (§5.1), repetidos y
   OUTPUT_EXISTS; `units`/`margin_mm` distintos de load → BAD_REQUEST. Avance por trabajo con las
   etapas del contrato; cancelar deja publicados los ya hechos.
+- Estilo de impresión (manifiesto 1.4): `plot_style` (ruta de una .ctb; BAD_REQUEST si no
+  existe) y `print_transparency` en `preview` y en `options` de `export`. El manifiesto los
+  guarda como el real (`options.plot_style` = {name, sha256}) y la vista previa los devuelve
+  y les da otro nombre en la caché (`_p<sha6>`, `_t`). Con "ignorar_estilo": true en el «DXF»,
+  publica como si no los hubiera pedido (para probar la verificación).
 
 El «DXF» es un JSON con lo que debe responder `load` y cómo portarse:
 
@@ -46,7 +51,8 @@ El «DXF» es un JSON con lo que debe responder `load` y cómo portarse:
      "export_no_cancelable_s": 0,       # un paso de export que no mira la cancelación
      "dejar_temporal": false,           # deja una carpeta .cde-tmp-* en la salida
      "error_interno": null,             # ["TypeError", "mensaje"]: INTERNAL en load, como el real
-     "export_error_interno": null}      # lo mismo en export
+     "export_error_interno": null,      # lo mismo en export
+     "ignorar_estilo": false}           # export publica sin la CTB ni la transparencia pedidas
 y en cada bloque: "anonimo": true y "visible_entities": n (por defecto "entities"); para
 preview: "marca": [x, y] (punto CAD) y "bounds_previa": {"min", "max"}
 (la caja de lo dibujado; por defecto la de load); para export: "bounds_exacta" (la caja exacta,
@@ -78,6 +84,14 @@ MENSAJES_EXPORT = {"extract": "Extrayendo", "analyze": "Analizando", "draw": "Di
 RE_PAQUETE = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9._-]*$")
 MM_A_PT = 72 / 25.4
 MAX_PAQUETE = 60
+
+
+def marca_estilo(estilo) -> str:
+    """La del Exportador en la caché de vistas previas: `_p<sha6>` y `_t`."""
+    if not estilo:
+        return ""
+    ps = estilo.get("plot_style")
+    return (f"_p{ps['sha256'][:6]}" if ps else "") + ("" if estilo["print_transparency"] else "_t")
 
 
 def nombre_paquete(nombre: str) -> str:
@@ -301,8 +315,28 @@ class Falso:
         if c["spec"].get("respuesta_previa") is not None:
             self.responder(id_, "preview", c["spec"]["respuesta_previa"])
             return
+        estilo = self._estilo(id_, datos)
+        if estilo is None:
+            return
         self.responder(id_, "preview", self.dibujar_previa(
-            bloque, spec_bloque, int(datos.get("long_side_px") or 1500), c["huella"]))
+            bloque, spec_bloque, int(datos.get("long_side_px") or 1500), c["huella"], estilo))
+
+    def _estilo(self, id_, datos) -> dict | None:
+        """{plot_style: {name, sha256} | None, print_transparency} del pedido (None si no vale)."""
+        ruta = datos.get("plot_style")
+        transparencia = datos.get("print_transparency", True)
+        if not isinstance(transparencia, bool):
+            self.error(id_, "BAD_REQUEST", "«print_transparency» debe ser true o false.")
+            return None
+        if ruta is None:
+            return {"plot_style": None, "print_transparency": transparencia}
+        if not isinstance(ruta, str) or not Path(ruta).is_file():
+            self.error(id_, "BAD_REQUEST", f"No existe el archivo de «plot_style»: {ruta}",
+                       None, {"option": "plot_style"})
+            return None
+        return {"plot_style": {"name": Path(ruta).name,
+                               "sha256": hashlib.sha256(Path(ruta).read_bytes()).hexdigest()},
+                "print_transparency": transparencia}
 
     # --- export ---------------------------------------------------------------------------------
 
@@ -364,6 +398,12 @@ class Falso:
         if "units" in opciones and opciones["units"] != c["units"]:
             self.error(id_, "BAD_REQUEST", "«units» distintas de las de load.")
             return
+        estilo = self._estilo(id_, opciones)
+        if estilo is None:
+            return
+        if c["spec"].get("ignorar_estilo"):
+            estilo = {"plot_style": None, "print_transparency": True}
+        c["estilo"] = estilo
         salida = Path(str(datos.get("output_dir") or ""))
         if not salida.is_dir():
             self.error(id_, "OUTPUT_INVALID", f"«{salida}» no es una carpeta.")
@@ -497,7 +537,8 @@ class Falso:
             "fonts": [], "dependencies": [],
             "notices": {"counts": {"info": 0, "warning": 0, "critical": 0}, "by_category": {}},
             "validation": {"status": "complete", "checks": []}, "selection": None,
-            "options": {"margin_mm": margen, "units": c["units"], "include_hidden_layers": None},
+            "options": {"margin_mm": margen, "units": c["units"], "include_hidden_layers": None,
+                        **c.get("estilo", {})},
         }
         temporal = salida / f".cde-tmp-{os.getpid()}-{t.get('job')}"
         temporal.mkdir(exist_ok=True)
@@ -519,7 +560,7 @@ class Falso:
                 "physical_scale_guaranteed": not spec_bloque.get("escala_no_garantizada"),
                 "page_size_mm": [ancho, alto], "notices": [], "error": None, "seconds": 0.01}
 
-    def dibujar_previa(self, bloque, spec_bloque, lado, huella):
+    def dibujar_previa(self, bloque, spec_bloque, lado, huella, estilo=None):
         import pymupdf  # solo aquí: load no lo necesita
 
         caja = spec_bloque.get("bounds_previa") or bloque["bounds"]
@@ -528,7 +569,7 @@ class Falso:
         ancho, alto = max(1, round((x1 - x0) * s)), max(1, round((y1 - y0) * s))
         matriz = [s, 0.0, 0.0, -s, -s * x0, s * y1]
         png = (Path(self.args.work_dir) / "previews" / huella
-               / f"{bloque['handle']}_{lado}_visible.png")
+               / f"{bloque['handle']}_{lado}_visible{marca_estilo(estilo)}.png")
         en_cache = png.is_file()
         if not en_cache:
             mx, my = spec_bloque.get("marca") or [(x0 + x1) / 2, (y0 + y1) / 2]
@@ -545,7 +586,7 @@ class Falso:
         return {"png": str(png), "px": [ancho, alto],
                 "bounds": {"min": [x0, y0], "max": [x1, y1]}, "cad_to_px": matriz,
                 "omitted": {"3DSOLID": bloque["contains"]["solids_3d"], "REGION": 0},
-                "cached": en_cache, "seconds": 0.01}
+                "cached": en_cache, "seconds": 0.01, **(estilo or {})}
 
     def respuesta_load(self, ruta, contenido, spec, datos):
         unidades = {"declared_code": 6, "name": "m", "millimeters_per_unit": 1000.0,

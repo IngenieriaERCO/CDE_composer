@@ -77,6 +77,7 @@ en ese caso reemplaza solo lo que genera (`editor_datos.json`, `plantilla.png`,
       "cabe": true,
       "tiene_fondo": false,
       "notas": [],
+      "estilo": {"ctb": null, "sha256": null, "transparencia": true},
       "miniatura": {"archivo": "miniaturas/perfil_k0010.png", "ancho_px": 1400, "alto_px": 401}
     }
   ],

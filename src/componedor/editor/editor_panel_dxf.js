@@ -42,8 +42,11 @@
   const vista = { estado: null, tarea: null, error: null, ocupado: false, recargar: null,
     exportacion: { trabajos: [], omitidos: [], pidiendo: false },
     anonimos: { abierto: false, filtro: "" }, // la subsección se recuerda entre repintados
-    miniaturas: new Set() }; // "sha256|handle" de las tarjetas con «Ver vista previa» abierta
-  const previas = new Map(); // "sha256|handle" → estado de su vista previa
+    miniaturas: new Set(), // "sha256|handle" de las tarjetas con «Ver vista previa» abierta
+    // Estilo de impresión: la lista del servidor (/api/estilos) y el elegido {ctb, transparencia}.
+    // No se guarda en el plano: al abrir el editor, el de componedor.json.
+    estilos: null, estilo: null };
+  const previas = new Map(); // "sha256|handle|estilo" → estado de su vista previa
   window.EditorPruebaDxf = { vista, conexion, previas };
   const UI = () => window.EditorUI || null;
 
@@ -272,6 +275,7 @@
       }
     }
     pintarExportar();
+    pintarEstilo();
     panel.hidden = !hijos.length;
   }
 
@@ -304,7 +308,7 @@
   // Vistas previas (etapa 2).
   // ---------------------------------------------------------------------------------------
 
-  const clave = (b) => b.dxf.sha256 + "|" + b.handle;
+  const clave = (b) => b.dxf.sha256 + "|" + b.handle + "|" + D.claveEstilo(vista.estilo);
   const avisarUI = () => {
     pintarMiniaturas();
     if (UI()) UI().refrescar();
@@ -322,7 +326,7 @@
     }
     const bc = catalogo.bloques.find((x) => x.handle === b.handle);
     if (!bc) return { estado: "error", mensaje: "El bloque ya no está en el DXF cargado." };
-    const e = { estado: "pidiendo", ref: bc.ref, caja_cad: bc.caja_cad,
+    const e = { estado: "pidiendo", ref: bc.ref, caja_cad: bc.caja_cad, estilo: vista.estilo,
       mm_por_unidad: bc.unidades ? bc.unidades.mm_por_unidad : null, url: null, datos: null, tarea: null };
     if (!e.caja_cad || !e.mm_por_unidad) {
       return { estado: "error", mensaje: "El trabajador no dio la caja o las unidades del bloque: sin vista previa." };
@@ -334,7 +338,7 @@
 
   async function pedirPrevia(k, e) {
     try {
-      const r = await cliente.previa(e.ref);
+      const r = await cliente.previa(e.ref, e.estilo || undefined);
       e.tarea = r.tarea.id;
       const fin = await S.seguirTarea(cliente, r.tarea.id, () => {});
       if (previas.get(k) !== e) return; // se soltó mientras tanto
@@ -389,6 +393,81 @@
   const anfitrion = document.createElement("div");
   anfitrion.id = "exportar-dxf";
   panel.after(anfitrion);
+  // El estilo de impresión, entre la carpeta y «Exportar»: se arma una vez (no en cada repintado,
+  // así el selector no se cierra mientras se elige).
+  const anfitrionEstilo = document.createElement("div");
+  anfitrionEstilo.id = "estilo-dxf";
+  anfitrionEstilo.hidden = true;
+  anfitrion.before(anfitrionEstilo);
+
+  /** El estilo elegido con el SHA-256 de su tabla: {ctb, sha256, transparencia}; null sin lista. */
+  function estiloElegido() {
+    if (!vista.estilo) return null;
+    const t = vista.estilo.ctb && vista.estilos.estilos.find((x) => x.nombre === vista.estilo.ctb);
+    return { ctb: vista.estilo.ctb, sha256: t ? t.sha256 : null, transparencia: vista.estilo.transparencia };
+  }
+
+  function pintarEstilo() {
+    const e = vista.estado;
+    const visible = !!(vista.estilos && e && e.exportador && e.exportador.disponible && e.dxf);
+    anfitrionEstilo.hidden = !visible;
+    if (!visible) {
+      anfitrionEstilo.replaceChildren();
+      return;
+    }
+    if (anfitrionEstilo.firstChild) return;
+    const caja = nodo("div", { class: "estilo-dxf" });
+    caja.appendChild(nodo("div", { class: "nombre" }, "Estilo de impresión"));
+    const fila = nodo("div", { class: "fila" });
+    fila.appendChild(nodo("label", { for: "estilo-ctb" }, "Tabla (CTB)"));
+    const selector = nodo("select", { id: "estilo-ctb" });
+    selector.appendChild(nodo("option", { value: "" }, "Sin CTB"));
+    for (const t of vista.estilos.estilos) {
+      const o = nodo("option", { value: t.nombre }, t.nombre);
+      o.title = t.descripcion || "";
+      selector.appendChild(o);
+    }
+    selector.value = vista.estilo.ctb || "";
+    fila.appendChild(selector);
+    const casilla = nodo("label", { class: "casilla-transparencia" });
+    const marca = nodo("input", { type: "checkbox", id: "imprimir-transparencia" });
+    marca.checked = vista.estilo.transparencia !== false;
+    casilla.append(marca, " Imprimir transparencia");
+    casilla.title = "Sin marcar, no se dibujan los rellenos con transparencia del 80 % o más " +
+      "(veladuras casi invisibles, como las de los paneles de PVcase).";
+    const descripcion = nodo("div", { class: "dato descripcion-ctb" });
+    const ayuda = nodo("div", { class: "dato" }, "Para las vistas previas y «Exportar». Los detalles ya " +
+      "exportados se quedan como están (el panel Selección dice con qué estilo salieron).");
+    const describir = () => {
+      const t = vista.estilos.estilos.find((x) => x.nombre === vista.estilo.ctb);
+      descripcion.textContent = t ? (t.descripcion || "(sin descripción)") + " · SHA-256 " + t.sha256.slice(0, 12) + "…"
+        : "Colores y grosores del DXF, sin tabla de impresión.";
+    };
+    const cambiar = () => {
+      vista.estilo = { ctb: selector.value || null, transparencia: marca.checked };
+      describir();
+      pintarExportar();
+      pintarMiniaturas(); // cada estilo tiene su vista previa: se piden las que falten
+      if (UI()) UI().refrescar();
+    };
+    selector.addEventListener("change", cambiar);
+    marca.addEventListener("change", cambiar);
+    describir();
+    caja.append(fila, casilla, descripcion);
+    if (vista.estilos.aviso) caja.appendChild(nodo("div", { class: "aviso-dxf" }, vista.estilos.aviso));
+    caja.appendChild(ayuda);
+    anfitrionEstilo.replaceChildren(caja);
+  }
+
+  async function cargarEstilos() {
+    try {
+      vista.estilos = await cliente.estilos();
+    } catch (err) {
+      vista.estilos = { estilos: [], por_defecto: { ctb: null, transparencia: true },
+        aviso: "No se pudo leer la lista de tablas de estilos: " + err.message };
+    }
+    vista.estilo = { ctb: vista.estilos.por_defecto.ctb, transparencia: vista.estilos.por_defecto.transparencia };
+  }
   function pintarExportar() {
     const seccion = seccionExportar();
     anfitrion.replaceChildren(...(seccion ? [seccion] : []));
@@ -396,6 +475,8 @@
   }
 
   window.EditorPanelDxf = { previa, soltar, reintentar, alCambiarPlano: () => pintarExportar(),
+    // El estilo de impresión elegido ({ctb, sha256, transparencia}) o null (sin lista todavía).
+    estilo: estiloElegido,
     // La carpeta del DXF cargado (o null): el panel de la ortofoto toma de aquí dxf.crs.
     catalogo: () => (vista.estado && vista.estado.dxf) || null };
 
@@ -412,7 +493,8 @@
     if (enMarcha(t)) return D.textoAvance(f);
     if (f.estado === "terminada") {
       const r = f.resultado;
-      let texto = "Exportado: " + r.paquete + (r.en_cache ? " (ya estaba publicado: se usó tal cual)" : "");
+      let texto = "Exportado: " + r.paquete + (r.en_cache ? " (ya estaba publicado: se usó tal cual)" : "") +
+        " · estilo: " + D.textoEstilo(r.estilo);
       if (r.movidos && r.movidos.length) texto += " · " + r.movidos.length + " archivo(s) viejos movidos a _para_borrar";
       return texto;
     }
@@ -432,6 +514,9 @@
     boton.title = "Un paquete (PDF + manifiesto) por bloque, a su escala, en la carpeta de paquetes del DXF";
     boton.addEventListener("click", exportar);
     caja.appendChild(boton);
+    if (vista.estilo) {
+      caja.appendChild(nodo("div", { class: "dato estilo-exportar" }, "Con el estilo: " + D.textoEstilo(estiloElegido())));
+    }
     if (x.omitidos.length) {
       caja.appendChild(lista(x.omitidos.map((o) => "'" + o.id + "' no se exporta: " + o.motivo + "."), "avisos-dxf"));
     }
@@ -487,7 +572,7 @@
     pintar();
     let r;
     try {
-      r = await cliente.exportar(pedidos);
+      r = await cliente.exportar(pedidos, vista.estilo || undefined);
     } catch (err) {
       if (err.estadoHttp === 409) vista.recargar = err.message; // DXF cambiado o sesión vencida
       else vista.error = err.message;
@@ -611,6 +696,7 @@
   }, LATIDO_MS);
 
   (async () => {
+    await cargarEstilos(); // antes de la carpeta: las vistas previas ya salen con el estilo
     await refrescar();
     // Página recargada a mitad de una carga: seguirla.
     const t = vista.estado && vista.estado.tarea;

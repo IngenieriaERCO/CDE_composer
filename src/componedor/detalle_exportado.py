@@ -14,6 +14,7 @@ import pymupdf
 from componedor.cad_a_papel import limites_dibujo_en_papel
 from componedor.colocar import exceso_de_tamano
 from componedor.comprobacion_dibujo import tiene_fondo_de_pagina
+from componedor.estilos_impresion import leer_estilo_del_manifiesto
 from componedor.formato import RectMM
 from componedor.importador import PaqueteAceptado
 
@@ -31,7 +32,8 @@ def ruta_para_el_editor(ruta: Path, carpeta_editor: Path) -> str:
 def detalle_para_editor(aceptado: PaqueteAceptado, ident: str, carpeta_editor: Path,
                         zona: RectMM, max_px: int = MAX_PX_MINIATURA) -> dict:
     """{id, manifiesto, bloque, escala, tamano_pagina_mm, limites_dibujo_mm, cad_a_pagina,
-    mm_por_unidad, cabe, tiene_fondo, notas, miniatura: {data_url, ancho_px, alto_px}}."""
+    mm_por_unidad, cabe, tiene_fondo, notas, estilo, miniatura: {data_url, ancho_px, alto_px}}.
+    `estilo`: {ctb, sha256, transparencia} de las opciones del manifiesto."""
     paquete = aceptado.paquete
     m = paquete.manifiesto
     ancho, alto = m.pdf.tamano_pagina_mm
@@ -55,6 +57,7 @@ def detalle_para_editor(aceptado: PaqueteAceptado, ident: str, carpeta_editor: P
         "cabe": exceso_de_tamano((ancho, alto), zona) == (0.0, 0.0),
         "tiene_fondo": fondo,
         "notas": [],
+        "estilo": leer_estilo_del_manifiesto(paquete.ruta_manifiesto),
         "miniatura": {"data_url": "data:image/png;base64," + base64.b64encode(png).decode("ascii"),
                       "ancho_px": pix.width, "alto_px": pix.height},
     }
