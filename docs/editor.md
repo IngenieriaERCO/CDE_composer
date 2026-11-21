@@ -133,13 +133,31 @@ python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --sal
   los valores quedan copiados en el plano.json (`componer` no lee proyecto.json). Un plano que
   se abre no se toca. Si el proyecto tiene errores, el editor no se genera y se listan todos.
 
-Panel **Rótulo** (a la derecha), por secciones que se pliegan:
+Panel **Rótulo** (a la derecha). **Todo el formulario va en el orden del rótulo, de arriba
+hacia abajo**, como se lee la columna del rótulo en la hoja:
 
-- **Datos del plano**: Título, No. PLANO, HOJA, DE, coordenadas ESTE/NORTE y ESC. de
-  localización. Las celdas de varias líneas (Título 3, REVISÓ 2) usan una caja de varios
-  renglones: **una línea por renglón**. Debajo, **ESCALA** y **REV.** calculadas, de solo
-  lectura, con la misma regla que `componer` (REV.: «0» si existe la emisión 0; si no, la letra
-  más alta entre C, B y A; vacía sin revisiones).
+1. **Imagen de localización** (sección; ver 2h) y **ESC. de localización**.
+2. Coordenadas **ESTE** y **NORTE**.
+3. **Notas** (sección; ver 2d).
+4. **Convenciones** (sección; ver 2e).
+5. **Revisiones** (sección).
+6. **Título**.
+7. **Firmas** (sección: DIBUJÓ, DISEÑÓ, REVISÓ, APROBÓ).
+8. **HOJA** y **DE**.
+9. **ESCALA** (calculada).
+10. **No. PLANO** y **REV.** (calculada).
+
+El orden sale de las celdas del formato (`formatos/A1_ERCO.json`): cada campo, tabla o panel por
+el borde superior de su recuadro; los que están en la misma fila (bordes a 1 mm o menos, como
+FIRMAS y HOJA, o No. PLANO y REV.) van de izquierda a derecha. Si una celda cambia de lugar en el
+formato, cambia el orden. Los campos sueltos que quedan seguidos van juntos; Imagen, Notas,
+Convenciones, Revisiones y Firmas son secciones que se pliegan. Solo cambió el lugar: cada campo y
+cada panel funcionan igual que antes.
+
+- Las celdas de varias líneas (Título 3, REVISÓ 2) usan una caja de varios renglones: **una línea
+  por renglón**.
+- **ESCALA** y **REV.** son calculadas, de solo lectura, con la misma regla que `componer` (REV.:
+  «0» si existe la emisión 0; si no, la letra más alta entre C, B y A; vacía sin revisiones).
 - **Diseñador y Revisor ya no existen**: la franja del logo de ERCO solo lleva el logo
   (plantilla v3). Un plano.json o proyecto.json viejo que los traiga se abre sin error: se
   ignoran y el panel avisa **una vez** («Aviso: rotulo.disenador, rotulo.revisor: campo(s) que
@@ -230,7 +248,7 @@ ocultó.
 
 ## 2d. Notas (subfase 4.3c)
 
-Panel **Notas** (a la derecha, debajo de Rótulo):
+Sección **Notas** del Rótulo (entre las coordenadas y las convenciones, como en el rótulo):
 
 - **Notas del plano**: la lista de lo que irá en la celda NOTAS, con su **número en vivo**
   (1…N; las viñetas no se numeran). Cada nota tiene **↑ subir**, **↓ bajar** y **✕ quitar**, y
@@ -275,7 +293,7 @@ Panel **Notas** (a la derecha, debajo de Rótulo):
 
 ## 2e. Convenciones (subfase 4.3d)
 
-Panel **Convenciones** (a la derecha, debajo de Notas):
+Sección **Convenciones** del Rótulo (entre Notas y Revisiones, como en el rótulo):
 
 - **Convenciones del plano** (n de 24): cada una con su **miniatura**, su número de casilla y,
   en vivo, **en qué lugar de la leyenda queda**: «columna izquierda, fila 3»… El llenado es
@@ -513,8 +531,8 @@ en el editor, a 300 ppp en JPEG (`componedor.json` → `ortofoto`). Ver
 
 ## 2h. Imagen de localización (con servidor local)
 
-Solo con `Abrir editor.bat`. En la columna derecha, debajo del Rótulo, el panel **Imagen de
-localización** tiene el botón **Cargar imagen de localización**: abre el cuadro de Windows para
+Solo con `Abrir editor.bat`. Al principio del Rótulo (arriba, como en el rótulo), la sección
+**Imagen de localización** tiene el botón **Cargar imagen de localización**: abre el cuadro de Windows para
 elegir un PNG o JPG (por ejemplo, el mapa de localización exportado de QGIS).
 
 - La imagen aparece en el recuadro LOCALIZACIÓN del rótulo, **entera, centrada y sin

@@ -42,7 +42,6 @@
     este: "Coordenada ESTE", norte: "Coordenada NORTE", localizacion_escala: "ESC. de localización",
     escala: "ESCALA", rev: "REV.",
   };
-  const ORDEN_CAMPOS = ["titulo", "no_plano", "hoja", "de", "este", "norte", "localizacion_escala"];
   const ETIQUETAS_COLUMNAS = {
     ver: "VER.", fecha: "Fecha", descripcion: "Descripción", dibujo: "Dibujó", diseno: "Diseñó",
     reviso: "Revisó", aprobo: "Aprobó", nombre: "Nombre", matricula: "Matrícula", firma: "Firma",
@@ -87,18 +86,65 @@
   // Definición: qué campos tiene el formulario.
   // ---------------------------------------------------------------------------------------
 
-  /** Campos de texto que escribe el usuario (no calculados), en el orden del formulario. */
+  /**
+   * Campos de texto que escribe el usuario (no calculados), en el orden del rótulo (ver
+   * ordenarPorFilas). En A1 ERCO: ESC. de localización, ESTE, NORTE, Título, HOJA, DE, No. PLANO.
+   */
   function camposSimples(definicion) {
     const campos = (definicion && definicion.campos) || {};
-    const nombres = Object.keys(campos).filter((n) => campos[n].tipo === "texto" && !campos[n].calculado);
-    nombres.sort((a, b) => posicion(a) - posicion(b));
+    const nombres = ordenarPorFilas(Object.keys(campos)
+      .filter((n) => campos[n].tipo === "texto" && !campos[n].calculado), (n) => campos[n].rect_mm);
     return nombres.map((n) => ({ campo: n, etiqueta: ETIQUETAS[n] || n, celda: celdaTexto(n, campos[n]),
       por_defecto: campos[n].por_defecto || null }));
   }
 
-  function posicion(nombre) {
-    const i = ORDEN_CAMPOS.indexOf(nombre);
-    return i < 0 ? ORDEN_CAMPOS.length : i;
+  // Dos celdas están en la misma fila del rótulo si sus bordes superiores difieren en 1 mm o menos
+  // (p. ej. FIRMAS y HOJA: 43,5 y 43,6 mm, medidas de la misma línea de la plantilla).
+  const MISMA_FILA_MM = 1.0;
+
+  /**
+   * Orden del rótulo de ARRIBA hacia ABAJO: por el borde superior (Y mayor primero); los que están
+   * en la misma fila (bordes superiores a ≤ 1 mm del primero de la fila), de izquierda a derecha.
+   * `rectDe(item)` → [x0, y0, x1, y1] en mm de papel. Sale del formato: si una celda se mueve,
+   * cambia el orden.
+   */
+  function ordenarPorFilas(items, rectDe) {
+    const conRect = items.map((it) => ({ it, r: rectDe(it) }));
+    conRect.sort((a, b) => b.r[3] - a.r[3] || a.r[0] - b.r[0]);
+    const filas = [];
+    for (const x of conRect) {
+      const fila = filas[filas.length - 1];
+      if (fila && fila[0].r[3] - x.r[3] <= MISMA_FILA_MM) fila.push(x);
+      else filas.push([x]);
+    }
+    return filas.flatMap((fila) => fila.sort((a, b) => a.r[0] - b.r[0] || b.r[3] - a.r[3]).map((x) => x.it));
+  }
+
+  /** El recuadro [x0, y0, x1, y1] (mm) de un campo de la definición del rótulo, de cualquier tipo. */
+  function cajaCampo(campo) {
+    if (campo.rect_mm) return campo.rect_mm.slice();
+    const rects = [];
+    if (campo.filas && campo.columnas) { // tabla
+      for (const f of campo.filas) for (const c of campo.columnas) rects.push([c.x_mm[0], f.y_mm[0], c.x_mm[1], f.y_mm[1]]);
+    }
+    for (const r of campo.simbolos || []) rects.push(r); // convenciones
+    for (const d of campo.descripciones || []) rects.push(d.rect_mm);
+    if (!rects.length) return null;
+    return [Math.min(...rects.map((r) => r[0])), Math.min(...rects.map((r) => r[1])),
+      Math.max(...rects.map((r) => r[2])), Math.max(...rects.map((r) => r[3]))];
+  }
+
+  /**
+   * TODO el formulario del rótulo en el orden del rótulo, de arriba hacia abajo: cada campo de la
+   * definición (texto, calculado o no; imagen; notas; convenciones; tablas) con su recuadro. En A1
+   * ERCO: imagen de localización, ESC. de localización, ESTE, NORTE, notas, convenciones,
+   * revisiones, título, firmas, HOJA, DE, ESCALA, No. PLANO, REV. [{campo, tipo, calculado, rect_mm}].
+   */
+  function bloquesRotulo(definicion) {
+    const campos = (definicion && definicion.campos) || {};
+    const lista = Object.keys(campos).map((n) => ({ campo: n, tipo: campos[n].tipo,
+      calculado: !!campos[n].calculado, rect_mm: cajaCampo(campos[n]) })).filter((b) => b.rect_mm);
+    return ordenarPorFilas(lista, (b) => b.rect_mm);
   }
 
   function celdaTexto(nombre, campo) {
@@ -674,6 +720,9 @@
     pyRepr,
     tipo,
     camposSimples,
+    ordenarPorFilas,
+    cajaCampo,
+    bloquesRotulo,
     celdaTexto,
     celdaTabla,
     etiquetaColumna,

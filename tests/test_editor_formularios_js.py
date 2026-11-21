@@ -221,10 +221,11 @@ def test_texto_del_formulario_respeta_la_forma():
 
 def test_campos_simples_del_formulario(entorno):
     r = js("return F.camposSimples(entrada.rotulo.definicion);", entorno["datos"])
-    assert [c["campo"] for c in r] == ["titulo", "no_plano", "hoja", "de", "este", "norte",
-                                       "localizacion_escala"]  # sin diseñador ni revisor
-    assert r[0]["etiqueta"] == "Título" and r[0]["celda"]["lineas_max"] == 3
-    assert r[6]["por_defecto"] == "DEFINIR"
+    # En el orden del rótulo, de arriba hacia abajo (sin diseñador ni revisor).
+    assert [c["campo"] for c in r] == ["localizacion_escala", "este", "norte", "titulo", "hoja", "de",
+                                       "no_plano"]
+    assert r[3]["etiqueta"] == "Título" and r[3]["celda"]["lineas_max"] == 3
+    assert r[0]["por_defecto"] == "DEFINIR"
 
 
 def test_revisiones_agregar_cambiar_quitar(entorno):
@@ -366,3 +367,68 @@ def test_proyecto_vacio_o_sin_definicion_no_prellena(entorno):
                          F.valoresProyecto({version: 1}, entrada.rotulo.definicion),
                          F.valoresProyecto({disenador: "X"}, null)];""",
               entorno["datos"]) == [{}, {}, {}]
+
+
+def test_campos_simples_en_el_orden_del_rotulo_a1():
+    """Formato real A1 ERCO: los campos que se escriben a mano, de arriba hacia abajo como en el
+    rótulo; los calculados (ESCALA, REV.) no están aquí (van al final, aparte)."""
+    from componedor.datos_rotulo_editor import definicion_editor
+    definicion = definicion_editor(cargar_formato("formatos/A1_ERCO.json", usar_plantilla=False).rotulo)
+    r = js("return F.camposSimples(entrada).map((c) => [c.campo, c.etiqueta, c.celda.rect_mm]);",
+           definicion)
+    assert [(c, e) for c, e, _ in r] == [
+        ("localizacion_escala", "ESC. de localización"), ("este", "Coordenada ESTE"),
+        ("norte", "Coordenada NORTE"), ("titulo", "Título"), ("hoja", "HOJA"), ("de", "DE"),
+        ("no_plano", "No. PLANO")]
+    arriba = [rect[3] for _, _, rect in r]
+    assert arriba == sorted(arriba, reverse=True)  # cada uno más abajo (o igual) que el anterior
+    assert r[1][2][0] < r[2][2][0]  # ESTE y NORTE a la misma altura: de izquierda a derecha
+
+
+def test_campos_simples_siguen_al_formato():
+    """El orden sale de las celdas: misma altura → izquierda primero; si una celda se mueve, el
+    orden cambia. Los calculados y los de otro tipo no entran."""
+    campos = {
+        "b": {"tipo": "texto", "rect_mm": [700, 50, 720, 60], "altura_mm": 2},
+        "a": {"tipo": "texto", "rect_mm": [680, 50.05, 690, 60.05], "altura_mm": 2},
+        "abajo": {"tipo": "texto", "rect_mm": [680, 10, 690, 20], "altura_mm": 2},
+        "arriba": {"tipo": "texto", "rect_mm": [680, 90, 690, 100], "altura_mm": 2},
+        "calc": {"tipo": "texto", "rect_mm": [680, 200, 690, 210], "altura_mm": 2,
+                 "calculado": "escala_comun"},
+    }
+    r = js("""const d = {campos: entrada};
+              const antes = F.camposSimples(d).map((c) => c.campo);
+              d.campos.abajo.rect_mm = [680, 300, 690, 310];
+              return [antes, F.camposSimples(d).map((c) => c.campo)];""", campos)
+    assert r[0] == ["arriba", "a", "b", "abajo"]
+    assert r[1] == ["abajo", "arriba", "a", "b"]
+
+
+def test_todo_el_formulario_en_el_orden_del_rotulo_a1():
+    """Todo el formulario (campos, calculados, imagen, notas, convenciones y tablas) sale del
+    formato A1 de arriba hacia abajo. FIRMAS y HOJA están en la misma fila (43,5 y 43,6 mm):
+    izquierda primero; lo mismo No. PLANO y REV."""
+    from componedor.datos_rotulo_editor import definicion_editor
+    definicion = definicion_editor(cargar_formato("formatos/A1_ERCO.json", usar_plantilla=False).rotulo)
+    r = js("return F.bloquesRotulo(entrada).map((b) => [b.campo, b.tipo, b.calculado, b.rect_mm]);",
+           definicion)
+    assert [(c, t, k) for c, t, k, _ in r] == [
+        ("localizacion_imagen", "imagen", False), ("localizacion_escala", "texto", False),
+        ("este", "texto", False), ("norte", "texto", False), ("notas", "notas", False),
+        ("convenciones", "convenciones", False), ("revisiones", "tabla", False),
+        ("titulo", "texto", False), ("firmas", "tabla", False), ("hoja", "texto", False),
+        ("de", "texto", False), ("escala", "texto", True), ("no_plano", "texto", False),
+        ("rev", "texto", True)]
+    cajas = {c: rect for c, _, _, rect in r}
+    # Recuadros de las tablas y de las convenciones: la unión de sus celdas.
+    assert cajas["revisiones"] == pytest.approx([672.4, 112.5, 828.2, 137.7])
+    assert cajas["firmas"] == pytest.approx([685.9, 20.9, 802.6, 43.5])
+    assert cajas["convenciones"][3] == pytest.approx(259.88, abs=0.01)
+
+
+def test_ordenar_por_filas():
+    r = js("""const it = [["c", [50, 0, 60, 9.5]], ["a", [10, 0, 20, 10]], ["b", [30, 0, 40, 9.2]],
+                         ["d", [0, 0, 5, 8.9]], ["e", [0, 0, 5, 30]]];
+              return F.ordenarPorFilas(it, (x) => x[1]).map((x) => x[0]);""")
+    # e arriba; a, b y c en la misma fila (≤ 1 mm del borde de a): izquierda a derecha; d abajo.
+    assert r == ["e", "a", "b", "c", "d"]

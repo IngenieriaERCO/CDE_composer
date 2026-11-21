@@ -2302,7 +2302,7 @@ Los `.pgw` / `.jgw` se ignoran por ahora.
 - `test_localizacion_editor` (5): estado, imágenes que no sirven, HTTP con token y origen, y
   `contener` y `enElPdf` iguales en JS y Python.
 
-**Verificación en Edge** (`data/verificacion/verificar_localizacion.mjs`, 22 comprobaciones,
+**Verificación en Edge** (`data/verificacion/verificar_localizacion.mjs`, 19 comprobaciones,
 todo OK). Con PRGD (Exportador real) y `loc_google.jpg` (1600 × 1200, recortada de la foto de
 Google; en `data\` no había una imagen real de QGIS):
 - la ficha dice «JPEG · 1600 × 1200 px, 152,5 × 114,4 mm, 266 ppp, va tal cual»;
@@ -2396,6 +2396,68 @@ Usa las opciones del Exportador `plot_style` y `print_transparency` (manifiesto 
   El paquete viejo de PV1 tenía (127, 95, 63) y 78 rellenos transparentes. El TXT dice
   `PLOT_STYLE_APPLIED` y `HATCH_TRANSPARENT_OMITTED`. Un plano con las tres mesas se compone y
   pasa la verificación.
+
+### Formulario del rótulo en el orden del rótulo — Fase 8 ✅ (2026-11-21)
+
+**Pedido**: TODO el formulario del Rótulo (campos, secciones y paneles) en el orden del rótulo,
+de arriba hacia abajo. La primera versión ordenaba solo «Datos del plano»; el usuario cambió esa
+decisión.
+
+**Orden**
+1. Localización (imagen y ESC. de localización).
+2. Coordenadas (Este, Norte).
+3. Notas.
+4. Convenciones.
+5. Revisiones.
+6. Título.
+7. Firmas.
+8. HOJA y DE.
+9. ESCALA (calculada).
+10. No. PLANO y REV. (calculada).
+
+No cambió cómo funciona ningún campo ni panel; solo su lugar.
+
+**Qué se hizo**
+- `editor_formularios.js`:
+  - `cajaCampo`: el recuadro de cualquier campo del rótulo (texto, imagen, notas, la unión de las
+    celdas de una tabla o de las convenciones);
+  - `ordenarPorFilas`: primero el borde superior más alto. Los bordes a ≤ 1 mm del primero de la
+    fila son la misma fila y van de izquierda a derecha (FIRMAS 43,5 y HOJA 43,6 mm; No. PLANO y
+    REV.);
+  - `bloquesRotulo`: todo el formulario en ese orden;
+  - `camposSimples` usa el mismo orden y ya no hay lista fija (`ORDEN_CAMPOS`).
+- `editor_panel_rotulo.js`:
+  - arma el panel con `bloquesRotulo`: campos sueltos seguidos en un grupo, Revisiones y Firmas
+    en su sección;
+  - coloca las secciones de Imagen, Notas y Convenciones en su lugar;
+  - desaparece la sección «Datos del plano», porque sus campos quedan repartidos.
+- `editor.html`: los paneles Imagen de localización, Notas y Convenciones pasan a ser secciones
+  plegables (`bloque-localizacion`, `bloque-notas`, `bloque-convenciones`) que el Rótulo coloca en
+  su sitio. Si el formato no tuviera el campo, quedan después del Rótulo. Sus scripts no
+  cambiaron.
+- Todos los bloques tienen posición en el formato A1: no hizo falta inventar ninguna.
+
+**Pruebas**: 1342 pasan y 1 se salta (antes 1338). ruff igual que antes (173).
+- `test_editor_formularios_js`: la prueba del orden de los campos se actualizó, y hay 4 nuevas:
+  - los campos manuales con el formato A1 real;
+  - celdas sintéticas: misma fila → izquierda primero; si una celda se mueve, cambia el orden;
+  - todo el formulario con el formato A1 real (los 14 bloques en orden, recuadros de las tablas y
+    de las convenciones);
+  - `ordenarPorFilas` (filas a ≤ 1 mm).
+
+**Verificación en Edge** (`data/verificacion/verificar_orden_rotulo.mjs`, 14 comprobaciones,
+todo OK), con `editor/editor.html` recién generado:
+- el Rótulo sale en el orden pedido: Imagen, ESC., ESTE, NORTE, Notas, Convenciones, Revisiones,
+  Título, Firmas, HOJA, DE, ESCALA*, No. PLANO, REV.* (* de solo lectura); después, como antes,
+  los problemas y «Catálogos del editor»;
+- ya no hay títulos sueltos de Imagen, Notas y Convenciones en la columna, y sus paneles siguen
+  pintando su contenido;
+- la tecla Tab recorre los campos en el mismo orden;
+- escribir en cada campo llega al rótulo del plano;
+- al abrir un plano, el Rótulo se vuelve a pintar en el mismo orden, con sus valores y con los
+  paneles en su lugar.
+
+`verificar_localizacion.mjs` (Imagen de localización con PRGD) se volvió a correr: 19 comprobaciones, todo OK (el panel funciona igual en su nuevo lugar). En la Fase 6 se anotaron 22 por error: siempre fueron 19.
 
 ### Pendiente en la Fase 4 (al 2026-11-11)
 

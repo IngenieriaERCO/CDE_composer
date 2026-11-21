@@ -126,34 +126,71 @@
       return d;
     }
 
-    function seccionDatos() {
-      const s = seccion("Datos del plano", true);
-      for (const c of F.camposSimples(DEF)) {
-        const actual = valor(c.campo);
-        if (!F.representable(actual)) {
-          s.appendChild(fila(c.etiqueta, nodo("div", { class: "medida" }, "Valor que el formulario no sabe mostrar: se conserva sin editar.")));
-          continue;
-        }
-        const placeholder = c.por_defecto ? c.por_defecto + " (por defecto)" : "";
-        const entrada = entradaTexto(actual, c.celda, ["rotulo." + c.campo, "campo '" + c.campo + "'"],
-          (v) => cambiar(c.campo, v), placeholder);
-        if (c.campo === "titulo") {
-          // El título crece con el texto, sin barra de desplazamiento, hasta ~6 renglones.
-          entrada.classList.add("crece");
-          entrada.addEventListener("input", () => crecer(entrada, 6));
-          crecientes.push(entrada);
-        }
-        s.appendChild(fila(c.etiqueta, entrada));
+    /** Un campo de texto que se escribe a mano (c: de F.camposSimples). */
+    function campoSimple(c) {
+      const actual = valor(c.campo);
+      if (!F.representable(actual)) {
+        return fila(c.etiqueta, nodo("div", { class: "medida" }, "Valor que el formulario no sabe mostrar: se conserva sin editar."));
       }
-      for (const [nombre, campo] of Object.entries(DEF.campos)) {
-        if (campo.tipo !== "texto" || !campo.calculado) continue;
-        const entrada = nodo("input", { type: "text", readonly: "", class: "calculado",
-          title: "Se calcula al componer; no se escribe en el plano" });
-        calculados[nombre] = entrada;
-        marcables.push({ nodo: entrada, claves: ["rotulo." + nombre] });
-        s.appendChild(fila((F.ETIQUETAS[nombre] || nombre) + " (calculada)", entrada));
+      const placeholder = c.por_defecto ? c.por_defecto + " (por defecto)" : "";
+      const entrada = entradaTexto(actual, c.celda, ["rotulo." + c.campo, "campo '" + c.campo + "'"],
+        (v) => cambiar(c.campo, v), placeholder);
+      if (c.campo === "titulo") {
+        // El título crece con el texto, sin barra de desplazamiento, hasta ~6 renglones.
+        entrada.classList.add("crece");
+        entrada.addEventListener("input", () => crecer(entrada, 6));
+        crecientes.push(entrada);
       }
-      return s;
+      return fila(c.etiqueta, entrada);
+    }
+
+    /** Un campo calculado (ESCALA, REV.): de solo lectura; refrescar() pone su valor. */
+    function campoCalculado(nombre) {
+      const entrada = nodo("input", { type: "text", readonly: "", class: "calculado",
+        title: "Se calcula al componer; no se escribe en el plano" });
+      calculados[nombre] = entrada;
+      marcables.push({ nodo: entrada, claves: ["rotulo." + nombre] });
+      return fila((F.ETIQUETAS[nombre] || nombre) + " (calculada)", entrada);
+    }
+
+    // Los paneles propios (imagen de localización, notas, convenciones) viven en editor.html como
+    // secciones «bloque-…»; aquí solo se colocan en su lugar del rótulo (no cambia cómo funcionan).
+    const BLOQUES_PANEL = { imagen: "bloque-localizacion", notas: "bloque-notas", convenciones: "bloque-convenciones" };
+
+    /**
+     * Todo el formulario en el orden del rótulo, de arriba hacia abajo (F.bloquesRotulo): los
+     * campos sueltos seguidos van juntos en un grupo; las tablas y los paneles, en su sección.
+     */
+    function bloquesEnOrden() {
+      const simples = new Map(F.camposSimples(DEF).map((c) => [c.campo, c]));
+      const partes = [];
+      let grupo = null;
+      for (const b of F.bloquesRotulo(DEF)) {
+        let n = null;
+        let suelto = false;
+        if (b.tipo === "texto") {
+          n = b.calculado ? campoCalculado(b.campo) : simples.has(b.campo) ? campoSimple(simples.get(b.campo)) : null;
+          suelto = true;
+        } else if (b.campo === F.TABLA_REVISIONES) {
+          n = seccionRevisiones();
+        } else if (b.campo === F.TABLA_FIRMAS) {
+          n = seccionFirmas();
+        } else if (BLOQUES_PANEL[b.tipo]) {
+          n = document.getElementById(BLOQUES_PANEL[b.tipo]);
+        }
+        if (!n) continue;
+        if (suelto) {
+          if (!grupo) {
+            grupo = nodo("div", { class: "grupo-campos" });
+            partes.push(grupo);
+          }
+          grupo.appendChild(n);
+        } else {
+          grupo = null;
+          partes.push(n);
+        }
+      }
+      return partes;
     }
 
     function seccionRevisiones() {
@@ -431,7 +468,7 @@
         cajaProblemas = null;
         return;
       }
-      const partes = [seccionDatos(), seccionRevisiones(), seccionFirmas()].filter(Boolean);
+      const partes = bloquesEnOrden();
       const conserva = R.noRepresentable(modelo());
       if (conserva.length) {
         const s = seccion("Se conserva sin editar", true);

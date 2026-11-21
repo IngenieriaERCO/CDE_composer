@@ -56,12 +56,19 @@
     <div id="propiedades" class="propiedades"></div>
     <h2>Rótulo</h2>
     <div id="panel-rotulo" class="form-rotulo"></div>
-    <h2>Imagen de localización</h2>
-    <div id="panel-localizacion" class="panel-ortofoto"></div>
-    <h2>Notas</h2>
-    <div id="panel-notas" class="form-rotulo"></div>
-    <h2>Convenciones</h2>
-    <div id="panel-convenciones" class="form-rotulo"></div>
+    <!-- El panel Rótulo coloca estas tres secciones en su lugar del rótulo (de arriba hacia abajo). -->
+    <details id="bloque-localizacion" class="seccion bloque-panel" open>
+      <summary>Imagen de localización</summary>
+      <div id="panel-localizacion" class="panel-ortofoto"></div>
+    </details>
+    <details id="bloque-notas" class="seccion bloque-panel" open>
+      <summary>Notas</summary>
+      <div id="panel-notas" class="form-rotulo"></div>
+    </details>
+    <details id="bloque-convenciones" class="seccion bloque-panel" open>
+      <summary>Convenciones</summary>
+      <div id="panel-convenciones" class="form-rotulo"></div>
+    </details>
     <h2>Rosa de los vientos</h2>
     <div id="panel-rosa" class="propiedades"></div>
     <h2>Ortofoto <small>(detrás de los detalles)</small></h2>
