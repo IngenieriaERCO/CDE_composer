@@ -343,3 +343,9 @@ main { flex: 1; display: flex; min-height: 0; }
 /* Rótulo en el orden del rótulo: campos sueltos agrupados y los paneles como secciones. */
 .form-rotulo .grupo-campos { margin: 6px 0; }
 .form-rotulo .bloque-panel > .form-rotulo, .form-rotulo .bloque-panel > .panel-ortofoto { margin: 4px 0; }
+/* Convenciones: muestras de línea y relleno (9a). */
+.form-rotulo .agregar-muestra { display: flex; gap: 6px; margin-top: 6px; }
+.form-rotulo .controles-muestra { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; }
+.form-rotulo .controles-muestra input[type="number"] { width: 64px; }
+.form-rotulo .controles-muestra input[type="color"] { width: 36px; height: 22px; padding: 0; }
+.form-rotulo .miniatura-muestra svg { display: block; }

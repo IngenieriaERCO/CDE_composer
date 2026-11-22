@@ -83,6 +83,18 @@
           "data-id": s.id }), capas.simbolos);
         img.setAttribute("href", url);
       }
+      // Muestras de línea y relleno (9a): vectores SVG con su color, grosor, trazo y opacidad.
+      for (const m of piezas.muestras || []) {
+        if (m.tipo === "linea") {
+          const y = alto - m.dibujo_mm[1];
+          const l = nodo("line", { x1: m.dibujo_mm[0], y1: y, x2: m.dibujo_mm[2], y2: y, stroke: m.color,
+            "stroke-width": m.grosor_mm, class: "vp-muestra", "data-tipo": "linea" }, capas.simbolos);
+          if (m.trazo === "discontinua") l.setAttribute("stroke-dasharray", "2 1");
+        } else {
+          nodo("rect", Object.assign(rect(m.dibujo_mm), { fill: m.color, "fill-opacity": m.opacidad,
+            class: "vp-muestra", "data-tipo": "relleno" }), capas.simbolos);
+        }
+      }
       for (const t of piezas.textos) texto(t, capas.textos);
       for (const f of piezas.firmas) {
         const g = nodo("g", { class: "vp-firma", "data-ruta": f.ruta }, capas.firmas);

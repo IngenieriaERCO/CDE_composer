@@ -318,6 +318,28 @@ No se compone el plano. El rótulo tiene 1 problema:
   descripción) de arriba abajo; de la 13.ª a la 24.ª, en la columna derecha. Máximo 24.
 - El editor (panel «Convenciones», subfase 4.3d) escribe esta lista en el orden elegido y
   agrega `"descripcion"` solo si la persona cambió la de por defecto.
+- **Muestras de línea y relleno** (subfase 9a): un renglón también puede ser una muestra que
+  `componer` dibuja como **vector** (sin biblioteca), centrada en la casilla del símbolo:
+
+  ```json
+  {"tipo": "linea", "descripcion": "RED DE MEDIA TENSIÓN", "color": "#FF0000",
+   "grosor_mm": 0.35, "trazo": "discontinua"},
+  {"tipo": "relleno", "descripcion": "ZONA VERDE", "color": "#00A000", "opacidad": 0.5}
+  ```
+
+  | Clave | Tipo | Valores |
+  |---|---|---|
+  | `tipo` | texto | `"simbolo"` (lo de siempre; un renglón sin `tipo` es un símbolo), `"linea"` o `"relleno"`. |
+  | `descripcion` | texto o lista de líneas | **Obligatoria** en las muestras (no hay descripción por defecto). |
+  | `color` | `"#RRGGBB"` | Por defecto `#000000` (línea) y `#808080` (relleno). |
+  | `grosor_mm` | número | Solo línea: de 0,05 a 2; por defecto 0,25. |
+  | `trazo` | texto | Solo línea: `"continua"` (por defecto) o `"discontinua"` (guiones de 2 mm, huecos de 1 mm). |
+  | `opacidad` | número | Solo relleno: mayor que 0 y hasta 1; por defecto 1. |
+
+  La línea mide 13 mm y el relleno 13 × 6 mm (si la casilla es más chica, se acortan al
+  espacio útil). Las muestras pueden repetirse; la biblioteca solo hace falta si hay símbolos.
+  Al componer se verifica en el PDF que cada muestra sea un solo trazo en su casilla (±0,1 mm)
+  con su color, grosor, trazo y opacidad.
 - **El símbolo** se copia como **vector** desde la biblioteca (`show_pdf_page`), **centrado**
   en su casilla. Nunca se agranda: si no cabe en el espacio útil (casilla menos 0,6 mm por
   lado: unos 20,2 × 9,3 mm en las filas 1 a 8 y 20,2 × 8,4 mm en las 9 a 12) se reduce,

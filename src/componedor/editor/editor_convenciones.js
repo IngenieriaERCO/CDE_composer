@@ -12,23 +12,26 @@
  *   caracteres de la fuente sobre la celda «convenciones.<k>.descripcion»). Desde la 4.3e la
  *   descripción también se MIDE (editor_maquetacion.js, vía F.validarTexto): «no cabe» y «se
  *   escribió a X mm», con los textos de `componer`.
+ * - Subfase 9a: un renglón también puede ser una MUESTRA de línea o de relleno
+ *   ({"tipo": "linea" | "relleno", ...}, reglas en editor_muestras.js). Sin `tipo`, símbolo.
  */
 (function (raiz, fabrica) {
   "use strict";
-  const F = typeof module === "object" && module.exports ? require("./editor_formularios.js") : raiz.EditorFormularios;
-  const api = fabrica(F);
+  const enNode = typeof module === "object" && module.exports;
+  const F = enNode ? require("./editor_formularios.js") : raiz.EditorFormularios;
+  const MU = enNode ? require("./editor_muestras.js") : raiz.EditorMuestras;
+  const api = fabrica(F, MU);
   if (typeof module === "object" && module.exports) {
     module.exports = api;
   } else {
     raiz.EditorConvenciones = api;
   }
-})(typeof self !== "undefined" ? self : this, function (F) {
+})(typeof self !== "undefined" ? self : this, function (F, MU) {
   "use strict";
 
   const esObjeto = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
   const clonar = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
   const CAMPO = "convenciones";
-  const CLAVES = ["descripcion", "simbolo"];
 
   /** El campo de convenciones de la definición (o null). */
   function campo(definicion) {
@@ -81,8 +84,27 @@
         errores.push(sitio + ": se esperaba un objeto {\"simbolo\": ...}; tiene " + F.tipo(item));
         return;
       }
-      for (const k of Object.keys(item).filter((k) => !CLAVES.includes(k)).sort()) {
-        errores.push(sitio + "." + k + ": campo no reconocido (campos válidos: " + CLAVES.join(", ") + ")");
+      const tipo = MU.tipoDe(item);
+      if (!MU.TIPOS.includes(tipo)) {
+        errores.push(sitio + ".tipo: se esperaba «simbolo», «linea» o «relleno»; tiene " + F.tipo(tipo));
+        return;
+      }
+      const claves = MU.CLAVES[tipo];
+      for (const k of Object.keys(item).filter((k) => !claves.includes(k)).sort()) {
+        errores.push(sitio + "." + k + ": campo no reconocido (campos válidos: " + claves.join(", ") + ")");
+      }
+      if (MU.esMuestra(tipo)) {
+        errores.push(...MU.leerMuestra(item, sitio, F.tipo).errores);
+        if (i >= c.capacidad) return;
+        if (MU.descripcionVacia(item.descripcion)) {
+          errores.push(MU.errorFaltaDescripcion(sitio));
+          return;
+        }
+        const r = F.validarTexto(item.descripcion, celdaDescripcion(c, i), sitio + ".descripcion", fuente,
+          definicion.relleno_mm, definicion.interlineado);
+        errores.push(...r.errores);
+        avisos.push(...r.avisos);
+        return;
       }
       const ident = item.simbolo;
       if (!porId.has(ident)) {
@@ -109,40 +131,75 @@
   // Lista editable.
   // ---------------------------------------------------------------------------------------
 
-  /** ¿Una convención que la lista sabe mostrar? */
+  /** ¿Una convención que la lista sabe mostrar? (una muestra, solo con valores válidos). */
   function representable(item) {
-    return esObjeto(item) && typeof item.simbolo === "string" &&
-      Object.keys(item).every((k) => CLAVES.includes(k)) &&
-      (item.descripcion === undefined || F.representable(item.descripcion));
+    if (!esObjeto(item)) return false;
+    const tipo = MU.tipoDe(item);
+    if (!MU.TIPOS.includes(tipo) || !Object.keys(item).every((k) => MU.CLAVES[tipo].includes(k))) return false;
+    if (item.descripcion !== undefined && !F.representable(item.descripcion)) return false;
+    if (MU.esMuestra(tipo)) return MU.leerMuestra(item, "", F.tipo).muestra !== null;
+    return typeof item.simbolo === "string";
   }
 
   /**
-   * {items, editable}. Cada item: {simbolo, descripcion (texto que se ve), original, tocado,
-   * conocido (está en el índice)}.
+   * {items, editable}. Cada item: {tipo, simbolo, descripcion (texto que se ve), original,
+   * tocado, conocido (está en el índice)}; una muestra trae además color, grosor_mm y trazo
+   * (línea) u opacidad (relleno), con los valores por defecto ya puestos.
    */
   function lista(valor, simbolos) {
     const porId = new Map((simbolos || []).map((s) => [s.id, s]));
     const editable = valor === undefined || (Array.isArray(valor) && valor.every(representable));
-    const items = editable && Array.isArray(valor) ? valor.map((item) => ({
-      simbolo: item.simbolo,
-      descripcion: item.descripcion !== undefined ? clonar(item.descripcion)
-        : (porId.has(item.simbolo) ? porId.get(item.simbolo).descripcion : ""),
-      original: clonar(item),
-      tocado: false,
-      conocido: porId.has(item.simbolo),
-    })) : [];
+    const items = editable && Array.isArray(valor) ? valor.map((item) => {
+      const tipo = MU.tipoDe(item);
+      if (MU.esMuestra(tipo)) {
+        return Object.assign(MU.leerMuestra(item, "", F.tipo).muestra, {
+          descripcion: clonar(item.descripcion), original: clonar(item), tocado: false, conocido: true });
+      }
+      return {
+        tipo,
+        simbolo: item.simbolo,
+        descripcion: item.descripcion !== undefined ? clonar(item.descripcion)
+          : (porId.has(item.simbolo) ? porId.get(item.simbolo).descripcion : ""),
+        original: clonar(item),
+        tocado: false,
+        conocido: porId.has(item.simbolo),
+      };
+    }) : [];
     return { items, editable };
   }
 
   /** Item nuevo desde el índice (descripción por defecto). */
   function itemDeSimbolo(id, simbolos) {
     const s = (simbolos || []).find((x) => x.id === id);
-    return s ? { simbolo: id, descripcion: s.descripcion, original: undefined, tocado: true, conocido: true } : null;
+    return s ? { tipo: MU.TIPO_SIMBOLO, simbolo: id, descripcion: s.descripcion, original: undefined, tocado: true,
+      conocido: true } : null;
   }
 
-  /** Cómo se guarda: el original si no se tocó; si no, {simbolo} (+ descripcion si cambió). */
+  /** Muestra nueva ("linea" o "relleno") con los valores por defecto y SIN descripción. */
+  function itemDeMuestra(tipo) {
+    return Object.assign({ tipo }, MU.POR_DEFECTO[tipo], { descripcion: undefined, original: undefined,
+      tocado: true, conocido: true });
+  }
+
+  /**
+   * Cómo se guarda: el original si no se tocó; si no, {simbolo} (+ descripcion si cambió) o,
+   * en una muestra, {tipo, descripcion, color, grosor_mm, trazo} / {tipo, descripcion, color,
+   * opacidad (solo si es menor que 1)}.
+   */
   function itemParaGuardar(item, simbolos) {
     if (!item.tocado && item.original !== undefined) return clonar(item.original);
+    if (MU.esMuestra(item.tipo)) {
+      const salida = { tipo: item.tipo };
+      if (item.descripcion !== undefined) salida.descripcion = clonar(item.descripcion);
+      salida.color = item.color;
+      if (item.tipo === "linea") {
+        salida.grosor_mm = item.grosor_mm;
+        salida.trazo = item.trazo;
+      } else if (item.opacidad !== 1) {
+        salida.opacidad = item.opacidad;
+      }
+      return salida;
+    }
     const s = (simbolos || []).find((x) => x.id === item.simbolo);
     const salida = { simbolo: item.simbolo };
     const igual = s && typeof item.descripcion === "string" && item.descripcion === s.descripcion;
@@ -169,6 +226,20 @@
     return { items: item ? items.concat([item]) : items.slice(), aviso: "" };
   }
 
+  /** Agregar una muestra al final: {items, aviso} (con la tabla llena no se agrega). */
+  function agregarMuestra(items, tipo, capacidad) {
+    if (items.length >= capacidad) {
+      return { items: items.slice(), aviso: "La tabla de convenciones está llena: admite " + capacidad +
+        " (dos columnas de " + Math.floor(capacidad / 2) + "). Quite una para agregar otra." };
+    }
+    return { items: items.concat([itemDeMuestra(tipo)]), aviso: "" };
+  }
+
+  /** Cambiar color, grosor, trazo u opacidad de una muestra. */
+  function cambiarMuestra(item, cambios) {
+    return Object.assign({}, item, cambios, { tocado: true });
+  }
+
   function desmarcar(items, id) {
     return items.filter((x) => x.simbolo !== id);
   }
@@ -187,8 +258,9 @@
 
   /** Cambiar la descripción visible (texto del formulario; vacío = la de por defecto). */
   function cambiarDescripcion(item, texto, simbolos) {
-    const s = (simbolos || []).find((x) => x.id === item.simbolo);
     const nuevo = F.valorDeTexto(texto, item.descripcion);
+    if (MU.esMuestra(item.tipo)) return Object.assign({}, item, { descripcion: nuevo, tocado: true });
+    const s = (simbolos || []).find((x) => x.id === item.simbolo);
     return Object.assign({}, item, { descripcion: nuevo === undefined ? (s ? s.descripcion : "") : nuevo, tocado: true });
   }
 
@@ -200,7 +272,10 @@
     representable,
     lista,
     itemDeSimbolo,
+    itemDeMuestra,
     itemParaGuardar,
+    agregarMuestra,
+    cambiarMuestra,
     convencionesParaGuardar,
     marcar,
     desmarcar,

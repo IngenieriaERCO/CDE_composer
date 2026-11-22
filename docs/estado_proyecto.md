@@ -2459,6 +2459,77 @@ todo OK), con `editor/editor.html` recién generado:
 
 `verificar_localizacion.mjs` (Imagen de localización con PRGD) se volvió a correr: 19 comprobaciones, todo OK (el panel funciona igual en su nuevo lugar). En la Fase 6 se anotaron 22 por error: siempre fueron 19.
 
+### Convenciones: líneas y rellenos — Fase 9a ✅ (2026-11-21)
+
+**Pedido**: la leyenda debe servir para planos muy distintos. Cada renglón puede ser una línea
+(color y grosor), un relleno (color) o un símbolo.
+
+**Plan aprobado** (subfases, una a la vez):
+- (a) tipos línea y relleno;
+- (b) biblioteca versión 2 en `simbolos/` (`carpeta_simbolos`);
+- (c) símbolo tomado de un bloque de la lista de «Cargar DXF»;
+- (d) recorte de imagen como último recurso, marcado «imagen (no vector)».
+
+**Decisiones del usuario**
+1. El símbolo se escoge solo de la lista de bloques; el clic en la vista previa, después.
+2. No se pide nada nuevo al Exportador. Primero se prueba la caja eléctrica real.
+3. La biblioteca va en `simbolos/`, con ruta configurable; los PDF no van a git.
+4. La línea es continua o discontinua.
+5. El color, por defecto, el de la capa del DXF según la CTB; el usuario puede cambiarlo. En
+   (a) no hay DXF: se elige en el editor (negro o gris por defecto).
+6. El recorte de imagen se acepta, en la última subfase.
+
+**Qué se hizo (subfase a)**
+- `muestras_leyenda.py` (nuevo):
+  - lee y valida `{"tipo": "linea" | "relleno", ...}`, con valores por defecto;
+  - `colocar_muestra`: línea de 13 mm o relleno de 13 × 6 mm, centrados en la casilla y más
+    cortos si no caben;
+  - `dibujar_muestras`: `draw_line` o `draw_rect`, un solo trazo vectorial;
+  - `verificar_muestras`: en el PDF, un trazo por casilla, en su sitio (±0,1 mm), con su color,
+    grosor (±0,01 mm), trazo y opacidad.
+- `rotulo._convenciones`:
+  - reparte cada renglón por `tipo` (sin `tipo`, símbolo: igual que antes);
+  - las claves válidas dependen del tipo;
+  - la descripción de una muestra es obligatoria;
+  - la biblioteca solo se carga si hay símbolos.
+- `componer` dibuja las muestras en la hoja base, junto a los símbolos, y las verifica. `cli`
+  las resume («Convenciones: 1 línea(s) y 1 relleno(s) dibujados como vector.»).
+- Editor:
+  - `editor_muestras.js` (nuevo): copia de las reglas, los mensajes y la ubicación de Python;
+  - `editor_convenciones.js`: validación, lista, guardado, `agregarMuestra` y `cambiarMuestra`;
+  - panel Convenciones: botones «+ Línea» y «+ Relleno»; color, grosor y trazo, u opacidad;
+    miniatura SVG;
+  - vista previa (`piezasRotulo` devuelve `muestras`) y lienzo (`<line>` y `<rect>` SVG).
+
+**Pruebas**: 1373 pasan y 1 se salta (antes 1342). ruff igual que antes (173).
+- `test_muestras_leyenda` (14):
+  - valores por defecto y errores;
+  - ubicación;
+  - dibujo y verificación;
+  - plano con símbolos y muestras: vector, sin imágenes en las convenciones;
+  - solo muestras, sin biblioteca;
+  - todos los problemas juntos;
+  - falla forzada de color;
+  - resumen de `cli`.
+- `test_editor_muestras_js` (15): los mismos errores que Python, válidos en los dos, misma
+  ubicación, valores por defecto y lo que se guarda, ida y vuelta sin tocar idéntica.
+- `test_editor_vista_previa_js` (+2): las muestras se ubican igual que `componer`; una muestra
+  con problema no se dibuja y se marca.
+- Las pruebas de símbolos, rótulo y convenciones de antes pasan sin cambios.
+
+**Verificación en Edge** (`data/verificacion/verificar_muestras_leyenda.mjs`, 22 comprobaciones,
+todo OK), con `editor/editor.html` recién generado y el formato A1 real:
+- botones, y siguen los 12 símbolos;
+- un símbolo se guarda como antes (`{"simbolo": "limite_predio"}`);
+- línea nueva con los valores por defecto, que pide su descripción;
+- línea roja de 0,35 mm discontinua y relleno verde al 50 %: el rótulo del plano, las miniaturas
+  y la vista previa (vectores SVG) dicen lo mismo;
+- guardado y compuesto con `componer`: en el PDF, casilla 2 una línea roja de 0,35 mm
+  discontinua, casilla 3 un relleno con opacidad 0,5, casilla 1 el símbolo, y ninguna imagen en
+  las convenciones;
+- al abrir el plano vuelven los mismos valores; un plano viejo (solo símbolos) se abre y se
+  guarda idéntico; sin errores de JavaScript.
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

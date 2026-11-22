@@ -318,3 +318,40 @@ def test_etiquetas_escala_iguales_que_python(entorno):
         assert s["avisos"] == avisos
         avisos_vistos += len(avisos)
     assert avisos_vistos > 10  # el azar sí produjo etiquetas que no caben
+
+
+# --- muestras de línea y relleno (subfase 9a) ---------------------------------------------------
+
+MUESTRAS = [
+    {"simbolo": "panel"},
+    {"tipo": "linea", "descripcion": "RED DE MEDIA TENSIÓN", "color": "#FF0000", "grosor_mm": 0.35,
+     "trazo": "discontinua"},
+    {"tipo": "relleno", "descripcion": ["ZONA", "VERDE"], "color": "#00A000", "opacidad": 0.5},
+    {"tipo": "linea", "descripcion": "LÍMITE"},
+]
+
+
+def test_muestras_iguales_que_componer(entorno):
+    e = comparar_todo(entorno, {"convenciones": MUESTRAS})
+    p = python(entorno, {"convenciones": MUESTRAS})
+    assert [(m["posicion"], m["tipo"]) for m in e["muestras"]] == [
+        (c.posicion, c.muestra.tipo) for c in p.muestras] == [(2, "linea"), (3, "relleno"), (4, "linea")]
+    for mj, mp in zip(e["muestras"], p.muestras):
+        _iguales(mj["dibujo_mm"], mp.dibujo, mp.posicion)
+        _iguales(mj["casilla"], mp.casilla, mp.posicion)
+        assert mj["color"] == mp.muestra.color
+    assert e["muestras"][0]["trazo"] == "discontinua" and e["muestras"][1]["opacidad"] == 0.5
+    assert {"convenciones.2.descripcion", "convenciones.3.descripcion"} <= {t["ruta"] for t in e["textos"]}
+
+
+def test_muestra_con_problema_no_se_dibuja_y_se_marca(entorno):
+    malo = [{"tipo": "linea", "descripcion": "A", "color": "rojo"}, {"tipo": "relleno"},
+            {"tipo": "relleno", "descripcion": "BIEN"}]
+    e = editor(entorno, {"convenciones": malo})
+    assert [m["posicion"] for m in e["muestras"]] == [2, 3]  # la 1 tiene color malo
+    mensajes = [p["mensaje"] for p in e["problemas"]]
+    assert any(m.startswith("rotulo.convenciones[0].color: se esperaba un color") for m in mensajes)
+    assert "rotulo.convenciones[1].descripcion: falta la descripción (una línea o un relleno no tiene " \
+           "descripción por defecto)" in mensajes
+    with pytest.raises(RotuloInvalido):
+        python(entorno, {"convenciones": malo})

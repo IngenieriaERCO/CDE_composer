@@ -6,6 +6,8 @@
  *   al final de «Convenciones del plano»; desmarcar = sale. Sin repetir; tope = capacidad.
  * - «Convenciones del plano»: casilla de la leyenda en vivo (columna y fila), ↑ ↓ ✕ y la
  *   descripción editable (vacía = la de por defecto).
+ * - Subfase 9a: «+ Línea» y «+ Relleno» agregan una MUESTRA dibujada como vector (color, grosor
+ *   y trazo, u opacidad); su descripción es obligatoria. Reglas en editor_muestras.js.
  * Se guarda en rotulo.convenciones.
  */
 (function (raiz) {
@@ -15,6 +17,7 @@
   function crear(opciones) {
     const R = raiz.EditorRotulo;
     const C = raiz.EditorConvenciones;
+    const MU = raiz.EditorMuestras;
     const F = raiz.EditorFormularios;
     const panel = opciones.panel;
     const DATOS = opciones.datos;
@@ -37,6 +40,23 @@
       }
       if (texto !== undefined) n.textContent = texto;
       return n;
+    }
+
+    /** Muestra de línea o relleno en pequeño (SVG), como saldrá en el PDF. */
+    function miniaturaMuestra(item) {
+      const caja = nodo("div", { class: "miniatura-simbolo miniatura-muestra" });
+      // El HTML no lleva URLs: el <svg> sale del analizador HTML (que ya le pone su espacio de
+      // nombres) y la forma se crea con el espacio de nombres de ese <svg>.
+      caja.innerHTML = '<svg viewBox="0 0 15 7" width="60" height="28"></svg>';
+      const svg = caja.firstChild;
+      const forma = document.createElementNS(svg.namespaceURI, item.tipo === "linea" ? "line" : "rect");
+      const atributos = item.tipo === "linea"
+        ? { x1: 1, y1: 3.5, x2: 14, y2: 3.5, stroke: item.color, "stroke-width": Math.max(item.grosor_mm, 0.1),
+          "stroke-dasharray": item.trazo === "discontinua" ? "2 1" : "none" }
+        : { x: 1, y: 0.5, width: 13, height: 6, fill: item.color, "fill-opacity": item.opacidad };
+      for (const [k, v] of Object.entries(atributos)) forma.setAttribute(k, v);
+      svg.appendChild(forma);
+      return caja;
     }
 
     function miniatura(id) {
@@ -82,10 +102,12 @@
       if (ultimoAviso) s.appendChild(nodo("div", { class: "nota-detalle" }, ultimoAviso));
       estado.items.forEach((item, i) => {
         const pos = C.casilla(i, CAMPO.capacidad);
+        const esMuestra = MU.esMuestra(item.tipo);
         const tarjeta = nodo("div", { class: "convencion-plano" + (item.conocido ? "" : " desconocida") });
         const cabeza = nodo("div", { class: "cabeza" });
         cabeza.appendChild(nodo("strong", { class: "numero", title: "Casilla " + pos.numero + " de la leyenda" }, pos.numero + "."));
-        cabeza.appendChild(miniatura(item.simbolo));
+        let mini = esMuestra ? miniaturaMuestra(item) : miniatura(item.simbolo);
+        cabeza.appendChild(mini);
         cabeza.appendChild(nodo("span", { class: "medida origen" }, pos.dentro
           ? "columna " + pos.columna + ", fila " + pos.fila : "no cabe (más de " + CAMPO.capacidad + ")"));
         for (const [texto, titulo, accion, deshabilitado] of [
@@ -99,12 +121,29 @@
           cabeza.appendChild(b);
         }
         tarjeta.appendChild(cabeza);
-        tarjeta.appendChild(nodo("div", { class: "id-simbolo" }, item.simbolo +
-          (item.conocido ? "" : " — símbolo desconocido (no está en el índice; se conserva)")));
-        const s0 = SIMBOLOS.find((x) => x.id === item.simbolo);
-        const entrada = nodo("textarea", { rows: "2", title: "Descripción (hasta 2 líneas). Vacía = la de por defecto." });
+        if (esMuestra) {
+          tarjeta.appendChild(nodo("div", { class: "id-simbolo" }, item.tipo === "linea"
+            ? "Línea (dibujada como vector)" : "Relleno (dibujado como vector)"));
+          const cambiar = (cambios) => {
+            estado.items[i] = C.cambiarMuestra(estado.items[i], cambios);
+            guardar();
+            const nueva = miniaturaMuestra(estado.items[i]);
+            mini.replaceWith(nueva);
+            mini = nueva;
+            refrescar();
+          };
+          tarjeta.appendChild(controlesMuestra(item, cambiar));
+        } else {
+          tarjeta.appendChild(nodo("div", { class: "id-simbolo" }, item.simbolo +
+            (item.conocido ? "" : " — símbolo desconocido (no está en el índice; se conserva)")));
+        }
+        const s0 = esMuestra ? null : SIMBOLOS.find((x) => x.id === item.simbolo);
+        const entrada = nodo("textarea", { rows: "2", title: esMuestra
+          ? "Descripción (hasta 2 líneas). Obligatoria: una línea o un relleno no tiene descripción por defecto."
+          : "Descripción (hasta 2 líneas). Vacía = la de por defecto." });
         entrada.value = F.textoDeValor(item.descripcion);
         if (s0) entrada.placeholder = s0.descripcion + " (por defecto)";
+        if (esMuestra) entrada.placeholder = "Escriba la descripción (obligatoria)";
         entrada.addEventListener("input", () => {
           estado.items[i] = C.cambiarDescripcion(estado.items[i], entrada.value, SIMBOLOS);
           guardar();
@@ -116,8 +155,59 @@
         tarjeta.append(entrada, junto);
         s.appendChild(tarjeta);
       });
-      if (!estado.items.length) s.appendChild(nodo("div", { class: "vacio" }, "Ninguna: marque símbolos abajo."));
+      if (!estado.items.length) s.appendChild(nodo("div", { class: "vacio" }, "Ninguna: marque símbolos abajo o agregue una línea o un relleno."));
+      const botones = nodo("div", { class: "agregar-muestra" });
+      const llena = estado.items.length >= CAMPO.capacidad;
+      for (const [tipo, texto] of [["linea", "+ Línea"], ["relleno", "+ Relleno"]]) {
+        const b = nodo("button", { type: "button", "data-tipo": tipo,
+          title: llena ? "La tabla está llena (" + CAMPO.capacidad + ")" : "Agregar una muestra de " + (tipo === "linea" ? "línea" : "relleno") + " (vector)" }, texto);
+        b.disabled = llena;
+        b.addEventListener("click", () => {
+          const r = C.agregarMuestra(estado.items, tipo, CAMPO.capacidad);
+          ultimoAviso = r.aviso;
+          cambiarLista(r.items);
+        });
+        botones.appendChild(b);
+      }
+      s.appendChild(botones);
       return s;
+    }
+
+    /** Color y grosor + trazo (línea) u opacidad (relleno). `cambiar(cambios)` guarda. */
+    function controlesMuestra(item, cambiar) {
+      const fila = nodo("div", { class: "controles-muestra" });
+      const color = nodo("input", { type: "color", title: "Color de la muestra" });
+      color.value = item.color.toLowerCase();
+      color.addEventListener("input", () => cambiar({ color: color.value.toUpperCase() }));
+      fila.appendChild(nodo("label", {}, "Color ")).appendChild(color);
+      if (item.tipo === "linea") {
+        const grosor = nodo("input", { type: "number", min: String(MU.GROSOR_MIN_MM), max: String(MU.GROSOR_MAX_MM),
+          step: "0.05", title: "Grosor de la línea en mm (" + MU.GROSOR_MIN_MM + " a " + MU.GROSOR_MAX_MM + ")" });
+        grosor.value = String(item.grosor_mm);
+        grosor.addEventListener("change", () => {
+          const v = Number(grosor.value);
+          if (grosor.value !== "" && Number.isFinite(v)) cambiar({ grosor_mm: v });
+        });
+        fila.appendChild(nodo("label", {}, "Grosor (mm) ")).appendChild(grosor);
+        const trazo = nodo("select", { title: "Trazo de la línea" });
+        for (const t of MU.TRAZOS) {
+          const o = nodo("option", { value: t }, t === "continua" ? "Continua" : "Discontinua");
+          if (t === item.trazo) o.selected = true;
+          trazo.appendChild(o);
+        }
+        trazo.addEventListener("change", () => cambiar({ trazo: trazo.value }));
+        fila.appendChild(nodo("label", {}, "Trazo ")).appendChild(trazo);
+      } else {
+        const opacidad = nodo("input", { type: "number", min: "0.05", max: "1", step: "0.05",
+          title: "Opacidad del relleno (1 = opaco)" });
+        opacidad.value = String(item.opacidad);
+        opacidad.addEventListener("change", () => {
+          const v = Number(opacidad.value);
+          if (opacidad.value !== "" && Number.isFinite(v)) cambiar({ opacidad: v });
+        });
+        fila.appendChild(nodo("label", {}, "Opacidad ")).appendChild(opacidad);
+      }
+      return fila;
     }
 
     function seccionSimbolos() {

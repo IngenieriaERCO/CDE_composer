@@ -467,6 +467,9 @@ def texto_composicion(plano_ruta: Path, r: ResultadoComposicion) -> str:
     if r.simbolos:
         verificado += ("; cada símbolo de convenciones tiene sus trazos y está donde debía en su "
                        "casilla (±0,1 mm)")
+    if r.muestras:
+        verificado += ("; cada muestra de línea o relleno de las convenciones está en su casilla "
+                       "(±0,1 mm) con su color, grosor, trazo y opacidad")
     if r.ortofoto is not None and r.ortofoto.mosaicos:
         verificado += "; cada mosaico de la ortofoto es JPEG y está en su sitio (±0,1 mm)"
     if r.localizacion is not None:
@@ -509,6 +512,10 @@ def texto_rosa_y_rotulo(r: ResultadoComposicion) -> list[str]:
         lineas.append(f"Convenciones: {len(r.simbolos)} símbolo(s): "
                       f"{len(r.simbolos) - len(reducidos)} a escala 1:1, {len(reducidos)} "
                       f"reducido(s){detalle}.")
+    if r.muestras:
+        n_lineas = sum(m.muestra.tipo == "linea" for m in r.muestras)
+        lineas.append(f"Convenciones: {n_lineas} línea(s) y {len(r.muestras) - n_lineas} "
+                      f"relleno(s) dibujados como vector.")
     if r.firmas:
         lineas.append(f"Firmas en imagen: {len(r.firmas)} ("
                       + ", ".join(f"{f.ruta_celda}: {f.id} al {f.escala * 100:.0f} % de su tamaño "

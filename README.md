@@ -290,7 +290,8 @@ detalles son advertencias. El PDF se verifica antes de entregarlo (posición de 
 con una nota por línea y viñetas con «- », más notas adicionales; numeradas solas, con
 sangría francesa) y las
 **convenciones** (símbolos copiados como vector de la biblioteca `simbolos/`, que se arma una
-vez con `extraer-simbolos`, más su descripción) y, en la celda FIRMA, texto o una **imagen**
+vez con `extraer-simbolos`, más su descripción; o muestras de **línea** —color, grosor, continua
+o discontinua— y de **relleno** —color y opacidad— que se dibujan como vector) y, en la celda FIRMA, texto o una **imagen**
 (`{"imagen": "<persona>"}` → `firmas/<persona>/firma.png`, una carpeta por persona, fuera de
 git, con transparencia); ESCALA (`1:1.000` o
 `INDICADAS`) y REV. (la última letra de las revisiones) se calculan solos. Los textos se
@@ -336,7 +337,8 @@ viñetas; se guardan copiadas en `rotulo.notas.adicionales`.
 Abrir y guardar un plano sin tocar nada deja el plano.json idéntico; al editar, solo cambia lo
 editado. El panel **Convenciones** muestra los símbolos del índice como miniaturas con
 casillas, y la lista del plano con la casilla de la leyenda de cada uno (columna y fila, en
-vivo), subir/bajar/quitar y descripción editable (tope de 24). De las firmas solo llegan los
+vivo), subir/bajar/quitar y descripción editable (tope de 24), y los botones **+ Línea** y
+**+ Relleno** para muestras con su color, grosor, trazo u opacidad. De las firmas solo llegan los
 **nombres** de las personas: las imágenes nunca se incrustan.
 Con la casilla **Vista previa del rótulo**, el lienzo dibuja en su sitio los textos del rótulo,
 las notas numeradas, los símbolos de convenciones, las etiquetas «ESC: 1:N» y la caja de cada

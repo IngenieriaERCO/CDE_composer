@@ -26,6 +26,15 @@ from pathlib import Path
 from componedor.firmas import FirmaPedida, montajes, pedir_firma
 from componedor.fuente import Fuente
 from componedor.maquetacion import TextoMaquetado, TextoNoCabe, maquetar
+from componedor.muestras_leyenda import (
+    CLAVES,
+    TIPO_SIMBOLO,
+    TIPOS,
+    ColocacionMuestra,
+    colocar_muestra,
+    leer_muestra,
+    tipo_de,
+)
 from componedor.notas import SIGNO_VINETA, NotasMaquetadas, leer_notas, maquetar_notas
 from componedor.rotulo_formato import (
     CampoConvenciones,
@@ -66,6 +75,7 @@ class RotuloPreparado:
     simbolos: list[ColocacionSimbolo] = field(default_factory=list)  # convenciones (4.2b)
     biblioteca: Biblioteca | None = None
     firmas: list[FirmaPedida] = field(default_factory=list)  # firmas en imagen (4.2d)
+    muestras: list[ColocacionMuestra] = field(default_factory=list)  # línea y relleno (9a)
 
 
 def preparar_rotulo(definicion: DefinicionRotulo, valores: dict | None,
@@ -84,14 +94,14 @@ def preparar_rotulo(definicion: DefinicionRotulo, valores: dict | None,
     if aviso:
         advertencias.append(aviso)
     notas = None
-    simbolos, biblioteca = [], None
+    simbolos, biblioteca, muestras = [], None, []
     for campo in definicion.campos.values():
         if isinstance(campo, CampoNotas) and campo.nombre in valores:
             notas = _notas(campo, valores[campo.nombre], definicion, fuente, carpeta,
                            problemas, advertencias)
         if isinstance(campo, CampoConvenciones) and campo.nombre in valores:
-            simbolos, biblioteca = _convenciones(campo, valores[campo.nombre], definicion,
-                                                 problemas, advertencias, contenidos)
+            simbolos, biblioteca, muestras = _convenciones(
+                campo, valores[campo.nombre], definicion, problemas, advertencias, contenidos)
 
     letras: list[str] = []
     imagenes: list[tuple] = []  # (celda, {"imagen": id}, sitio)
@@ -151,42 +161,59 @@ def preparar_rotulo(definicion: DefinicionRotulo, valores: dict | None,
     if notas is not None:
         textos += notas.textos
         finales["notas"] = f"{len(notas.textos)} nota(s)"
-    if simbolos:
-        finales["convenciones"] = f"{len(simbolos)} convención(es)"
-    return RotuloPreparado(textos, advertencias, finales, notas, simbolos, biblioteca, firmas)
+    if simbolos or muestras:
+        finales["convenciones"] = f"{len(simbolos) + len(muestras)} convención(es)"
+    return RotuloPreparado(textos, advertencias, finales, notas, simbolos, biblioteca, firmas,
+                           muestras)
 
 
 def _convenciones(campo: CampoConvenciones, valor, definicion: DefinicionRotulo,
                   problemas: list[str], advertencias: list[str],
-                  contenidos: list) -> tuple[list[ColocacionSimbolo], Biblioteca | None]:
-    """Valida "convenciones" (lista de {"simbolo", "descripcion"}), las acomoda por columna
-    (pareja izquierda de arriba abajo, luego la derecha) y agrega la descripción de cada una a
-    `contenidos` (se maqueta como cualquier texto). Anota problemas y advertencias."""
+                  contenidos: list) -> tuple[list[ColocacionSimbolo], Biblioteca | None,
+                                             list[ColocacionMuestra]]:
+    """Valida "convenciones" (lista de {"simbolo", "descripcion"} o muestras {"tipo": "linea" |
+    "relleno", ...}, ver muestras_leyenda), las acomoda por columna (pareja izquierda de arriba
+    abajo, luego la derecha) y agrega la descripción de cada una a `contenidos` (se maqueta como
+    cualquier texto). La biblioteca solo se carga si hay símbolos. Anota problemas y
+    advertencias."""
     donde = f"rotulo.{campo.nombre}"
     if not isinstance(valor, list):
         problemas.append(f"{donde}: se esperaba una lista de {{\"simbolo\": ..., "
                          f"\"descripcion\": ...}}; tiene {_tipo(valor)}")
-        return [], None
+        return [], None, []
     if not valor:
-        return [], None  # sin convenciones: no hace falta la biblioteca
+        return [], None, []  # sin convenciones: no hace falta la biblioteca
     if len(valor) > campo.capacidad:
         problemas.append(f"{donde}: hay {len(valor)} convenciones y la tabla admite "
                          f"{campo.capacidad} (dos columnas de {campo.capacidad // 2})")
-    try:
-        biblioteca = cargar_biblioteca(campo.biblioteca)
-    except BibliotecaInvalida as e:
-        problemas.append(f"{donde}: {e}")
-        return [], None
-    validos = list(biblioteca.simbolos)
+    biblioteca = None
+    if any(isinstance(item, dict) and tipo_de(item) == TIPO_SIMBOLO for item in valor):
+        try:
+            biblioteca = cargar_biblioteca(campo.biblioteca)
+        except BibliotecaInvalida as e:
+            problemas.append(f"{donde}: {e}")
+    validos = list(biblioteca.simbolos) if biblioteca else []
     vistos: dict[str, int] = {}
-    colocaciones = []
+    colocaciones, muestras = [], []
     for i, item in enumerate(valor):
         sitio = f"{donde}[{i}]"
         if not isinstance(item, dict):
             problemas.append(f"{sitio}: se esperaba un objeto {{\"simbolo\": ...}}; tiene "
                              f"{_tipo(item)}")
             continue
-        _desconocidas(item, ("descripcion", "simbolo"), sitio, problemas)
+        tipo = tipo_de(item)
+        if tipo not in TIPOS:
+            problemas.append(f"{sitio}.tipo: se esperaba «simbolo», «linea» o «relleno»; tiene "
+                             f"{_tipo(tipo)}")
+            continue
+        _desconocidas(item, CLAVES[tipo], sitio, problemas)
+        if tipo != TIPO_SIMBOLO:
+            muestra = _muestra(campo, item, i, sitio, definicion, problemas, contenidos)
+            if muestra is not None:
+                muestras.append(muestra)
+            continue
+        if biblioteca is None:
+            continue  # el problema de la biblioteca ya está anotado
         ident = item.get("simbolo")
         if ident not in biblioteca.simbolos:
             problemas.append(f"{sitio}.simbolo: {_tipo(ident)} no está en la biblioteca "
@@ -216,7 +243,28 @@ def _convenciones(campo: CampoConvenciones, valor, definicion: DefinicionRotulo,
                 f"redujo al {c.escala * 100:.1f} % para caber en su casilla (dibujo {ancho:.2f} x "
                 f"{alto:.2f} mm; espacio útil {casilla[2] - casilla[0] - 2 * definicion.relleno_mm:.2f}"
                 f" x {casilla[3] - casilla[1] - 2 * definicion.relleno_mm:.2f} mm).")
-    return colocaciones, biblioteca
+    return colocaciones, biblioteca, muestras
+
+
+def _muestra(campo: CampoConvenciones, item: dict, i: int, sitio: str,
+             definicion: DefinicionRotulo, problemas: list[str],
+             contenidos: list) -> ColocacionMuestra | None:
+    """Una muestra de línea o relleno: su descripción (obligatoria) a `contenidos` y dónde va."""
+    muestra = leer_muestra(item, sitio, problemas, _tipo)
+    if i >= campo.capacidad:
+        return None
+    celda = campo.descripciones[i]
+    texto = _contenido(item.get("descripcion"), f"{sitio}.descripcion", celda.lineas_max,
+                       problemas)
+    if texto is not None and not "".join(texto if isinstance(texto, list) else [texto]).strip():
+        problemas.append(f"{sitio}.descripcion: falta la descripción (una línea o un relleno no "
+                         f"tiene descripción por defecto)")
+        texto = None
+    if texto is not None:
+        contenidos.append((celda, texto))
+    if muestra is None:
+        return None
+    return colocar_muestra(muestra, i + 1, campo.simbolos[i].rect, definicion.relleno_mm)
 
 
 def _notas(campo: CampoNotas, valor, definicion: DefinicionRotulo, fuente: Fuente,

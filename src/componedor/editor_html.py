@@ -46,6 +46,7 @@ MARCADORES = {
     "/*@@JS_PANEL_ROTULO@@*/": "editor_panel_rotulo.js",
     "/*@@JS_NOTAS@@*/": "editor_notas.js",
     "/*@@JS_PANEL_NOTAS@@*/": "editor_panel_notas.js",
+    "/*@@JS_MUESTRAS@@*/": "editor_muestras.js",  # antes de convenciones y vista previa (9a)
     "/*@@JS_CONVENCIONES@@*/": "editor_convenciones.js",
     "/*@@JS_VISTA_PREVIA@@*/": "editor_vista_previa.js",
     "/*@@JS_LIENZO_ROTULO@@*/": "editor_lienzo_rotulo.js",

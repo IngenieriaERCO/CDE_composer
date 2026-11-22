@@ -24,14 +24,15 @@
   "use strict";
   const enNode = typeof module === "object" && module.exports;
   const api = enNode
-    ? fabrica(require("./editor_maquetacion.js"), require("./editor_formularios.js"), require("./editor_notas.js"))
-    : fabrica(raiz.EditorMaquetacion, raiz.EditorFormularios, raiz.EditorNotas);
+    ? fabrica(require("./editor_maquetacion.js"), require("./editor_formularios.js"), require("./editor_notas.js"),
+      require("./editor_muestras.js"))
+    : fabrica(raiz.EditorMaquetacion, raiz.EditorFormularios, raiz.EditorNotas, raiz.EditorMuestras);
   if (enNode) {
     module.exports = api;
   } else {
     raiz.EditorVistaPrevia = api;
   }
-})(typeof self !== "undefined" ? self : this, function (M, F, N) {
+})(typeof self !== "undefined" ? self : this, function (M, F, N, MU) {
   "use strict";
 
   const EPS_MM = 1e-6;
@@ -152,8 +153,10 @@
    * {rotulo (el objeto "rotulo" del plano), definicion, fuente (tabla de anchos), simbolos (los
    * del editor: id, descripcion, tamano_dibujo_mm, margen_mm), catalogo (de notas), escalas}.
    * Devuelve {textos: [{ruta, lineas: [{texto, base_mm, ancho_mm}], altura_mm, celda_mm}],
-   * simbolos: [{id, posicion, casilla, escala, pagina_mm, dibujo_mm}], firmas: [{ruta, persona,
-   * imagen, caja_mm, celda_mm}], problemas: [{ruta, rect_mm, nivel: "error"|"aviso", mensaje}]}.
+   * simbolos: [{id, posicion, casilla, escala, pagina_mm, dibujo_mm}], muestras: [{tipo, color,
+   * grosor_mm, trazo | opacidad, posicion, casilla, dibujo_mm}] (línea y relleno, 9a), firmas:
+   * [{ruta, persona, imagen, caja_mm, celda_mm}], problemas: [{ruta, rect_mm, nivel:
+   * "error"|"aviso", mensaje}]}.
    */
   function piezasRotulo(entrada) {
     const definicion = entrada.definicion;
@@ -163,6 +166,7 @@
     const interlineado = definicion.interlineado;
     const textos = [];
     const simbolos = [];
+    const muestras = [];
     const firmas = [];
     const problemas = [];
     const contenidos = []; // {celda, contenido}
@@ -180,6 +184,25 @@
         const d = campo.descripciones[i];
         const celda = { ruta: campo.nombre + "." + (i + 1) + ".descripcion", rect_mm: d.rect_mm.slice(), alinear: d.alinear,
           altura_mm: d.altura_mm, altura_min_mm: d.altura_min_mm, lineas_max: d.lineas_max };
+        const tipo = MU.tipoDe(item);
+        if (MU.esMuestra(tipo)) {
+          const sitio = "rotulo." + campo.nombre + "[" + i + "]";
+          const r = MU.leerMuestra(item, sitio, F.tipo);
+          if (MU.descripcionVacia(item.descripcion)) {
+            problema(celda.ruta, celda.rect_mm, "error", MU.errorFaltaDescripcion(sitio));
+          } else {
+            const c = contenido(item.descripcion, sitio + ".descripcion", d.lineas_max);
+            if (c.error) problema(celda.ruta, celda.rect_mm, "error", c.error);
+            else contenidos.push({ celda, contenido: c.contenido });
+          }
+          if (r.muestra) muestras.push(MU.colocarMuestra(r.muestra, i + 1, casilla, relleno));
+          else problema(celda.ruta, casilla, "error", r.errores.join("; "));
+          return;
+        }
+        if (tipo !== MU.TIPO_SIMBOLO) {
+          problema(celda.ruta, union(casilla, d.rect_mm), "error", "el tipo " + F.tipo(tipo) + " no es «simbolo», «linea» ni «relleno»");
+          return;
+        }
         const s = porId.get(item.simbolo);
         if (!s || vistos.has(item.simbolo)) {
           problema(celda.ruta, union(casilla, d.rect_mm), "error",
@@ -267,7 +290,7 @@
         m.sin_medir.map(F.pyRepr).join(" ") + "; componer dirá si las notas caben");
       else textos.push(...m.textos);
     }
-    return { textos, simbolos, firmas, problemas };
+    return { textos, simbolos, muestras, firmas, problemas };
   }
 
   // ---------------------------------------------------------------------------------------

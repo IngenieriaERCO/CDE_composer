@@ -317,6 +317,26 @@ Sección **Convenciones** del Rótulo (entre Notas y Revisiones, como en el rót
   (2 líneas, 1,8 -> 1,5 mm): «no cabe» en rojo y «se escribió a X mm» en ámbar, debajo de la
   descripción y en Problemas, con los textos de `componer`.
 
+### Líneas y rellenos (subfase 9a)
+
+Debajo de la lista, **+ Línea** y **+ Relleno** agregan un renglón que no es un símbolo de la
+biblioteca: una **muestra** que `componer` dibuja como **vector** en la casilla del símbolo.
+
+- **Línea**: **Color** (por defecto negro), **Grosor (mm)** de 0,05 a 2 (por defecto 0,25) y
+  **Trazo** continua o discontinua (guiones de 2 mm con huecos de 1 mm). Se dibuja horizontal,
+  de 13 mm de largo, centrada en la casilla.
+- **Relleno**: **Color** (por defecto gris) y **Opacidad** (mayor que 0 y hasta 1; 1 = opaco).
+  Un rectángulo de 13 × 6 mm, sin borde, centrado en la casilla.
+- La **descripción es obligatoria** (una muestra no tiene descripción por defecto): mientras
+  esté vacía, Problemas dice «falta la descripción».
+- La miniatura y la vista previa del rótulo muestran la muestra con su color, grosor, trazo y
+  opacidad. Se sube, se baja y se quita como cualquier convención; cuenta para el tope de 24.
+- Se guarda en `rotulo.convenciones` con todos sus valores, por ejemplo
+  `{"tipo": "linea", "descripcion": "RED DE MEDIA TENSIÓN", "color": "#FF0000", "grosor_mm":
+  0.35, "trazo": "discontinua"}` (ver [formato_plano.md](formato_plano.md#convenciones-rotuloconvenciones-subfase-42b)).
+- Los renglones de símbolo funcionan y se guardan como antes. El color tomado de la capa del DXF
+  (según la CTB) llega cuando se puedan escoger símbolos del DXF; por ahora el color se elige aquí.
+
 ## 2f. Cargar DXF (con servidor local)
 
 Solo con `Abrir editor.bat` (o `componedor servidor`). **Cargar DXF**, en la barra de arriba,

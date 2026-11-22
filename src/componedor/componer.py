@@ -115,6 +115,7 @@ from componedor.rosa import (
     redibujar_rosa,
     verificar_rosa,
 )
+from componedor.muestras_leyenda import ColocacionMuestra, dibujar_muestras, verificar_muestras
 from componedor.notas import NotasMaquetadas, verificar_notas
 from componedor.rotulo import RotuloInvalido, preparar_rotulo
 from componedor.simbolos import (
@@ -155,6 +156,7 @@ class ResultadoComposicion:
     etiquetas: list[str] = field(default_factory=list)  # ids de detalles con etiqueta ESC
     notas: NotasMaquetadas | None = None  # cuántas notas, líneas y a qué altura (4.2a)
     simbolos: list[ColocacionSimbolo] = field(default_factory=list)  # convenciones (4.2b)
+    muestras: list[ColocacionMuestra] = field(default_factory=list)  # línea y relleno (9a)
     firmas: list[FirmaPedida] = field(default_factory=list)  # firmas en imagen (4.2d)
     ortofoto: InformeOrtofoto | None = None  # plano versión 4
     copia: InformeCopia | None = None  # la copia reducida (si se compuso con el original)
@@ -187,6 +189,7 @@ class _Textos:
     simbolos: list[ColocacionSimbolo] = field(default_factory=list)
     biblioteca: Biblioteca | None = None
     firmas: list[FirmaPedida] = field(default_factory=list)
+    muestras: list[ColocacionMuestra] = field(default_factory=list)  # línea y relleno (9a)
 
 
 def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
@@ -255,6 +258,7 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
     resultado.etiquetas = [t.ruta.split(".", 1)[1] for t in textos.etiquetas]
     resultado.notas = textos.notas
     resultado.simbolos = textos.simbolos
+    resultado.muestras = textos.muestras
     resultado.firmas = textos.firmas
     return resultado
 
@@ -481,7 +485,7 @@ def _textos(plano: Plano, formato: Formato, colocados: list[tuple],
          for detalle, _, _, c in colocados],
         formato.zonas[ZONA], [(e.nombre, e.rect) for e in elementos], fuente)
     return (_Textos(fuente, rotulo.textos, etiquetas, rotulo.notas, rotulo.simbolos,
-                    rotulo.biblioteca, rotulo.firmas), rotulo.valores,
+                    rotulo.biblioteca, rotulo.firmas, rotulo.muestras), rotulo.valores,
             rotulo.advertencias + avisos)
 
 
@@ -514,10 +518,12 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
                     raise PlanoNoComponible(
                         "La verificación de la rosa de los vientos falló; no se generó el "
                         "plano:\n" + "\n".join(f"- {p}" for p in problemas))
-            if textos.simbolos:
-                # Los símbolos de convenciones son parte de la hoja base (van antes que los
-                # detalles): así el conteo de trazos por detalle sigue separando bien.
-                dibujar_simbolos(base, textos.simbolos, textos.biblioteca, formato.alto_mm)
+            if textos.simbolos or textos.muestras:
+                # Los símbolos y las muestras de convenciones son parte de la hoja base (van
+                # antes que los detalles): así el conteo de trazos por detalle sigue separando.
+                if textos.simbolos:
+                    dibujar_simbolos(base, textos.simbolos, textos.biblioteca, formato.alto_mm)
+                dibujar_muestras(base, textos.muestras, formato.alto_mm)
                 trazos_base = len(base.get_drawings())
                 imagenes_base = len(base.get_image_info())
             if ortofoto is not None:
@@ -553,7 +559,7 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
         problemas = _verificar(temporal, formato, informe, [c for *_, c in colocados],
                                trazos_base, trazos_por_detalle, imagenes_base, todos,
                                textos.notas, textos.simbolos, textos.firmas, informe_orto,
-                               cuadriculas, localizacion)
+                               cuadriculas, localizacion, textos.muestras)
         if problemas:
             raise PlanoNoComponible(
                 "La verificación del PDF compuesto falló; no se generó el plano:\n"
@@ -612,7 +618,8 @@ def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
                firmas: list[FirmaPedida] = (),
                ortofoto: InformeOrtofoto | None = None,
                cuadriculas: list[InformeCuadricula] = (),
-               localizacion: ImagenLocalizacion | None = None) -> list[str]:
+               localizacion: ImagenLocalizacion | None = None,
+               muestras: list[ColocacionMuestra] = ()) -> list[str]:
     """Mide el PDF guardado. Devuelve la lista de problemas (vacía si todo está bien)."""
     with pymupdf.open(ruta) as final:
         page = final[0]
@@ -620,6 +627,7 @@ def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
         if notas is not None:
             textos_mal += verificar_notas(page, notas, formato.alto_mm)
         textos_mal += verificar_simbolos(page, list(simbolos), formato.alto_mm)
+        textos_mal += verificar_muestras(page, list(muestras), formato.alto_mm)
         textos_mal += verificar_firmas(page, list(firmas), formato.alto_mm)
         textos_mal += verificar_ortofoto(page, ortofoto, formato.alto_mm)
         textos_mal += verificar_cuadricula(page, list(cuadriculas), formato.alto_mm)
