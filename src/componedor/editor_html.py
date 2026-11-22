@@ -68,7 +68,8 @@ def generar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
                    carpeta_salida: Path | str, sobrescribir: bool = False,
                    carpeta_notas: Path | str | None = None,
                    carpeta_firmas: Path | str | None = None,
-                   ruta_proyecto: Path | str | None = None) -> Path:
+                   ruta_proyecto: Path | str | None = None,
+                   carpeta_simbolos: Path | str | None = None) -> Path:
     """Escribe `editor.html` en `carpeta_salida` (nada más). Devuelve su ruta.
 
     Mismas reglas que `preparar-editor`: no pisa una carpeta con contenido salvo con
@@ -82,7 +83,8 @@ def generar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
     with tempfile.TemporaryDirectory(prefix="componedor_editor_") as temporal:
         datos = preparar_editor(carpeta_paquetes, ruta_formato, carpeta_salida, sobrescribir,
                                 carpeta_notas=carpeta_notas, carpeta_firmas=carpeta_firmas,
-                                ruta_proyecto=ruta_proyecto, carpeta_archivos=temporal)
+                                ruta_proyecto=ruta_proyecto, carpeta_archivos=temporal,
+                                carpeta_simbolos=carpeta_simbolos)
         html = construir_html(datos, Path(temporal), carpeta_salida)
     carpeta_salida.mkdir(parents=True, exist_ok=True)
     ruta = carpeta_salida / ARCHIVO_HTML

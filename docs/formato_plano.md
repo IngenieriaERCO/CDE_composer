@@ -361,7 +361,7 @@ No se compone el plano. El rótulo tiene 1 problema:
   del índice) y su caja es la esperada tras el escalado (±0,1 mm); la descripción pasa por
   la verificación de textos (posición y dentro de su celda).
 
-**La biblioteca** (`extraer-simbolos`, una sola vez):
+**La biblioteca** (`extraer-simbolos`, una sola vez por plano de origen):
 
 ```powershell
 python -m componedor.cli extraer-simbolos "C:\...\PRGE-25-0044-CIV-PL-101_A_Plano_Movimiento_de_Tierras.pdf"
@@ -369,10 +369,47 @@ python -m componedor.cli extraer-simbolos "C:\...\PRGE-25-0044-CIV-PL-101_A_Plan
 
 Lee la leyenda de la página 1 del plano (misma rejilla que el rótulo v2), la normaliza
 (quita el /Rotate 270), aísla cada símbolo con redacciones (`show_pdf_page` con `clip` no
-quita contenido, solo lo oculta) y lo copia como vector a `simbolos/convenciones_erco.pdf`, una
-página por símbolo; verifica que cada uno tenga los mismos trazos y la misma caja (±0,1 mm)
-que en el plano y escribe `simbolos/indice.json` (conserva los ids y descripciones que ya
-tenga). El PDF de la biblioteca sale de un plano de ERCO y **no se versiona**; el índice sí.
+quita contenido, solo lo oculta) y lo copia como vector a `simbolos/biblioteca/<id>.pdf`, un
+PDF por símbolo; verifica que cada uno tenga los mismos trazos y la misma caja (±0,1 mm)
+que en el plano y escribe `simbolos/indice.json` versión 2 (conserva los ids, descripciones y
+opacidades que ya tenga, y deja tal cual los símbolos de otro origen). Los PDF salen de un plano
+de ERCO y **no se versionan**; el índice sí.
+
+#### Biblioteca de símbolos versión 2 (subfase 9b)
+
+```json
+{"version": 2,
+ "simbolos": [
+   {"id": "corte", "descripcion": "CORTE", "tipo": "vector",
+    "tamano_mm": [17.695, 7.578], "margen_mm": 0.5, "trazos": 5,
+    "origen": {"clase": "plano_pdf", "plano": "PRGE-25-0044-CIV-PL-101_A_Plano_Movimiento_de_Tierras.pdf",
+               "pagina": 1, "casilla": 11, "rect_mm": [674.314, 148.124, 692.009, 155.702]},
+    "fecha": "2026-11-21"}
+ ]}
+```
+
+| Clave | Qué es |
+|---|---|
+| `id` | Letras, números, «_» o «-». Es el nombre de su PDF: `biblioteca/<id>.pdf`, junto al índice. No se repite. |
+| `descripcion` | La descripción por defecto en la leyenda. |
+| `tipo` | `"vector"` (las imágenes llegan en otra subfase). |
+| `tamano_mm` | `[ancho, alto]` del dibujo, sin el margen. La página del PDF mide eso más `margen_mm` por lado. |
+| `margen_mm` | Margen alrededor del dibujo en su página (0,5 en los de hoy). |
+| `trazos` | Cuántos trazos tiene el PDF: `componer` lo verifica en la casilla. |
+| `opacidad` | Opcional, mayor que 0 y hasta 1 (por defecto 1). |
+| `origen` | De dónde salió. `"clase": "plano_pdf"`: el plano, la página, la casilla de su leyenda y la caja del dibujo en ese plano. |
+| `fecha` | Cuándo entró a la biblioteca (`AAAA-MM-DD`). |
+
+- La carpeta de la biblioteca se elige con `carpeta_simbolos` en `componedor.json` (para el
+  editor y para `componer --config`); sin ella, la del formato (`biblioteca` del campo de
+  convenciones, `../simbolos/indice.json`).
+- Un índice con problemas (id con espacios o repetido, tipo, tamaño, fecha, origen o trazos
+  mal) los dice todos juntos; si falta el PDF de un símbolo, dice cuáles y cómo arreglarlo.
+- **Versión 1** (un solo `convenciones_erco.pdf`, una página por símbolo) se sigue leyendo igual.
+  `migrar-simbolos --config componedor.json` la pasa a la 2: copia cada página **tal cual** (no
+  redibuja), verifica que cada PDF nuevo tenga los mismos trazos en el mismo lugar y solo entonces
+  escribe el índice nuevo y **mueve** el PDF viejo y una copia del índice viejo a
+  `_para_borrar/simbolos_v1_<fecha>/`. Si algo falla, no cambia nada.
 
 ### Notas (`rotulo.notas`, subfase 4.2a)
 

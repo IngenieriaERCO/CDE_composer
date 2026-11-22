@@ -4,6 +4,8 @@ data/
 plantillas/*.pdf
 # Biblioteca de símbolos de convenciones: sale de un plano de ERCO (el indice.json SÍ se versiona).
 simbolos/*.pdf
+# Versión 2: un PDF por símbolo (subfase 9b).
+/simbolos/biblioteca/
 # Firmas en imagen (una carpeta por persona): datos personales, nunca al repositorio.
 firmas/
 __pycache__/

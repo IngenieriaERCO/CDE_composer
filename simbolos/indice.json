@@ -1,168 +1,294 @@
 {
-  "version": 1,
-  "biblioteca": "convenciones_erco.pdf",
-  "origen": {
-    "plano": "PRGE-25-0044-CIV-PL-101_A_Plano_Movimiento_de_Tierras.pdf",
-    "pagina": 1,
-    "margen_mm": 0.5
-  },
+  "version": 2,
   "simbolos": [
     {
       "id": "limite_predio",
       "descripcion": "LÍMITE DE PREDIO",
-      "casilla_origen": 1,
-      "pagina": 1,
-      "rect_mm": [
-        676.557,
-        254.127,
-        689.808,
-        254.635
+      "tipo": "vector",
+      "tamano_mm": [
+        13.251,
+        0.508
       ],
-      "trazos": 1
+      "margen_mm": 0.5,
+      "trazos": 1,
+      "origen": {
+        "clase": "plano_pdf",
+        "plano": "PRGE-25-0044-CIV-PL-101_A_Plano_Movimiento_de_Tierras.pdf",
+        "pagina": 1,
+        "casilla": 1,
+        "rect_mm": [
+          676.557,
+          254.127,
+          689.808,
+          254.635
+        ]
+      },
+      "fecha": "2026-11-21"
     },
     {
       "id": "curvas_nivel",
       "descripcion": "CURVAS DE NIVEL",
-      "casilla_origen": 2,
-      "pagina": 2,
-      "rect_mm": [
-        676.515,
-        239.649,
-        689.3,
-        248.878
+      "tipo": "vector",
+      "tamano_mm": [
+        12.785,
+        9.229
       ],
-      "trazos": 554
+      "margen_mm": 0.5,
+      "trazos": 554,
+      "origen": {
+        "clase": "plano_pdf",
+        "plano": "PRGE-25-0044-CIV-PL-101_A_Plano_Movimiento_de_Tierras.pdf",
+        "pagina": 1,
+        "casilla": 2,
+        "rect_mm": [
+          676.515,
+          239.649,
+          689.3,
+          248.878
+        ]
+      },
+      "fecha": "2026-11-21"
     },
     {
       "id": "cuerpos_agua",
       "descripcion": "CUERPOS DE AGUA",
-      "casilla_origen": 3,
-      "pagina": 3,
-      "rect_mm": [
-        675.668,
-        229.912,
-        689.681,
-        236.94
+      "tipo": "vector",
+      "tamano_mm": [
+        14.013,
+        7.028
       ],
-      "trazos": 3
+      "margen_mm": 0.5,
+      "trazos": 3,
+      "origen": {
+        "clase": "plano_pdf",
+        "plano": "PRGE-25-0044-CIV-PL-101_A_Plano_Movimiento_de_Tierras.pdf",
+        "pagina": 1,
+        "casilla": 3,
+        "rect_mm": [
+          675.668,
+          229.912,
+          689.681,
+          236.94
+        ]
+      },
+      "fecha": "2026-11-21"
     },
     {
       "id": "linea_electrica",
       "descripcion": "LÍNEA ELÉCTRICA",
-      "casilla_origen": 4,
-      "pagina": 4,
-      "rect_mm": [
-        673.34,
-        221.276,
-        692.898,
-        225.975
+      "tipo": "vector",
+      "tamano_mm": [
+        19.558,
+        4.699
       ],
-      "trazos": 18
+      "margen_mm": 0.5,
+      "trazos": 18,
+      "origen": {
+        "clase": "plano_pdf",
+        "plano": "PRGE-25-0044-CIV-PL-101_A_Plano_Movimiento_de_Tierras.pdf",
+        "pagina": 1,
+        "casilla": 4,
+        "rect_mm": [
+          673.34,
+          221.276,
+          692.898,
+          225.975
+        ]
+      },
+      "fecha": "2026-11-21"
     },
     {
       "id": "via_existente",
       "descripcion": "VÍA EXISTENTE",
-      "casilla_origen": 5,
-      "pagina": 5,
-      "rect_mm": [
-        676.473,
-        209.169,
-        689.892,
-        215.9
+      "tipo": "vector",
+      "tamano_mm": [
+        13.419,
+        6.731
       ],
-      "trazos": 231
+      "margen_mm": 0.5,
+      "trazos": 231,
+      "origen": {
+        "clase": "plano_pdf",
+        "plano": "PRGE-25-0044-CIV-PL-101_A_Plano_Movimiento_de_Tierras.pdf",
+        "pagina": 1,
+        "casilla": 5,
+        "rect_mm": [
+          676.473,
+          209.169,
+          689.892,
+          215.9
+        ]
+      },
+      "fecha": "2026-11-21"
     },
     {
       "id": "via_carreteable",
       "descripcion": "VÍA CARRETEABLE",
-      "casilla_origen": 6,
-      "pagina": 6,
-      "rect_mm": [
-        676.473,
-        198.713,
-        689.892,
-        205.401
+      "tipo": "vector",
+      "tamano_mm": [
+        13.419,
+        6.688
       ],
-      "trazos": 241
+      "margen_mm": 0.5,
+      "trazos": 241,
+      "origen": {
+        "clase": "plano_pdf",
+        "plano": "PRGE-25-0044-CIV-PL-101_A_Plano_Movimiento_de_Tierras.pdf",
+        "pagina": 1,
+        "casilla": 6,
+        "rect_mm": [
+          676.473,
+          198.713,
+          689.892,
+          205.401
+        ]
+      },
+      "fecha": "2026-11-21"
     },
     {
       "id": "limite_predio_proyectado",
       "descripcion": "LÍMITE DE PREDIO PROYECTADO",
-      "casilla_origen": 7,
-      "pagina": 7,
-      "rect_mm": [
-        676.981,
-        190.839,
-        690.231,
-        191.347
+      "tipo": "vector",
+      "tamano_mm": [
+        13.25,
+        0.508
       ],
+      "margen_mm": 0.5,
       "trazos": 1,
-      "opacidad": 0.5
+      "opacidad": 0.5,
+      "origen": {
+        "clase": "plano_pdf",
+        "plano": "PRGE-25-0044-CIV-PL-101_A_Plano_Movimiento_de_Tierras.pdf",
+        "pagina": 1,
+        "casilla": 7,
+        "rect_mm": [
+          676.981,
+          190.839,
+          690.231,
+          191.347
+        ]
+      },
+      "fecha": "2026-11-21"
     },
     {
       "id": "gps",
       "descripcion": "GPS",
-      "casilla_origen": 8,
-      "pagina": 8,
-      "rect_mm": [
-        680.579,
-        178.562,
-        687.479,
-        184.573
+      "tipo": "vector",
+      "tamano_mm": [
+        6.9,
+        6.011
       ],
-      "trazos": 153
+      "margen_mm": 0.5,
+      "trazos": 153,
+      "origen": {
+        "clase": "plano_pdf",
+        "plano": "PRGE-25-0044-CIV-PL-101_A_Plano_Movimiento_de_Tierras.pdf",
+        "pagina": 1,
+        "casilla": 8,
+        "rect_mm": [
+          680.579,
+          178.562,
+          687.479,
+          184.573
+        ]
+      },
+      "fecha": "2026-11-21"
     },
     {
       "id": "panel_3vx8",
       "descripcion": "PANEL 3VX8",
-      "casilla_origen": 9,
-      "pagina": 9,
-      "rect_mm": [
-        678.505,
-        168.317,
-        686.717,
-        173.863
+      "tipo": "vector",
+      "tamano_mm": [
+        8.212,
+        5.546
       ],
-      "trazos": 145
+      "margen_mm": 0.5,
+      "trazos": 145,
+      "origen": {
+        "clase": "plano_pdf",
+        "plano": "PRGE-25-0044-CIV-PL-101_A_Plano_Movimiento_de_Tierras.pdf",
+        "pagina": 1,
+        "casilla": 9,
+        "rect_mm": [
+          678.505,
+          168.317,
+          686.717,
+          173.863
+        ]
+      },
+      "fecha": "2026-11-21"
     },
     {
       "id": "panel_3vx24",
       "descripcion": "PANEL 3VX24",
-      "casilla_origen": 10,
-      "pagina": 10,
-      "rect_mm": [
-        673.425,
-        159.343,
-        693.279,
-        163.788
+      "tipo": "vector",
+      "tamano_mm": [
+        19.854,
+        4.445
       ],
-      "trazos": 507
+      "margen_mm": 0.5,
+      "trazos": 507,
+      "origen": {
+        "clase": "plano_pdf",
+        "plano": "PRGE-25-0044-CIV-PL-101_A_Plano_Movimiento_de_Tierras.pdf",
+        "pagina": 1,
+        "casilla": 10,
+        "rect_mm": [
+          673.425,
+          159.343,
+          693.279,
+          163.788
+        ]
+      },
+      "fecha": "2026-11-21"
     },
     {
       "id": "corte",
       "descripcion": "CORTE",
-      "casilla_origen": 11,
-      "pagina": 11,
-      "rect_mm": [
-        674.314,
-        148.124,
-        692.009,
-        155.702
+      "tipo": "vector",
+      "tamano_mm": [
+        17.695,
+        7.578
       ],
-      "trazos": 5
+      "margen_mm": 0.5,
+      "trazos": 5,
+      "origen": {
+        "clase": "plano_pdf",
+        "plano": "PRGE-25-0044-CIV-PL-101_A_Plano_Movimiento_de_Tierras.pdf",
+        "pagina": 1,
+        "casilla": 11,
+        "rect_mm": [
+          674.314,
+          148.124,
+          692.009,
+          155.702
+        ]
+      },
+      "fecha": "2026-11-21"
     },
     {
       "id": "relleno",
       "descripcion": "RELLENO",
-      "casilla_origen": 12,
-      "pagina": 12,
-      "rect_mm": [
-        674.314,
-        138.599,
-        692.009,
-        146.135
+      "tipo": "vector",
+      "tamano_mm": [
+        17.695,
+        7.536
       ],
-      "trazos": 5
+      "margen_mm": 0.5,
+      "trazos": 5,
+      "origen": {
+        "clase": "plano_pdf",
+        "plano": "PRGE-25-0044-CIV-PL-101_A_Plano_Movimiento_de_Tierras.pdf",
+        "pagina": 1,
+        "casilla": 12,
+        "rect_mm": [
+          674.314,
+          138.599,
+          692.009,
+          146.135
+        ]
+      },
+      "fecha": "2026-11-21"
     }
   ]
 }

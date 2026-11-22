@@ -24,6 +24,7 @@ from pathlib import Path
 
 import pymupdf
 
+from componedor.biblioteca_simbolos import con_carpeta_simbolos
 from componedor.cad_a_papel import limites_dibujo_en_papel
 from componedor.composicion import hoja_base_con_rosa
 from componedor.comprobacion_dibujo import tiene_fondo_de_pagina
@@ -34,15 +35,15 @@ from componedor.datos_rotulo_editor import (
     simbolos_editor,
     tabla_anchos,
 )
-from componedor.firmas import personas_firmas
 from componedor.estilos_impresion import leer_estilo_del_manifiesto
+from componedor.firmas import personas_firmas
 from componedor.formato import Formato, cargar_formato
 from componedor.fuente import FuenteInvalida, cargar_fuente
-from componedor.proyecto import ProyectoInvalido, leer_proyecto
 from componedor.inventario import ACEPTADO, EntradaInventario, construir_inventario
-from componedor.rotulo_formato import aviso_campos_retirados
+from componedor.proyecto import ProyectoInvalido, leer_proyecto
 from componedor.rosa import NOMBRE as ROSA
 from componedor.rosa import documento_rosa_sola
+from componedor.rotulo_formato import aviso_campos_retirados
 from componedor.transformaciones import rect_papel_a_pdf
 
 VERSION = 1
@@ -173,7 +174,8 @@ def preparar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
                     carpeta_notas: Path | str | None = None,
                     carpeta_firmas: Path | str | None = None,
                     ruta_proyecto: Path | str | None = None,
-                    carpeta_archivos: Path | str | None = None) -> dict:
+                    carpeta_archivos: Path | str | None = None,
+                    carpeta_simbolos: Path | str | None = None) -> dict:
     """Escribe editor_datos.json, plantilla.png, plantilla.svg, rosa.png, miniaturas/<id>.png y
     simbolos/<id>.png en `carpeta_archivos` (por defecto, `carpeta_salida`).
 
@@ -197,7 +199,10 @@ def preparar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
                                              carpeta_notas, carpeta_firmas, ruta_proyecto)
     formato = cargar_formato(ruta_formato)
     if datos["rotulo"] is not None:
-        simbolos, avisos = simbolos_editor(formato.rotulo, archivos)
+        # carpeta_simbolos (componedor.json): la biblioteca de convenciones; si no, la del formato.
+        con_biblioteca = con_carpeta_simbolos(formato, Path(carpeta_simbolos)
+                                              if carpeta_simbolos is not None else None)
+        simbolos, avisos = simbolos_editor(con_biblioteca.rotulo, archivos)
         datos["rotulo"]["simbolos"] = simbolos
         datos["rotulo"]["avisos"] += avisos
 

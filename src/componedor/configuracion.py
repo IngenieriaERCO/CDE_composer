@@ -6,6 +6,10 @@ Esquema (versión 1):
     {
       "version": 1,
       "formato": "formatos/A1_ERCO.json",      (obligatorio: el de la hoja, para los dos)
+      "carpeta_simbolos": "simbolos",          (opcional: carpeta de la biblioteca de símbolos
+                                                de convenciones, con su indice.json y
+                                                biblioteca/<id>.pdf; para los dos. Sin ella,
+                                                la del formato)
       "editor": {
         "paquetes": "data/input",              (obligatorio: carpeta con los paquetes)
         "salida":   "editor",                  (obligatorio: carpeta del editor; se crea)
@@ -67,7 +71,8 @@ from pathlib import Path
 from componedor.estilos_impresion import nombre_valido
 
 VERSION = 1
-CLAVES_GENERALES = ("version", "formato", "editor", "componer", "exportador", "ortofoto")
+CLAVES_GENERALES = ("version", "formato", "carpeta_simbolos", "editor", "componer", "exportador",
+                    "ortofoto")
 # Por sección: (obligatorias, opcionales, {clave: "carpeta" | "archivo"} de las que deben existir).
 SECCIONES = {
     "editor": (("paquetes", "salida"), ("notas", "firmas", "proyecto"),
@@ -89,12 +94,14 @@ class ConfigEditor:
     notas: Path | None = None
     firmas: Path | None = None
     proyecto: Path | None = None
+    simbolos: Path | None = None  # carpeta_simbolos (None: la biblioteca del formato)
 
 
 @dataclass(frozen=True)
 class ConfigComponer:
     formato: Path
     resultados: Path
+    simbolos: Path | None = None  # carpeta_simbolos (None: la biblioteca del formato)
 
 
 @dataclass(frozen=True)
@@ -247,7 +254,9 @@ def _leer_seccion(ruta: Path | str, nombre: str, verificar_rutas: bool) -> dict[
     problemas = [f"{clave}: clave desconocida (se admiten {', '.join(CLAVES_GENERALES)})."
                  for clave in sorted(set(datos) - set(CLAVES_GENERALES))]
     base = ruta.parent
-    rutas = {"formato": _ruta(datos.get("formato"), "formato", True, base, problemas)}
+    rutas = {"formato": _ruta(datos.get("formato"), "formato", True, base, problemas),
+             "simbolos": _ruta(datos.get("carpeta_simbolos"), "carpeta_simbolos", False, base,
+                               problemas)}
     seccion = datos.get(nombre)
     if not isinstance(seccion, dict):
         problemas.append(f'falta la sección "{nombre}" (un objeto con '
@@ -261,12 +270,13 @@ def _leer_seccion(ruta: Path | str, nombre: str, verificar_rutas: bool) -> dict[
             rutas[clave] = _ruta(seccion.get(clave), f"{nombre}.{clave}", clave in obligatorias,
                                  base, problemas)
     if verificar_rutas:
-        for clave, tipo in {"formato": "archivo", **tipos}.items():
+        for clave, tipo in {"formato": "archivo", "simbolos": "carpeta", **tipos}.items():
             r = rutas.get(clave)
             if r is None:
                 continue
             if not (r.is_dir() if tipo == "carpeta" else r.is_file()):
-                donde = clave if clave == "formato" else f"{nombre}.{clave}"
+                donde = {"formato": "formato", "simbolos": "carpeta_simbolos"}.get(
+                    clave, f"{nombre}.{clave}")
                 articulo = "la" if tipo == "carpeta" else "el"
                 problemas.append(f"{donde}: no existe {articulo} {tipo} '{r}'.")
     if problemas:

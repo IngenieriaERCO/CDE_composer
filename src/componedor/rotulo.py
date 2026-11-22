@@ -233,7 +233,7 @@ def _convenciones(campo: CampoConvenciones, valor, definicion: DefinicionRotulo,
         if texto is not None:
             contenidos.append((celda, texto))
         c = colocar_simbolo(simbolo, i + 1, campo.simbolos[i].rect, definicion.relleno_mm,
-                            biblioteca.margen_mm)
+                            simbolo.margen_mm)
         colocaciones.append(c)
         if c.escala < 1:
             ancho, alto = simbolo.tamano_mm

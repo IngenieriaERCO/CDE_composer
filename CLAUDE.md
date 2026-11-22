@@ -117,7 +117,7 @@ Componedor/   (carpeta raíz, en Documents)
   src/componedor/        # paquete (src/componedor/editor/: HTML, CSS y JS del editor)        [git]
   tests/                 # pruebas pytest                                                     [git]
   formatos/              # definiciones de hoja (A1_ERCO.json)                                [git]
-  simbolos/              # indice.json [git]; convenciones_erco.pdf (de ERCO)                 [no]
+  simbolos/              # indice.json v2 [git]; biblioteca/<id>.pdf (de ERCO)                [no]
   plantillas/            # PDF del rótulo de ERCO                                             [no]
   docs/                  # guías, contrato del paquete y estado_proyecto.md                   [git]
   firmas/<persona>/      # firma.png por persona (datos personales)                           [no]

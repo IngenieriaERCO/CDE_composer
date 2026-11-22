@@ -2530,6 +2530,72 @@ todo OK), con `editor/editor.html` recién generado y el formato A1 real:
 - al abrir el plano vuelven los mismos valores; un plano viejo (solo símbolos) se abre y se
   guarda idéntico; sin errores de JavaScript.
 
+### Biblioteca de símbolos versión 2 — Fase 9b ✅ (2026-11-21)
+
+**Pedido**: `simbolos/indice.json` versión 2 (a git) con id, descripción, tipo, origen y fecha;
+un PDF por símbolo en `simbolos/biblioteca/<id>.pdf` (fuera de git); carpeta configurable con
+`carpeta_simbolos`. Todo lo de hoy debe dar el mismo resultado.
+
+**Qué se hizo**
+- `biblioteca_simbolos.py` (nuevo):
+  - lee y revisa el índice versión 2 (todos los problemas juntos);
+  - escribe el índice;
+  - `con_carpeta_simbolos`: el formato con la biblioteca de `carpeta_simbolos`;
+  - `migrar_v1`: pasa la versión 1 a la 2 copiando cada página tal cual (`insert_pdf`),
+    compara trazo por trazo con la página vieja y solo entonces escribe el índice y MUEVE el
+    PDF viejo y una copia del índice viejo a `_para_borrar/simbolos_v1_<fecha>/`; si algo falla,
+    borra solo lo que creó y no cambia nada.
+- `simbolos.py`:
+  - `cargar_biblioteca` lee las dos versiones;
+  - cada `Simbolo` sabe su PDF, su página y su margen;
+  - `dibujar_simbolos` abre el PDF de cada símbolo;
+  - `extraer_simbolos` escribe la versión 2 y conserva los símbolos de otro origen.
+- `rotulo.py`: usa el margen de cada símbolo. `datos_rotulo_editor.py`: miniaturas desde el PDF
+  de cada símbolo.
+- `componedor.json` → `carpeta_simbolos` (opcional, a nivel general): `configuracion`
+  (`ConfigEditor.simbolos`, `ConfigComponer.simbolos`, carpeta que debe existir), `componer_plano
+  (…, carpeta_simbolos)`, `generar_editor` / `preparar_editor (…, carpeta_simbolos)`, CLI
+  `componer --config` y `editor --config`.
+- CLI `migrar-simbolos` (`--config` o `--indice`, `--para-borrar`).
+- `.gitignore`: `/simbolos/biblioteca/`.
+- **Biblioteca real migrada**:
+  - `simbolos/indice.json` es versión 2 con los 12 símbolos (origen PRGE-25-0044…, casilla y
+    caja de origen; fecha 2026-11-21);
+  - los 12 PDF están en `simbolos/biblioteca/`;
+  - `convenciones_erco.pdf` y una copia del índice versión 1 esperan en
+    `_para_borrar/simbolos_v1_2026-11-21/` la confirmación del usuario.
+
+**Mismo resultado**:
+- Antes de cambiar el código se compusieron 6 planos reales con convenciones: `PruebaultimaSup`,
+  `planoalan`, `planoguamo_prueba`, `planoprueba`, `PRUEBAFROTULO` y `plano_firma` (12 símbolos).
+- Después de migrar se compusieron otra vez, con `--config`. Salieron **iguales**:
+  - los mismos trazos (de 801 a 112 953 por plano), textos e imágenes;
+  - cada símbolo en la misma casilla, a la misma escala y en la misma posición (±1e-9 mm);
+  - las 12 miniaturas del editor, con el mismo SHA-256.
+
+**Pruebas**: 1383 pasan y 1 se salta (antes 1373). ruff igual que antes (173).
+- `test_biblioteca_simbolos` (10):
+  - la versión 1 se sigue leyendo;
+  - migrar no cambia ningún dibujo ni el plano compuesto;
+  - migrar se niega sin tocar nada (PDF ya existente, página distinta, ya migrada);
+  - índice con 7 problemas;
+  - extraer conserva los símbolos de otro origen;
+  - `con_carpeta_simbolos`;
+  - `componer` y el editor con `carpeta_simbolos`;
+  - configuración;
+  - `componer --config`;
+  - `migrar-simbolos`.
+- `test_simbolos` y `test_muestras_leyenda` actualizados a la versión 2: un PDF por símbolo, el
+  índice nuevo y los mensajes de PDF faltante.
+
+**Verificación en Edge** (`data/verificacion/verificar_biblioteca_v2.mjs`, 13 comprobaciones,
+todo OK):
+- el editor de antes de migrar y el regenerado con `--config` tienen los 12 símbolos, las mismas
+  descripciones y las mismas miniaturas, byte a byte (con la opacidad 0,5);
+- un plano con 4 símbolos se arma, se ve en la vista previa y se compone como «Componer.bat»: en
+  el PDF, cada casilla tiene los trazos del índice (554, 1, 507 y 5), con la opacidad 0,5;
+- `editor/planoalan.json` (guardado antes) se abre con las mismas convenciones y sin problemas.
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

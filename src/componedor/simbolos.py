@@ -31,14 +31,29 @@ vector y sus trazos no cambian; `extraer-simbolos` la conserva al regenerar.
 Al componer, cada símbolo se coloca centrado en su casilla con `show_pdf_page`, nunca
 agrandado: f = min(1, ancho_útil / ancho, alto_útil / alto) (útil = casilla menos el relleno).
 Se verifica en el PDF: trazos en la casilla = trazos del índice y caja = la esperada (±0,1 mm).
+
+Versión 2 (subfase 9b, biblioteca_simbolos.py): un PDF por símbolo en simbolos/biblioteca/<id>.pdf
+y el índice con tipo, origen y fecha. `cargar_biblioteca` lee las dos versiones (la 1 sigue
+funcionando igual); `extraer_simbolos` ya escribe la versión 2. Cada `Simbolo` sabe en qué PDF y
+en qué página está su dibujo (`ruta_pdf`, `pagina`) y su margen (`margen_mm`).
 """
 
 import json
-from dataclasses import dataclass
+import tempfile
+from dataclasses import dataclass, replace
+from datetime import date
 from pathlib import Path
 
 import pymupdf
 
+from componedor.biblioteca_simbolos import VERSION as VERSION_2
+from componedor.biblioteca_simbolos import (
+    entrada_v2,
+    escribir_indice_v2,
+    guardar_pagina,
+    leer_entradas_v2,
+    ruta_pdf_simbolo,
+)
 from componedor.colocar import abrir_pdf, insertar_pagina, tamano_visible_mm
 from componedor.formato import Formato, RectMM
 from componedor.hoja import crear_pagina
@@ -73,6 +88,8 @@ class Simbolo:
     rect_mm: RectMM  # caja del dibujo en el plano de origen
     trazos: int
     opacidad: float = 1.0  # 0 < opacidad <= 1; se aplica al colocarlo (sigue siendo vector)
+    ruta_pdf: Path | None = None  # el PDF con su dibujo (versión 1: el de toda la biblioteca)
+    margen_mm: float = MARGEN_MM  # alrededor del dibujo en su página
 
     @property
     def tamano_mm(self) -> tuple[float, float]:
@@ -82,7 +99,7 @@ class Simbolo:
 @dataclass(frozen=True)
 class Biblioteca:
     ruta_indice: Path
-    ruta_pdf: Path
+    ruta_pdf: Path  # versión 1: el PDF de la biblioteca; versión 2: la carpeta de los PDF
     margen_mm: float
     simbolos: dict[str, Simbolo]  # en el orden del índice
 
@@ -119,8 +136,11 @@ def cargar_biblioteca(ruta_indice: Path | str) -> Biblioteca:
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
         raise BibliotecaInvalida(f"el índice de símbolos '{ruta_indice}' no es un JSON UTF-8 "
                                  f"válido: {e}") from e
+    if isinstance(datos, dict) and datos.get("version") == VERSION_2:
+        return _cargar_v2(ruta_indice, datos)
     if not isinstance(datos, dict) or datos.get("version") != VERSION:
-        raise BibliotecaInvalida(f"el índice de símbolos '{ruta_indice}' no es versión {VERSION}")
+        raise BibliotecaInvalida(f"el índice de símbolos '{ruta_indice}' no es versión "
+                                 f"{VERSION} ni {VERSION_2}")
     lista = datos.get("simbolos")
     if not isinstance(lista, list) or not lista:
         raise BibliotecaInvalida(f"el índice '{ruta_indice}' no tiene símbolos")
@@ -150,7 +170,25 @@ def cargar_biblioteca(ruta_indice: Path | str) -> Biblioteca:
         raise BibliotecaInvalida(f"la biblioteca '{ruta_pdf}' tiene {paginas} páginas y el índice "
                                  f"pide otras para {', '.join(fuera)}. {COMO_GENERAR}")
     margen = float(datos.get("origen", {}).get("margen_mm", MARGEN_MM))
+    simbolos = {k: replace(s, ruta_pdf=ruta_pdf, margen_mm=margen) for k, s in simbolos.items()}
     return Biblioteca(ruta_indice, ruta_pdf, margen, simbolos)
+
+
+def _cargar_v2(ruta_indice: Path, datos: dict) -> Biblioteca:
+    """Índice versión 2: un PDF por símbolo (biblioteca_simbolos)."""
+    entradas, problemas = leer_entradas_v2(datos, ruta_indice)
+    if problemas:
+        raise BibliotecaInvalida(f"el índice de símbolos '{ruta_indice}' tiene "
+                                 f"{len(problemas)} problema(s): " + "; ".join(problemas))
+    simbolos = {}
+    for e in entradas:
+        ancho, alto = e["tamano_mm"]
+        casilla = e["origen"].get("casilla", 0)
+        simbolos[e["id"]] = Simbolo(e["id"], e.get("descripcion", ""),
+                                    casilla if isinstance(casilla, int) else 0, 1,
+                                    (0.0, 0.0, ancho, alto), e["trazos"], e["opacidad"],
+                                    e["ruta_pdf"], e["margen_mm"])
+    return Biblioteca(ruta_indice, ruta_indice.parent / "biblioteca", MARGEN_MM, simbolos)
 
 
 def _opacidad(item: dict, ruta_indice: Path) -> float:
@@ -182,11 +220,14 @@ def colocar_simbolo(simbolo: Simbolo, posicion: int, casilla: RectMM, relleno_mm
 
 def dibujar_simbolos(page: pymupdf.Page, colocaciones: list[ColocacionSimbolo],
                      biblioteca: Biblioteca, alto_hoja_mm: float) -> None:
-    """Copia cada símbolo (vector) de la biblioteca a su sitio en la hoja."""
-    if not colocaciones:
-        return
-    with pymupdf.open(biblioteca.ruta_pdf) as doc:
+    """Copia cada símbolo (vector) de su PDF a su sitio en la hoja."""
+    abiertos: dict[Path, pymupdf.Document] = {}
+    try:
         for c in colocaciones:
+            ruta = c.simbolo.ruta_pdf or biblioteca.ruta_pdf
+            if ruta not in abiertos:
+                abiertos[ruta] = pymupdf.open(ruta)
+            doc = abiertos[ruta]
             origen = doc[c.simbolo.pagina - 1]
             destino = rect_papel_a_pdf(c.destino_pagina, alto_hoja_mm)
             if c.simbolo.opacidad < 1:
@@ -194,6 +235,9 @@ def dibujar_simbolos(page: pymupdf.Page, colocaciones: list[ColocacionSimbolo],
                     page.show_pdf_page(destino, transparente, 0, clip=transparente[0].rect)
             else:
                 page.show_pdf_page(destino, doc, c.simbolo.pagina - 1, clip=origen.rect)
+    finally:
+        for doc in abiertos.values():
+            doc.close()
 
 
 def con_opacidad(doc: pymupdf.Document, pagina: int, opacidad: float) -> pymupdf.Document:
@@ -250,12 +294,14 @@ def verificar_simbolos(page: pymupdf.Page, colocaciones: list[ColocacionSimbolo]
 
 def extraer_simbolos(ruta_plano: Path | str, formato: Formato, ruta_indice: Path | str,
                      pagina: int = 1) -> InformeExtraccion:
-    """Arma la biblioteca (PDF + indice.json) a partir de la leyenda del plano. Si el índice ya
-    existe, conserva sus ids y descripciones y mide la casilla de origen de cada uno; si no,
-    crea uno con ids provisionales (simbolo_01, ...). Lanza `ExtraccionFallida`."""
+    """Arma la biblioteca versión 2 (un PDF por símbolo en biblioteca/<id>.pdf + indice.json) a
+    partir de la leyenda del plano. Si el índice ya existe (versión 1 o 2), conserva sus ids,
+    descripciones y opacidades y mide la casilla de origen de cada uno; los símbolos del índice
+    que no salieron de un plano PDF (otro origen) se conservan tal cual. Sin índice, crea uno con
+    ids provisionales (simbolo_01, ...). Lanza `ExtraccionFallida`."""
     campo = _campo_convenciones(formato)
     ruta_indice = Path(ruta_indice)
-    entradas = _entradas_del_indice(ruta_indice)
+    entradas, otros = _entradas_del_indice(ruta_indice)
     origen = abrir_pdf(ruta_plano, "el plano", ExtraccionFallida)
     try:
         if not 1 <= pagina <= origen.page_count:
@@ -286,17 +332,26 @@ def extraer_simbolos(ruta_plano: Path | str, formato: Formato, ruta_indice: Path
                             medidas[e["casilla_origen"]][0], medidas[e["casilla_origen"]][1],
                             e.get("opacidad", 1.0))
                     for i, e in enumerate(entradas, start=1)]
-        ruta_pdf = ruta_indice.parent / NOMBRE_PDF
-        _armar_biblioteca(hoja, campo, simbolos, formato, ruta_pdf)
+        with tempfile.TemporaryDirectory(prefix="componedor_simbolos_") as temporal:
+            ruta_pdf = Path(temporal) / NOMBRE_PDF  # todos juntos, para verificar y repartir
+            _armar_biblioteca(hoja, campo, simbolos, formato, ruta_pdf)
+            problemas = _verificar_biblioteca(ruta_pdf, simbolos)
+            if problemas:
+                raise ExtraccionFallida("la biblioteca no quedó igual al plano; no se guardó:\n"
+                                        + "\n".join(f"- {p}" for p in problemas))
+            with pymupdf.open(ruta_pdf) as todos:
+                for s in simbolos:
+                    guardar_pagina(todos, s.pagina - 1, ruta_pdf_simbolo(ruta_indice, s.id))
     finally:
         hoja.close()
-    problemas = _verificar_biblioteca(ruta_pdf, simbolos)
-    if problemas:
-        ruta_pdf.unlink(missing_ok=True)
-        raise ExtraccionFallida("la biblioteca no quedó igual al plano; no se guardó:\n"
-                                + "\n".join(f"- {p}" for p in problemas))
-    _escribir_indice(ruta_indice, simbolos, Path(ruta_plano).name, pagina)
-    return InformeExtraccion(ruta_pdf, ruta_indice, simbolos,
+    fecha = date.today().isoformat()
+    escribir_indice_v2(ruta_indice, [
+        entrada_v2(s.id, s.descripcion, s.tamano_mm, MARGEN_MM, s.trazos, s.opacidad,
+                   {"clase": "plano_pdf", "plano": Path(ruta_plano).name, "pagina": pagina,
+                    "casilla": s.casilla_origen, "rect_mm": list(s.rect_mm)}, fecha)
+        for s in simbolos] + otros)
+    simbolos = [replace(s, pagina=1, ruta_pdf=ruta_pdf_simbolo(ruta_indice, s.id)) for s in simbolos]
+    return InformeExtraccion(ruta_indice.parent / "biblioteca", ruta_indice, simbolos,
                              sorted(set(medidas) - usadas))
 
 
@@ -309,25 +364,33 @@ def _campo_convenciones(formato: Formato) -> CampoConvenciones:
     return campo
 
 
-def _entradas_del_indice(ruta: Path) -> list[dict]:
-    """ids, descripciones y casillas de origen de un índice existente ([] si no existe)."""
+def _entradas_del_indice(ruta: Path) -> tuple[list[dict], list[dict]]:
+    """(ids, descripciones, casillas de origen y opacidades de un índice existente, símbolos de
+    un índice versión 2 que no salieron de un plano PDF y se conservan tal cual). ([], []) si
+    no existe."""
     if not ruta.is_file():
-        return []
+        return [], []
+    otros = []
     try:
         datos = json.loads(ruta.read_text(encoding="utf-8"))
+        lista = datos["simbolos"]
+        if datos.get("version") == VERSION_2:
+            otros = [s for s in lista if (s.get("origen") or {}).get("clase") != "plano_pdf"]
+            lista = [{**s, "casilla_origen": s["origen"]["casilla"]} for s in lista
+                     if s not in otros]
         entradas = [{"id": s["id"], "descripcion": s.get("descripcion", ""),
                      "casilla_origen": int(s["casilla_origen"]),
-                     "opacidad": _opacidad(s, ruta)} for s in datos["simbolos"]]
+                     "opacidad": _opacidad(s, ruta)} for s in lista]
     except BibliotecaInvalida as e:
         raise ExtraccionFallida(str(e)) from e
     except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
         raise ExtraccionFallida(f"el índice existente '{ruta}' no se puede leer ({e}); cada "
                                 f"símbolo necesita \"id\" y \"casilla_origen\"") from e
-    ids = [e["id"] for e in entradas]
+    ids = [e["id"] for e in entradas] + [s.get("id") for s in otros]
     repetidos = sorted({i for i in ids if ids.count(i) > 1})
     if repetidos:
         raise ExtraccionFallida(f"el índice '{ruta}' repite ids: {', '.join(repetidos)}")
-    return entradas
+    return entradas, otros
 
 
 def _medir_casillas(page: pymupdf.Page, campo: CampoConvenciones,
@@ -433,22 +496,6 @@ def _verificar_biblioteca(ruta_pdf: Path, simbolos: list[Simbolo]) -> list[str]:
             if dif > TOL_MM:
                 problemas.append(f"'{s.id}': la caja difiere {dif:.3f} mm de la del plano")
     return problemas
-
-
-def _escribir_indice(ruta: Path, simbolos: list[Simbolo], plano: str, pagina: int) -> None:
-    datos = {
-        "version": VERSION,
-        "biblioteca": NOMBRE_PDF,
-        "origen": {"plano": plano, "pagina": pagina, "margen_mm": MARGEN_MM},
-        "simbolos": [{"id": s.id, "descripcion": s.descripcion,
-                      "casilla_origen": s.casilla_origen, "pagina": s.pagina,
-                      "rect_mm": list(s.rect_mm), "trazos": s.trazos,
-                      **({"opacidad": s.opacidad} if s.opacidad != 1 else {})}
-                     for s in simbolos],
-    }
-    ruta.parent.mkdir(parents=True, exist_ok=True)
-    ruta.write_text(json.dumps(datos, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
-                    newline="\n")
 
 
 # --- pequeños ------------------------------------------------------------------------------

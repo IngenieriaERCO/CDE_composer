@@ -64,6 +64,7 @@ componer siempre con el mismo formato. Las rutas son relativas a la carpeta del 
 {
   "version": 1,
   "formato": "formatos/A1_ERCO.json",
+  "carpeta_simbolos": "simbolos",
   "editor": {"paquetes": "data/input", "salida": "editor", "notas": "notas",
              "firmas": "firmas", "proyecto": null},
   "componer": {"resultados": "resultados"},
@@ -73,8 +74,10 @@ componer siempre con el mismo formato. Las rutas son relativas a la carpeta del 
 ```
 
 `formato`, `editor.paquetes`, `editor.salida` y `componer.resultados` son obligatorios;
-`notas`, `firmas` y `proyecto` son opcionales (`null` = no se usa). Una clave mal escrita o una
-ruta que no existe es error, y se listan todos los problemas juntos.
+`notas`, `firmas` y `proyecto` son opcionales (`null` = no se usa). `carpeta_simbolos`
+(opcional) es la carpeta de la biblioteca de símbolos de convenciones (`indice.json` y
+`biblioteca/<id>.pdf`), para el editor y para `componer`; sin ella, la del formato. Una clave mal
+escrita o una ruta que no existe es error, y se listan todos los problemas juntos.
 
 La sección `exportador` es opcional: sin ella el editor funciona igual, pero sin «Cargar DXF».
 `comando` es el comando del Exportador Vectorial (o una lista `[programa, argumentos…]`);
@@ -120,7 +123,8 @@ papel (origen en la esquina inferior izquierda de la hoja, Y hacia arriba).
 | `preparar-editor` | Deja por separado los datos e imágenes que el editor lleva incrustados (`editor_datos.json`, `plantilla.png`, `plantilla.svg`, `rosa.png`, miniaturas y símbolos), para revisarlos (ver [docs/formato_editor_datos.md](docs/formato_editor_datos.md)). |
 | `crear-plantilla-v3` | Crea `plantillas/rotulo_A1_ERCO_v3.pdf` desde la v2 (que no se toca): sin la fila DISEÑADOR \| REVISOR y con el logo centrado. Ver «Rótulo (plantilla)». |
 | `detectar-elementos` | Mide los elementos fijos de la plantilla dentro del área de dibujo (la rosa de los vientos) y genera un PDF de verificación. |
-| `extraer-simbolos` | Arma la biblioteca de símbolos de CONVENCIONES (vector) desde la leyenda de un plano real: `simbolos/convenciones_erco.pdf` (no se versiona) e `indice.json`. |
+| `extraer-simbolos` | Arma la biblioteca de símbolos de CONVENCIONES (vector, versión 2) desde la leyenda de un plano real: un PDF por símbolo en `simbolos/biblioteca/<id>.pdf` (no se versionan) e `indice.json`. |
+| `migrar-simbolos` | Pasa la biblioteca versión 1 (`convenciones_erco.pdf`, una página por símbolo) a la versión 2 sin cambiar ningún dibujo, y MUEVE el PDF viejo a `_para_borrar/simbolos_v1_<fecha>/`. `--config componedor.json` o `--indice`. |
 
 Ejemplos rápidos (uno por comando):
 
@@ -140,6 +144,7 @@ python -m componedor.cli editor data/input --formato formatos/A1_ERCO.json --sal
 python -m componedor.cli preparar-editor data/input --formato formatos/A1_ERCO.json --salida resultados/datos_editor
 python -m componedor.cli detectar-elementos --formato formatos/A1_ERCO.json --salida resultados/elementos_plantilla.pdf
 python -m componedor.cli extraer-simbolos "C:\...\plano_con_leyenda.pdf" --formato formatos/A1_ERCO.json
+python -m componedor.cli migrar-simbolos --config componedor.json
 ```
 
 El contrato del paquete del exportador (PDF + TXT + manifiesto) está en
@@ -401,9 +406,12 @@ línea (marco 0,5 mm, guías 0,13 mm) y, opcionalmente:
   (`C:/Windows/Fonts/arial.ttf`). Esquema versionado y validado: campos desconocidos, celdas
   fuera del rótulo o traslapadas son error.
 
-`simbolos/indice.json` (se versiona) lista los símbolos de convenciones (id, descripción por
-defecto, caja y trazos medidos); `simbolos/convenciones_erco.pdf` (no se versiona: sale de un
-plano de ERCO) los trae como vectores, uno por página. Se generan con `extraer-simbolos`.
+`simbolos/indice.json` (versión 2, se versiona) lista los símbolos de convenciones: id,
+descripción por defecto, tipo (`vector`), tamaño, margen, trazos, opacidad, origen (de qué plano
+y casilla salió) y fecha. `simbolos/biblioteca/<id>.pdf` (no se versionan: salen de planos de
+ERCO) trae cada símbolo como vector, un PDF por símbolo. Se generan con `extraer-simbolos`; una
+biblioteca versión 1 (`convenciones_erco.pdf`) se sigue leyendo y se pasa a la 2 con
+`migrar-simbolos`. Formato del índice: [docs/formato_plano.md](docs/formato_plano.md#biblioteca-de-símbolos-versión-2-subfase-9b).
 
 Al cargarlo se valida la geometría y que la plantilla exista; la fuente se comprueba al
 componer.

@@ -102,7 +102,7 @@ copiarlos a mano, con estos nombres exactos, desde donde los tenga el equipo:
 | Copiar a | Qué es | Sin él |
 |---|---|---|
 | `plantillas\rotulo_A1_ERCO_v3.pdf` | El rótulo A1 de ERCO (plantilla del plano) | `componer` y el editor no tienen rótulo |
-| `simbolos\convenciones_erco.pdf` | La biblioteca de símbolos de convenciones (`simbolos\indice.json` sí está en git) | No se pueden poner convenciones |
+| `simbolos\biblioteca\*.pdf` | La biblioteca de símbolos de convenciones, un PDF por símbolo (`simbolos\indice.json` sí está en git). Si le pasan la versión vieja, `simbolos\convenciones_erco.pdf`, cópiela ahí y corra `python -m componedor.cli migrar-simbolos --config componedor.json` | No se pueden poner símbolos en las convenciones (líneas y rellenos sí) |
 | `firmas\<persona>\firma.png` | Una carpeta por persona con su firma | Las firmas no salen en imagen |
 | `notas\…\*.txt` | El catálogo de notas típicas | El editor no ofrece notas típicas |
 

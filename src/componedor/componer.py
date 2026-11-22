@@ -56,8 +56,8 @@ from componedor.advertencias import (
     clave_traslape_detalles,
     texto_advertencia,
 )
+from componedor.biblioteca_simbolos import con_carpeta_simbolos
 from componedor.cad_a_papel import limites_dibujo_en_papel
-from componedor.configuracion import ConfigOrtofoto
 from componedor.colocar import (
     DetalleInvalido,
     abrir_pdf,
@@ -67,18 +67,25 @@ from componedor.colocar import (
     tamano_visible_mm,
 )
 from componedor.composicion import MANTENER, hoja_base_con_rosa
-from componedor.cuadricula import InformeCuadricula
-from componedor.cuadricula import armar as armar_cuadricula
-from componedor.cuadricula import dibujar as dibujar_cuadricula
-from componedor.cuadricula import verificar as verificar_cuadricula
 from componedor.comprobacion_dibujo import (
     es_fondo_blanco,
     limites_de_trazos,
     tiene_fondo_de_pagina,
 )
+from componedor.configuracion import ConfigOrtofoto
+from componedor.cuadricula import InformeCuadricula
+from componedor.cuadricula import armar as armar_cuadricula
+from componedor.cuadricula import dibujar as dibujar_cuadricula
+from componedor.cuadricula import verificar as verificar_cuadricula
 from componedor.etiquetas_escala import DetalleParaEtiqueta, colocar_etiquetas
-from componedor.formato import EPS_MM, ElementoPlantilla, Formato, RectMM, cargar_formato
 from componedor.firmas import FirmaPedida, insertar_firmas, verificar_firmas
+from componedor.formato import (
+    EPS_MM,
+    ElementoPlantilla,
+    Formato,
+    RectMM,
+    cargar_formato,
+)
 from componedor.fuente import Fuente, FuenteInvalida, cargar_fuente
 from componedor.importador import PaqueteAceptado, PaqueteRechazado, importar_paquete
 from componedor.localizacion import ImagenLocalizacion, LocalizacionInvalida
@@ -87,6 +94,12 @@ from componedor.localizacion import leer_valor as leer_localizacion
 from componedor.localizacion import preparar as preparar_localizacion
 from componedor.localizacion import verificar as verificar_localizacion
 from componedor.maquetacion import TextoMaquetado
+from componedor.muestras_leyenda import (
+    ColocacionMuestra,
+    dibujar_muestras,
+    verificar_muestras,
+)
+from componedor.notas import NotasMaquetadas, verificar_notas
 from componedor.ortofoto_copia import InformeCopia, carpeta_copia, escribir_copia
 from componedor.ortofoto_fuente import (
     Eleccion,
@@ -115,8 +128,6 @@ from componedor.rosa import (
     redibujar_rosa,
     verificar_rosa,
 )
-from componedor.muestras_leyenda import ColocacionMuestra, dibujar_muestras, verificar_muestras
-from componedor.notas import NotasMaquetadas, verificar_notas
 from componedor.rotulo import RotuloInvalido, preparar_rotulo
 from componedor.simbolos import (
     Biblioteca,
@@ -193,16 +204,18 @@ class _Textos:
 
 
 def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
-                   guias: bool = False, config_ortofoto: ConfigOrtofoto | None = None
-                   ) -> ResultadoComposicion:
+                   guias: bool = False, config_ortofoto: ConfigOrtofoto | None = None,
+                   carpeta_simbolos: Path | None = None) -> ResultadoComposicion:
     """Compone `plano` en `salida`. Lanza `PlanoNoComponible` (o `FileExistsError`).
-    config_ortofoto: ppp y calidad JPEG de la ortofoto (por defecto 300 y 85)."""
+    config_ortofoto: ppp y calidad JPEG de la ortofoto (por defecto 300 y 85).
+    carpeta_simbolos: la biblioteca de convenciones (`carpeta_simbolos` de componedor.json);
+    None: la del formato."""
     salida = Path(salida)
     if salida.exists() and not sobrescribir:
         raise FileExistsError(
             f"El archivo '{salida}' ya existe. Use --sobrescribir para reemplazarlo.")
 
-    formato = _formato(plano)
+    formato = con_carpeta_simbolos(_formato(plano), carpeta_simbolos)
     if plano.pendientes:  # plano versión 3 con bloques de DXF sin exportar
         raise PlanoNoComponible(texto_pendientes(plano.pendientes, plano.dxf,
                                                  formato.zonas[ZONA], ZONA))

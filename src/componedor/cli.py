@@ -10,11 +10,15 @@ from pathlib import Path
 import pymupdf
 
 from componedor.aplicacion_editor import AplicacionEditor
+from componedor.biblioteca_simbolos import InformeMigracion, migrar_v1
 from componedor.cad_a_papel import limites_dibujo_en_papel, origen_para_ancla
 from componedor.coherencia import verificar_paquete
-from componedor.importador import importar_paquete
-from componedor.inventario import RECHAZADO, EntradaInventario, construir_inventario
-from componedor.colocar import DetalleInvalido, abrir_pdf, colocar_detalle, tamano_visible_mm
+from componedor.colocar import (
+    DetalleInvalido,
+    abrir_pdf,
+    colocar_detalle,
+    tamano_visible_mm,
+)
 from componedor.comando_referencia import ejecutar_referencia
 from componedor.componer import ResultadoComposicion, componer_plano
 from componedor.composicion import hoja_base
@@ -25,7 +29,6 @@ from componedor.configuracion import (
     leer_config_exportador,
     leer_config_ortofoto,
 )
-from componedor.editor_html import ARCHIVO_HTML, datos_incrustados, generar_editor
 from componedor.datos_editor import (
     ARCHIVO_DATOS,
     ARCHIVO_PLANTILLA,
@@ -33,10 +36,17 @@ from componedor.datos_editor import (
     ZONA_EDITABLE,
     preparar_editor,
 )
-from componedor.elementos_plantilla import Candidato, detectar_elementos, pdf_verificacion
-from componedor.plano import Plano, leer_plano
+from componedor.editor_html import ARCHIVO_HTML, datos_incrustados, generar_editor
+from componedor.elementos_plantilla import (
+    Candidato,
+    detectar_elementos,
+    pdf_verificacion,
+)
 from componedor.formato import Formato, RectMM, cargar_formato
 from componedor.hoja import ORIENTACIONES, crear_hoja
+from componedor.importador import importar_paquete
+from componedor.informe import resultado_final
+from componedor.inventario import RECHAZADO, EntradaInventario, construir_inventario
 from componedor.manifiesto import Manifiesto, leer_manifiesto
 from componedor.paquete import (
     COMPLETO,
@@ -47,11 +57,14 @@ from componedor.paquete import (
     localizar_con_sueltos,
     paquete_de_manifiesto,
 )
-from componedor.informe import resultado_final
-from componedor.validacion import Comprobacion, ResultadoVerificacion
-from componedor.plantilla import TOLERANCIA_MARCO_MM, TOLERANCIA_TAMANO_MM, InformePlantilla
-from componedor.plantilla_v3 import ORIGEN as PLANTILLA_V2
+from componedor.plano import Plano, leer_plano
+from componedor.plantilla import (
+    TOLERANCIA_MARCO_MM,
+    TOLERANCIA_TAMANO_MM,
+    InformePlantilla,
+)
 from componedor.plantilla_v3 import DESTINO as PLANTILLA_V3
+from componedor.plantilla_v3 import ORIGEN as PLANTILLA_V2
 from componedor.plantilla_v3 import crear_plantilla_v3
 from componedor.plantilla_v3 import texto_informe as texto_informe_v3
 from componedor.rotulo_formato import CampoConvenciones
@@ -59,6 +72,7 @@ from componedor.servidor import ServidorEditor
 from componedor.simbolos import InformeExtraccion, extraer_simbolos
 from componedor.transformaciones import PuntoMM
 from componedor.unidades import pt_a_mm
+from componedor.validacion import Comprobacion, ResultadoVerificacion
 
 
 def _exigir_que_no_exista(salida: Path, sobrescribir: bool) -> None:
@@ -533,14 +547,41 @@ def _indice_del_formato(formato: Formato) -> Path:
     raise ValueError("El formato no tiene un campo de tipo \"convenciones\"; indique --indice.")
 
 
+def opciones_migrar(args) -> tuple[Path, Path]:
+    """(índice, carpeta para borrar) de `migrar-simbolos`."""
+    if args.config is not None:
+        if args.indice is not None:
+            raise ValueError("con --config el índice sale del archivo; quite --indice.")
+        config = leer_config_componer(args.config)
+        indice = (config.simbolos / "indice.json" if config.simbolos is not None
+                  else _indice_del_formato(cargar_formato(config.formato, usar_plantilla=False)))
+        return indice, args.para_borrar or args.config.parent / "_para_borrar"
+    if args.indice is None:
+        raise ValueError("indique --config componedor.json o --indice.")
+    return args.indice, args.para_borrar or args.indice.resolve().parent.parent / "_para_borrar"
+
+
+def texto_migracion(informe: InformeMigracion) -> str:
+    """Resumen de `migrar-simbolos`."""
+    return "\n".join([
+        f"Biblioteca de símbolos pasada a la versión 2: {len(informe.ids)} símbolo(s).",
+        f"Índice: {informe.ruta_indice}",
+        f"PDF de cada símbolo: {informe.carpeta_pdf}",
+        "Verificación: cada PDF nuevo es la misma página de antes, con los mismos trazos en el "
+        "mismo lugar; ningún dibujo cambió.",
+        "Movidos para borrar (bórrelos cuando lo confirme): "
+        + ", ".join(str(m) for m in informe.movidos)])
+
+
 def texto_extraccion(informe: InformeExtraccion) -> str:
     """Resumen de `extraer-simbolos`."""
-    lineas = [f"Biblioteca de símbolos: {informe.ruta_pdf} "
-              f"({informe.ruta_pdf.stat().st_size / 1024:.1f} KB, {len(informe.simbolos)} "
-              f"símbolo(s), uno por página)", f"Índice: {informe.ruta_indice}", ""]
-    for s in informe.simbolos:
+    kb = sum(s.ruta_pdf.stat().st_size for s in informe.simbolos) / 1024
+    lineas = [f"Biblioteca de símbolos (versión 2): {informe.ruta_pdf} ({kb:.1f} KB, "
+              f"{len(informe.simbolos)} símbolo(s), un PDF por símbolo)",
+              f"Índice: {informe.ruta_indice}", ""]
+    for k, s in enumerate(informe.simbolos, start=1):
         ancho, alto = s.tamano_mm
-        lineas.append(f"  {s.pagina:2d}. {s.id:<26} casilla {s.casilla_origen:2d}  "
+        lineas.append(f"  {k:2d}. {s.id:<26} casilla {s.casilla_origen:2d}  "
                       f"{ancho:6.2f} x {alto:5.2f} mm  {s.trazos:4d} trazo(s)  "
                       f"«{s.descripcion}»")
     if informe.omitidas:
@@ -548,7 +589,8 @@ def texto_extraccion(informe: InformeExtraccion) -> str:
                        + ", ".join(map(str, informe.omitidas))]
     lineas += ["", "Verificación: cada símbolo de la biblioteca tiene los mismos trazos que en el "
                    "plano y la misma caja (±0,1 mm); todo es vector.",
-               "La biblioteca (simbolos/*.pdf) sale de un plano de ERCO: no se versiona."]
+               "Los PDF de los símbolos (simbolos/biblioteca/*.pdf) salen de un plano de ERCO: no "
+               "se versionan; el índice sí."]
     return "\n".join(lineas)
 
 
@@ -849,6 +891,18 @@ def main(argv: list[str] | None = None) -> int:
     p_det.add_argument("--sobrescribir", action="store_true",
                        help="Reemplaza el archivo de salida si ya existe.")
 
+    p_mig = sub.add_parser("migrar-simbolos",
+                           help="Pasa la biblioteca de símbolos de la versión 1 (un PDF con una "
+                                "página por símbolo) a la versión 2 (un PDF por símbolo), sin "
+                                "cambiar ningún dibujo.")
+    p_mig.add_argument("--config", type=Path,
+                       help="componedor.json: la biblioteca de carpeta_simbolos (o la del formato) "
+                            "y _para_borrar junto al archivo.")
+    p_mig.add_argument("--indice", type=Path, help="indice.json versión 1 (sin --config).")
+    p_mig.add_argument("--para-borrar", type=Path,
+                       help="Adónde se MUEVE el PDF viejo (por defecto, _para_borrar junto a "
+                            "componedor.json o dos carpetas arriba del índice).")
+
     p_sim = sub.add_parser("extraer-simbolos",
                            help="Arma la biblioteca de símbolos de convenciones (vector) a "
                                 "partir de la leyenda de un plano real.")
@@ -957,7 +1011,8 @@ def main(argv: list[str] | None = None) -> int:
             ruta_html = generar_editor(opciones.paquetes, opciones.formato, opciones.salida,
                                        args.sobrescribir, carpeta_notas=opciones.notas,
                                        carpeta_firmas=opciones.firmas,
-                                       ruta_proyecto=opciones.proyecto)
+                                       ruta_proyecto=opciones.proyecto,
+                                       carpeta_simbolos=opciones.simbolos)
             carpeta = ruta_html.parent.resolve()
             print(f"Editor generado: {ruta_html.resolve()} "
                   f"({ruta_html.stat().st_size / 1024:.0f} KB)")
@@ -984,6 +1039,9 @@ def main(argv: list[str] | None = None) -> int:
             candidatos = detectar_elementos(formato)
             pdf_verificacion(formato, candidatos, args.salida)
             print(texto_candidatos(candidatos, args.salida))
+        elif args.subcomando == "migrar-simbolos":
+            indice, para_borrar = opciones_migrar(args)
+            print(texto_migracion(migrar_v1(indice, para_borrar)))
         elif args.subcomando == "extraer-simbolos":
             formato = cargar_formato(args.formato, usar_plantilla=False)
             indice = args.indice or _indice_del_formato(formato)
@@ -996,8 +1054,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Error: {error}", file=sys.stderr)
                 return 2
             config_orto = leer_config_ortofoto(args.config) if args.config else None
+            simbolos = leer_config_componer(args.config).simbolos if args.config else None
             resultado = componer_plano(plano, salida, args.sobrescribir, args.guias,
-                                       config_orto)
+                                       config_orto, simbolos)
             print(texto_composicion(args.plano, resultado))
             if args.codigo_avisos and resultado.advertencias:
                 return CODIGO_AVISOS

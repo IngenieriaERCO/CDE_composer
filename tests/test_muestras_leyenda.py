@@ -1,6 +1,7 @@
 """Muestras de línea y relleno en las convenciones (subfase 9a): se leen, se ubican, se dibujan
 como vector, se verifican en el PDF y conviven con los símbolos de siempre."""
 
+import shutil
 from dataclasses import replace
 
 import pymupdf
@@ -130,7 +131,7 @@ def test_componer_mezcla_simbolos_y_muestras_en_vector(entorno):  # noqa: F811
 
 @requiere_arial
 def test_solo_muestras_no_necesita_la_biblioteca(entorno):  # noqa: F811
-    (entorno / "simbolos" / "convenciones_erco.pdf").unlink()
+    shutil.rmtree(entorno / "simbolos" / "biblioteca")
     r = componer_plano(_plano(entorno, [{"tipo": "relleno", "descripcion": "AGUA"}]), entorno / "p.pdf")
     assert len(r.muestras) == 1 and r.simbolos == []
 

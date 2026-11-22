@@ -101,8 +101,8 @@ def simbolos_editor(definicion: DefinicionRotulo, carpeta_salida: Path) -> tuple
         viejo.unlink()
     zoom = PX_POR_MM_SIMBOLOS * 25.4 / 72
     lista = []
-    with pymupdf.open(biblioteca.ruta_pdf) as doc:
-        for s in biblioteca.simbolos.values():
+    for s in biblioteca.simbolos.values():
+        with pymupdf.open(s.ruta_pdf) as doc:  # versión 2: un PDF por símbolo
             if s.opacidad < 1:
                 fuente_doc, pagina = con_opacidad(doc, s.pagina - 1, s.opacidad), 0
             else:
@@ -115,7 +115,7 @@ def simbolos_editor(definicion: DefinicionRotulo, carpeta_salida: Path) -> tuple
             ancho, alto = s.tamano_mm
             lista.append({
                 "id": s.id, "descripcion": s.descripcion, "opacidad": s.opacidad,
-                "tamano_dibujo_mm": [ancho, alto], "margen_mm": biblioteca.margen_mm,
+                "tamano_dibujo_mm": [ancho, alto], "margen_mm": s.margen_mm,
                 "imagen": {"archivo": archivo, "ancho_px": pix.width, "alto_px": pix.height},
             })
     return lista, []

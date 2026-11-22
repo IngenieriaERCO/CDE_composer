@@ -3,6 +3,7 @@ colocación en el rótulo y la verificación. Todo con un plano y una biblioteca
 (conftest.crear_plano_con_leyenda), nunca con el plano real de ERCO."""
 
 import json
+import shutil
 from dataclasses import replace
 
 import pymupdf
@@ -74,9 +75,10 @@ def test_extrae_cada_simbolo_como_vector_con_sus_trazos_y_su_caja(biblioteca):
     carpeta, informe = biblioteca
     assert [s.id for s in informe.simbolos] == IDS  # el orden y los ids del índice previo
     assert informe.omitidas == []
-    with pymupdf.open(informe.ruta_pdf) as doc:
-        assert doc.page_count == 14
-        for s, k in zip(informe.simbolos, LEYENDA):
+    for s, k in zip(informe.simbolos, LEYENDA):  # versión 2: un PDF por símbolo
+        assert s.ruta_pdf == carpeta / "simbolos" / "biblioteca" / f"{s.id}.pdf" and s.pagina == 1
+        with pymupdf.open(s.ruta_pdf) as doc:
+            assert doc.page_count == 1
             tipo = LEYENDA[k]
             assert s.trazos == TRAZOS_POR_TIPO[tipo], s.id
             esperado = dibujo_de_tipo(tipo, casilla_conv(k))
@@ -91,11 +93,15 @@ def test_extrae_cada_simbolo_como_vector_con_sus_trazos_y_su_caja(biblioteca):
             assert page.rect.width * 25.4 / 72 == pytest.approx(ancho + 1.0, abs=0.01)
             assert page.rect.height * 25.4 / 72 == pytest.approx(alto + 1.0, abs=0.01)
     indice = json.loads((carpeta / "simbolos" / "indice.json").read_text(encoding="utf-8"))
-    assert indice["version"] == 1 and indice["biblioteca"] == "convenciones_erco.pdf"
-    assert indice["origen"] == {"plano": "plano_con_leyenda.pdf", "pagina": 1, "margen_mm": 0.5}
-    assert indice["simbolos"][1] == {"id": "corte", "descripcion": "DESCRIPCIÓN CORTE",
-                                     "casilla_origen": 2, "pagina": 2,
-                                     "rect_mm": indice["simbolos"][1]["rect_mm"], "trazos": 1}
+    assert set(indice) == {"version", "simbolos"} and indice["version"] == 2
+    corte = indice["simbolos"][1]
+    assert corte == {"id": "corte", "descripcion": "DESCRIPCIÓN CORTE", "tipo": "vector",
+                     "tamano_mm": corte["tamano_mm"], "margen_mm": 0.5, "trazos": 1,
+                     "origen": {"clase": "plano_pdf", "plano": "plano_con_leyenda.pdf",
+                                "pagina": 1, "casilla": 2, "rect_mm": corte["origen"]["rect_mm"]},
+                     "fecha": corte["fecha"]}
+    assert corte["tamano_mm"] == pytest.approx(informe.simbolos[1].tamano_mm, abs=0.001)
+    assert not (carpeta / "simbolos" / "convenciones_erco.pdf").exists()
 
 
 def test_sin_indice_crea_ids_provisionales_y_avisa_las_omitidas(tmp_path):
@@ -134,8 +140,9 @@ def test_cli_extraer_simbolos(tmp_path, capsys):
     _indice_previo(tmp_path, ids=["corte", "panel"], casillas=[1, 2])
     assert main(["extraer-simbolos", str(plano), "--formato", str(ruta_formato)]) == 0
     out = capsys.readouterr().out
-    assert "2 símbolo(s), uno por página" in out and "corte" in out and "panel" in out
-    assert "misma caja (±0,1 mm)" in out and "no se versiona" in out
+    assert "(versión 2)" in out and "2 símbolo(s), un PDF por símbolo" in out
+    assert "corte" in out and "panel" in out
+    assert "misma caja (±0,1 mm)" in out and "no se versionan; el índice sí" in out
     assert main(["extraer-simbolos", str(tmp_path / "no.pdf"), "--formato",
                  str(ruta_formato)]) == 1
     assert "No se encontró el plano" in capsys.readouterr().err
@@ -148,11 +155,11 @@ def test_biblioteca_ausente_o_incompleta_dice_que_falta_y_como_generarla(tmp_pat
     with pytest.raises(BibliotecaInvalida, match=r"no se encontró el índice de símbolos .*"
                                                  r"extraer-simbolos <plano.pdf>"):
         cargar_biblioteca(tmp_path / "nada" / "indice.json")
-    (carpeta / "simbolos" / "convenciones_erco.pdf").unlink()
-    with pytest.raises(BibliotecaInvalida, match=r"no se encontró la biblioteca de símbolos .*"
-                                                 r"no se versiona\)\. Genérela con"):
+    (carpeta / "simbolos" / "biblioteca" / "corte.pdf").unlink()
+    with pytest.raises(BibliotecaInvalida, match=r"faltan los PDF de corte en .*biblioteca' \(no "
+                                                 r"se versionan\)\. .*migrar-simbolos"):
         cargar_biblioteca(carpeta / "simbolos" / "indice.json")
-    _indice_previo(carpeta)  # sin medir
+    _indice_previo(carpeta)  # versión 1 sin medir
     with pytest.raises(BibliotecaInvalida, match="hay símbolos sin medir"):
         cargar_biblioteca(carpeta / "simbolos" / "indice.json")
 
@@ -266,10 +273,9 @@ def test_todos_los_problemas_juntos(entorno):
 
 @requiere_arial
 def test_biblioteca_ausente_al_componer(entorno):
-    (entorno / "simbolos" / "convenciones_erco.pdf").unlink()
-    with pytest.raises(PlanoNoComponible, match=r"rotulo.convenciones: no se encontró la "
-                                                r"biblioteca de símbolos .* Genérela con: python "
-                                                r"-m componedor.cli extraer-simbolos"):
+    shutil.rmtree(entorno / "simbolos" / "biblioteca")
+    with pytest.raises(PlanoNoComponible, match=r"rotulo.convenciones: el índice de símbolos .* "
+                                                r"faltan los PDF de limite, corte"):
         componer_plano(_plano(entorno, [{"simbolo": "corte"}]), entorno / "p.pdf")
     # Sin convenciones en el plano, la biblioteca no hace falta.
     componer_plano(_plano(entorno, []), entorno / "p.pdf")
