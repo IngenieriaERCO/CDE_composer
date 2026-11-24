@@ -277,6 +277,37 @@ def test_vista_previa_de_una_zona(servidor):
     assert estado == 200 and png[:4] == bytes([0x89]) + b"PNG"
 
 
+def test_exportar_una_zona(tmp_path):
+    """Fase 10c: POST /api/exportar/zona con el trabajador falso; el paquete queda en
+    paquetes/<dxf>/ y aparece en /api/exportados."""
+    ruta = dxf_falso(tmp_path / "obra.dxf", blocks=[{"name": "B1", "handle": "1A"}])
+    cfg = ConfigExportador(comando_falso(), tmp_path / "trabajo", 5.0, None,
+                           tmp_path / "paquetes", tmp_path / "_para_borrar")
+    app = AplicacionEditor(tmp_path / "editor" / "editor.html", ZONA_A1, cfg,
+                           elegir=lambda inicial: ruta)
+    s = ServidorEditor(app, token="t" * 32)
+    s.iniciar()
+    try:
+        _, r = pedido(s, "POST", "/api/dxf/elegir")
+        assert esperar(s, r["tarea"]["id"])["estado"] == "terminada"
+        estado, r = pedido(s, "POST", "/api/exportar/zona", cuerpo=b'{"zona": [0, 0, 1, 1]}')
+        assert estado == 400 and "Falta «escala»" in r["error"]
+        cuerpo = json.dumps({"zona": [1000, 2000, 1002, 2001], "escala": 50,
+                             "nombre": ""}).encode()
+        estado, r = pedido(s, "POST", "/api/exportar/zona", cuerpo=cuerpo)
+        assert estado == 200 and r["tarea"]["tipo"] == "exportar"
+        foto = esperar(s, r["tarea"]["id"])
+        assert foto["estado"] == "terminada", foto["error"]
+        assert foto["resultado"]["nombre"] == "Zona_01"
+        assert (tmp_path / "paquetes" / "obra" / "Zona_01_1-50.manifest.json").is_file()
+        _, exportados = pedido(s, "GET", "/api/exportados")
+        assert [d["manifiesto"] for d in exportados["detalles"]] == [
+            foto["resultado"]["manifiesto"]]
+    finally:
+        s.detener()
+        app.cerrar()
+
+
 def test_exportar_y_detener(tmp_path):
     """Etapa 3: POST /api/exportar con la lista de bloques; POST /api/trabajador/detener."""
     (tmp_path / "editor.html").write_text(HTML, encoding="utf-8")

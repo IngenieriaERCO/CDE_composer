@@ -2674,7 +2674,73 @@ Decisiones del usuario:
 **Pendiente para la 10c**: la verificación final de `componer` (`componer.py`, «el dibujo quedó
 en…») mide los trazos de cada detalle colocado **sin** la máscara. Una zona con máscara puesta
 en la hoja fallaría ahí igual que fallaba la h. Se arregla con la misma `recortar_a_zona`, la
-zona trasladada a la posición del detalle, al colocar zonas (10c).
+zona trasladada a la posición del detalle, al colocar zonas (10c). → Hecho en la 10c.
+
+10a y 10b: commit 247c0af en dev, con push (2026-11-24).
+
+### Zonas del Model Space — Fase 10c: exportar una zona (2026-11-24, sin commit)
+
+**Qué se hizo**
+- `exportar_zona.py` (nuevo):
+  - `nombre_de_zona`: el nombre escrito, limpio (§5.1, 40 caracteres como mucho);
+  - `nombre_libre`: si viene vacío, el primer `Zona_NN` sin paquetes en la carpeta del DXF ni
+    exportándose ahora. Lo elige el Componedor porque el trabajador publica en la carpeta de
+    preparación, vacía, y no vería los ya publicados;
+  - `leer_zona`, `pagina_de_zona` (la zona a 1:N más los márgenes) y `trabajo_de_zona` (§5.4).
+- `exportar_dxf.Pedido`: `zona`, `capas` y `excluir`. En una zona no se compara el handle sino
+  `source.block_name` «Model_Space», `selection.kind`, `selection.window` y el filtro de capas.
+  Así la misma zona con otras capas no sale de la caché.
+- `aplicacion_editor.py`:
+  - `exportar_zona`, con la misma cola, preparación, caché, verificación, el paquete viejo a
+    `_para_borrar` y la entrada de catálogo para «Detalles disponibles» y `/api/exportados`;
+  - lo común con los bloques pasó a `_encolar_export` y `_dxf_para_exportar`;
+  - el candado es un `RLock`, para elegir el nombre libre y encolar sin soltarlo.
+  El resultado trae `tipo: "zona"`, `nombre`, `nombre_generado`, `zona`, `capas` y `excluir`,
+  para que la 10e los guarde.
+- `servidor.py`: `POST /api/exportar/zona`.
+- `componer.py`: `DetalleColocado.mascara` (la zona de la máscara en mm de papel). La
+  verificación final recorta a ella los trazos del detalle (`recortar_a_zona`).
+- `tests/trabajador_falso.py`: trabajos de zona en `export`. Publica un paquete 1.5 con
+  máscara y una línea que sale de la zona y de la página; con `zona_otra_ventana`, un
+  manifiesto de otra ventana.
+
+**Con el Exportador real y PRGD**, con `data/verificacion/zonas_10c.py` (resultados en `data/verificacion/zonas_10c/`), todo OK:
+- `load` en 126 s.
+- Zona de Zona_01 sin las 4 capas de cotas, a 1:20, nombre «Prueba10c seccion»: 21 s.
+  `Prueba10c_seccion_1-20_pb4a909_t`, página 43,5 × 42,5 mm, con máscara; la h da 0,064 mm.
+- La misma otra vez sale de la caché en 0,2 s.
+- La misma zona con el nombre vacío y todas las capas, a 1:10: `Zona_01_1-10_pb4a909_t`
+  (generado), con máscara; la h da 0,000 mm.
+- Poste, solo con las capas `0` y `_001_*`, a 1:5: 1,2 s. Sin máscara: todo se pudo recortar.
+- Los tres pasan integridad y coherencia, y el inventario con el que se genera el editor
+  («Detalles disponibles») los acepta (bloque «Model_Space»).
+- Compuestos en un A1 real (`plano_zonas.pdf`), donde dijo el servidor: la verificación final
+  pasa con las máscaras. A la vista, los textos que cruzan el borde quedan cortados en la zona,
+  todo sigue siendo vector y la única imagen es la del rótulo.
+- Los paquetes quedaron en `data/input/dxf/PRGD-25-1365-CIV-PL-106_1_VA/`.
+
+**Pruebas**: **1446 pasan**, 1 se salta y 1 falla de forma intermitente (antes 1433).
+- La intermitente no es de la 10c: en dos corridas fue una distinta de `test_servidor`
+  (`test_post_exige_origin_propio_y_json`, `test_las_rutas_de_la_ortofoto_piden_token_y_origen`),
+  con `ConnectionAbortedError` 10053.
+- El servidor rechaza un cuerpo sin leerlo (por ejemplo, el de 64 KB → 413) y Windows a veces
+  corta la conexión antes de que el cliente lea la respuesta.
+- Solas pasan 6 de 6 veces. Queda pendiente, aparte.
+
+ruff: los mismos 173 hallazgos de antes.
+- `test_exportar_zona` (13):
+  - nombre, nombre libre, leer la zona y el trabajo;
+  - el `Pedido` de zona;
+  - exportar con nombre, que queda en el catálogo;
+  - `Zona_01` y `Zona_02` generados, y la misma zona por su nombre sale de la caché;
+  - dos zonas generadas a la vez;
+  - otras capas no salen de la caché y el viejo va a `_para_borrar`;
+  - un paquete de otra ventana da `PAQUETE_NO_VALIDO`;
+  - 7 pedidos que no se atienden;
+  - el exportador 1.0;
+  - la zona se compone con su máscara;
+  - sin el recorte, la verificación final fallaría.
+- `test_servidor`: `/api/exportar/zona` y `/api/exportados`.
 
 ### Pendiente en la Fase 4 (al 2026-11-11)
 

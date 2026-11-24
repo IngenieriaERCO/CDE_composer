@@ -14,7 +14,9 @@ la orden `export` del trabajador.
   recién entonces se exporta.
 - **Verificación**: cada paquete exportado pasa por `importar_paquete` (completo, íntegro y
   coherente, escala física garantizada) y además debe ser el pedido: SHA-256 del DXF, handle,
-  escala y margen, y una página que no pase de la caja que se vio en el editor.
+  escala y margen, y una página que no pase de la caja que se vio en el editor. Una zona del
+  Model Space (Fase 10c, `exportar_zona.py`) no tiene handle: se compara que sea del Model
+  Space, su ventana y su filtro de capas.
 - **Colocación por el centro CAD**: el punto CAD que estaba en el centro de la caja del editor
   (centro de la caja de `load`) va a `centro_mm`. Con la matriz `cad_to_page` del manifiesto
   (mm de página, origen arriba a la izquierda, Y abajo):
@@ -40,19 +42,25 @@ from componedor.nombres_paquete import limpiar, nombre_paquete
 EXTENSIONES = (".manifest.json", ".pdf", ".txt")
 TOL_MM = 0.1  # tolerancia de medidas del proyecto
 TOL_RELATIVA = 1e-9
+TOL_ZONA = 1e-9  # relativa: la ventana del manifiesto es la zona pedida (salvo coma flotante)
 
 
 @dataclass(frozen=True)
 class Pedido:
-    """Lo que se espera del paquete de un bloque."""
+    """Lo que se espera del paquete de un bloque, o de una zona del Model Space (`zona`)."""
     sha256: str  # del DXF cargado
-    handle: str
+    handle: str  # del INSERT; "" en una zona
     denominador: float  # N de 1:N
     margen_mm: float
     pagina_max_mm: tuple[float, float]  # la caja del editor (con caja aproximada, un máximo)
     caja_exacta: bool = True
     ctb_sha256: str | None = None  # la tabla de estilos pedida (None: sin CTB)
     imprimir_transparencia: bool = True
+    # Zona del Model Space (exportar_zona.py): la ventana y el filtro de capas pedidos. Con
+    # zona no se mira el handle sino source.block_name, selection.kind/window/layers.
+    zona: tuple[float, float, float, float] | None = None
+    capas: tuple[str, ...] = ()
+    excluir: tuple[str, ...] = ()
 
 
 class PaqueteNoValido(ValueError):
@@ -106,9 +114,13 @@ def motivos_de_otro_pedido(datos: dict, pedido: Pedido) -> list[str]:
     if sha != pedido.sha256:
         motivos.append(f"es de otra versión del DXF (SHA-256 {str(sha)[:12]}…, se esperaba "
                        f"{pedido.sha256[:12]}…)")
-    handle = _get(datos, "source.reference.handle")
-    if handle != pedido.handle:
-        motivos.append(f"es de otra referencia (handle {handle}, se esperaba {pedido.handle})")
+    if pedido.zona is None:
+        handle = _get(datos, "source.reference.handle")
+        if handle != pedido.handle:
+            motivos.append(f"es de otra referencia (handle {handle}, se esperaba "
+                           f"{pedido.handle})")
+    else:
+        motivos += motivos_de_otra_zona(datos, pedido)
     n = _get(datos, "scale.denominator")
     if not (_numero(n) and abs(n - pedido.denominador) <= TOL_RELATIVA * pedido.denominador):
         motivos.append(f"está a otra escala (1:{n}, se esperaba 1:{pedido.denominador:g})")
@@ -133,6 +145,26 @@ def motivos_de_otro_pedido(datos: dict, pedido: Pedido) -> list[str]:
         motivos.append("imprime la transparencia de los rellenos y se pidió que no"
                        if estilo["transparencia"] else
                        "no imprime la transparencia de los rellenos y se pidió que sí")
+    return motivos
+
+
+def motivos_de_otra_zona(datos: dict, pedido: Pedido) -> list[str]:
+    """Por qué el manifiesto no es el de la zona pedida: Model Space, misma ventana (la zona en
+    unidades del dibujo) y el mismo filtro de capas (si no, la caché daría otra zona)."""
+    if (_get(datos, "source.block_name") != "Model_Space"
+            or _get(datos, "selection.kind") != "modelspace"):
+        return ["no es una zona del Model Space"]
+    motivos = []
+    ventana = _get(datos, "selection.window")
+    if not (isinstance(ventana, list) and len(ventana) == 4 and all(_numero(v) for v in ventana)
+            and all(abs(a - b) <= TOL_ZONA * max(1.0, abs(b))
+                    for a, b in zip(ventana, pedido.zona))):
+        motivos.append(f"es de otra zona ({ventana}, se esperaba {list(pedido.zona)})")
+    for clave, nombre, esperadas in (("layers", "capas", pedido.capas),
+                                     ("exclude_layers", "capas excluidas", pedido.excluir)):
+        tiene = _get(datos, f"selection.{clave}") or []
+        if [str(c).lower() for c in tiene] != [c.lower() for c in esperadas]:
+            motivos.append(f"tiene otras {nombre} ({tiene}, se esperaba {list(esperadas)})")
     return motivos
 
 

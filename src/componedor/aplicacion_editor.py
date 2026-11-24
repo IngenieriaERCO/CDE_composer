@@ -66,6 +66,13 @@ from componedor.exportar_dxf import (
     posicion_por_centro,
     verificar,
 )
+from componedor.exportar_zona import (
+    leer_zona,
+    nombre_de_zona,
+    nombre_libre,
+    pagina_de_zona,
+    trabajo_de_zona,
+)
 from componedor.formato import RectMM
 from componedor.importador import importar_paquete
 from componedor.inventario import ESCALA_MAXIMA
@@ -143,8 +150,9 @@ class AplicacionEditor:
         self._previas: dict[str, Path] = {}  # tarea de vista previa terminada → su PNG
         # (sesión, ref, estilo) o (sesión, "zona", pedido) → tarea en cola o en curso
         self._previa_por_ref: dict[tuple[str, ...], str] = {}
-        self._candado = threading.Lock()
+        self._candado = threading.RLock()  # exportar_zona elige el nombre y encola sin soltarlo
         self._exportacion: dict[tuple[str, str, float], str] = {}  # (sha, handle, N) → tarea
+        self._zonas_en_curso: dict[tuple[str, str], str] = {}  # (carpeta, nombre generado) → tarea
         self._exportados: dict[str, dict] = {}  # manifiesto (para el editor) → entrada de catálogo
         self._firma_dxf: tuple[int, int] | None = None  # (bytes, fecha) del DXF al cargarlo (§9)
         self._preparaciones: dict[str, Path] = {}  # tarea de exportar → su carpeta de preparación
@@ -418,22 +426,24 @@ class AplicacionEditor:
         if not isinstance(bloques, list) or not bloques or len(bloques) > self.MAX_BLOQUES:
             raise ErrorAplicacion(400, f"Se esperaba la lista «bloques» (de 1 a "
                                        f"{self.MAX_BLOQUES}).")
-        dxf = self.estado()["dxf"]
-        if dxf is None:
-            raise ErrorAplicacion(409, "Todavía no se cargó ningún DXF: use «Cargar DXF».")
-        if not dxf["sesion_activa"]:
-            raise ErrorAplicacion(409, "El trabajador se reinició desde que se cargó el DXF: "
-                                       "vuelva a cargarlo («Volver a cargar»).")
-        if self._ruta_dxf is not None and firma_archivo(self._ruta_dxf) != self._firma_dxf:
-            # La misma regla del trabajador (§9), también para lo que sale de la caché.
-            raise ErrorAplicacion(409, "El DXF cambió en el disco desde que se cargó: vuelva a "
-                                       "cargarlo («Volver a cargar») y exporte de nuevo.")
+        dxf = self._dxf_para_exportar()
         tabla, transparencia = self._estilo(estilo)
         pedidos = [self._leer_bloque(b, dxf) for b in bloques]  # todo validado antes de encolar
         carpeta = carpeta_del_dxf(self.config.paquetes, dxf["dxf"]["nombre"])
         carpeta.mkdir(parents=True, exist_ok=True)
         return {"tareas": [self._exportar_uno(p, dxf, carpeta, tabla, transparencia)
                            for p in pedidos]}
+
+    def _dxf_para_exportar(self) -> dict:
+        """La carpeta del DXF cargado, si se puede exportar de él (si no, 409)."""
+        if self.config is None or self.config.paquetes is None:
+            raise ErrorAplicacion(409, SIN_SECCION)
+        dxf = self._dxf_activo()
+        if self._ruta_dxf is not None and firma_archivo(self._ruta_dxf) != self._firma_dxf:
+            # La misma regla del trabajador (§9), también para lo que sale de la caché.
+            raise ErrorAplicacion(409, "El DXF cambió en el disco desde que se cargó: vuelva a "
+                                       "cargarlo («Volver a cargar») y exporte de nuevo.")
+        return dxf
 
     def _leer_bloque(self, b, dxf: dict) -> dict:
         if not isinstance(b, dict):
@@ -461,8 +471,11 @@ class AplicacionEditor:
         if dx or dy:
             raise ErrorAplicacion(400, f"'{ident}' no cabe en el área de dibujo a 1:{n:g} "
                                        f"(sobran {dx:.1f} × {dy:.1f} mm): cambie la escala.")
+        caja = bloque["caja_cad"]
         return {"id": ident, "bloque": bloque, "n": float(n), "centro": tuple(centro),
-                "pagina": pagina}
+                "pagina": pagina, "handle": bloque["handle"],
+                "centro_cad": ((caja["min"][0] + caja["max"][0]) / 2,
+                               (caja["min"][1] + caja["max"][1]) / 2)}
 
     def _exportar_uno(self, p: dict, dxf: dict, carpeta, tabla=None,
                       transparencia: bool = True) -> dict:
@@ -472,7 +485,15 @@ class AplicacionEditor:
         paquete = nombre_del_paquete(b["archivo"] or b["nombre"], n, marca)
         pedido = Pedido(dxf["dxf"]["sha256"], b["handle"], n, dxf["margen_mm"],
                         tuple(p["pagina"]), b["caja_exacta"], sha_ctb, transparencia)
-        clave = (pedido.sha256, pedido.handle, n, marca)
+        # Por el handle solo (no el ref, que en un *U cambia entre sesiones).
+        trabajo = {"job": "j1", "handle": b["handle"], "scale": f"1:{n:g}", "package": paquete}
+        return self._encolar_export((pedido.sha256, pedido.handle, n, marca), p, pedido, trabajo,
+                                    paquete, dxf, carpeta, tabla, transparencia)
+
+    def _encolar_export(self, clave: tuple, p: dict, pedido: Pedido, trabajo: dict, paquete: str,
+                        dxf: dict, carpeta: Path, tabla, transparencia: bool) -> dict:
+        """Lo común a un bloque y a una zona: la caché, la carpeta de preparación y un pedido
+        `export` con un trabajo. Foto de la tarea."""
         with self._candado:
             vivo = self.canal.tarea(self._exportacion.get(clave, "")) if self.canal else None
             if vivo is not None and vivo.estado in (EN_COLA, EN_CURSO):
@@ -487,9 +508,7 @@ class AplicacionEditor:
             tarea = self._asegurar_canal().encolar(
                 "exportar", "export",
                 {"session": dxf["sesion"], "output_dir": str(preparacion.resolve()),
-                 # Por el handle solo (no el ref, que en un *U cambia entre sesiones).
-                 "jobs": [{"job": "j1", "handle": b["handle"], "scale": f"1:{n:g}",
-                           "package": paquete}],
+                 "jobs": [trabajo],
                  "options": {**self.OPCIONES_EXPORT, **impresion.opciones(tabla, transparencia)}},
                 procesar=lambda data, t: self._al_exportar(data, t, p, pedido, carpeta,
                                                            preparacion, paquete))
@@ -536,15 +555,15 @@ class AplicacionEditor:
     def _resultado(self, manifiesto, p: dict, aceptado, en_cache: bool, movidos: list,
                    avisos: list | None = None) -> dict:
         """Lo que el editor necesita para cambiar el bloque por un detalle normal."""
-        caja = p["bloque"]["caja_cad"]
-        centro_cad = ((caja["min"][0] + caja["max"][0]) / 2, (caja["min"][1] + caja["max"][1]) / 2)
+        centro_cad = p["centro_cad"]
         carpeta_editor = self.ruta_html.parent
         prefijo = aceptado.paquete.prefijo
         posicion = posicion_por_centro(manifiesto, centro_cad, p["centro"])
         detalle = detalle_para_editor(aceptado, prefijo, carpeta_editor, self.zona)
         self._exportados[detalle["manifiesto"]] = detalle
         return {
-            "id": p["id"], "handle": p["bloque"]["handle"], "escala": p["n"],
+            **p.get("extra", {}),
+            "id": p["id"], "handle": p["handle"], "escala": p["n"],
             "paquete": prefijo,
             "manifiesto": detalle["manifiesto"],
             "estilo": detalle["estilo"],
@@ -556,6 +575,78 @@ class AplicacionEditor:
             "movidos": [ruta_para_el_editor(m, carpeta_editor) for m in movidos],
             "avisos": avisos or [],
         }
+
+    # --- exportar una zona del Model Space (Fase 10c) -------------------------------------------
+
+    def exportar_zona(self, zona=None, capas=None, excluir=None, escala=None, nombre=None,
+                      centro_mm=None, estilo=None) -> dict:
+        """Un pedido `export` con un trabajo de zona (§5.4). {"tarea": foto}.
+
+        `nombre` vacío: el primer `Zona_NN` libre en la carpeta del DXF (el resultado lo
+        devuelve con `nombre_generado: true`, para guardarlo con la zona). `centro_mm`: dónde
+        queda el centro de la zona en la hoja (por defecto, el centro del área de dibujo)."""
+        dxf = self._dxf_para_exportar()
+        if not admite_zonas(self.canal.listo):
+            version = (self.canal.listo or {}).get("protocol_version")
+            raise ErrorAplicacion(409, f"El Exportador Vectorial instalado habla el protocolo "
+                                       f"{version} y no sabe exportar zonas del Model Space "
+                                       f"(hace falta el 1.1): actualícelo.")
+        try:
+            z = leer_zona(zona, capas, excluir, escala)
+            base = nombre_de_zona(nombre)
+        except PedidoZonaInvalido as e:
+            raise ErrorAplicacion(400, str(e)) from None
+        if centro_mm is None:
+            x0, y0, x1, y1 = self.zona
+            centro_mm = [(x0 + x1) / 2, (y0 + y1) / 2]
+        if not (isinstance(centro_mm, list) and len(centro_mm) == 2
+                and all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                        for v in centro_mm)):
+            raise ErrorAplicacion(400, "«centro_mm» debe ser [x, y] en mm de la hoja.")
+        unidades = dxf.get("unidades") or {}
+        mm = unidades.get("mm_por_unidad")
+        if not (unidades.get("verificadas") and mm):
+            raise ErrorAplicacion(409, "El DXF no tiene unidades verificadas: no se puede saber "
+                                       "el tamaño de la zona en la hoja.")
+        n = z["n"]
+        pagina = pagina_de_zona(z["zona"], mm, n, dxf["margen_mm"])
+        dx, dy = exceso_de_tamano(pagina, self.zona)
+        if dx or dy:
+            raise ErrorAplicacion(400, f"La zona no cabe en el área de dibujo a 1:{n} (sobran "
+                                       f"{dx:.1f} × {dy:.1f} mm): cambie la escala o achíquela.")
+        tabla, transparencia = self._estilo(estilo)
+        sha_ctb = tabla.sha256 if tabla else None
+        marca = impresion.marca(sha_ctb, transparencia)
+        carpeta = carpeta_del_dxf(self.config.paquetes, dxf["dxf"]["nombre"])
+        carpeta.mkdir(parents=True, exist_ok=True)
+        with self._candado:  # elegir el nombre libre y reservarlo, sin que otro pedido se cruce
+            generado = base is None
+            if generado:
+                reservados = [nombre for (c, nombre), id_tarea in self._zonas_en_curso.items()
+                              if c == str(carpeta) and self._en_curso(id_tarea)]
+                try:
+                    base = nombre_libre(carpeta, reservados)
+                except PedidoZonaInvalido as e:
+                    raise ErrorAplicacion(400, str(e)) from None
+            paquete = nombre_del_paquete(base, n, marca)
+            pedido = Pedido(dxf["dxf"]["sha256"], "", float(n), dxf["margen_mm"], pagina, True,
+                            sha_ctb, transparencia, zona=tuple(z["zona"]),
+                            capas=tuple(z["capas"]), excluir=tuple(z["excluir"]))
+            x0, y0, x1, y1 = z["zona"]
+            p = {"id": base, "n": float(n), "centro": tuple(centro_mm), "pagina": pagina,
+                 "handle": None, "centro_cad": ((x0 + x1) / 2, (y0 + y1) / 2),
+                 "extra": {"tipo": "zona", "nombre": base, "nombre_generado": generado,
+                           "zona": z["zona"], "capas": z["capas"], "excluir": z["excluir"]}}
+            clave = ("zona", pedido.sha256, paquete, pedido.zona, pedido.capas, pedido.excluir)
+            foto = self._encolar_export(clave, p, pedido, trabajo_de_zona(z, paquete), paquete,
+                                        dxf, carpeta, tabla, transparencia)
+            if generado:
+                self._zonas_en_curso[(str(carpeta), base.lower())] = foto["id"]
+        return {"tarea": foto}
+
+    def _en_curso(self, id_tarea: str) -> bool:
+        t = self.canal.tarea(id_tarea) if self.canal else None
+        return t is not None and t.estado in (EN_COLA, EN_CURSO)
 
     def exportados(self) -> dict:
         """Los paquetes exportados en esta sesión del servidor (entradas de catálogo), para el

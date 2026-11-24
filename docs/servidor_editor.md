@@ -244,6 +244,34 @@ Exportador Vectorial.»
 - Las carpetas `.cde-tmp-*` que el exportador usa (o deja) en la salida se ignoran al buscar
   paquetes (`localizar_paquetes`).
 
+### Exportar una zona del Model Space (`export` con un trabajo de zona, Fase 10c)
+
+- `POST /api/exportar/zona` (`exportar_zona.py` y `AplicacionEditor.exportar_zona`): un pedido
+  `export` con un trabajo de zona (§5.4 del protocolo: `zone`, `layers` o `exclude_layers`,
+  `scale`, `package`, sin `ref` ni `handle`). Todo lo demás es lo de un bloque: misma carpeta
+  `<paquetes>/<DXF>/`, la misma cola, carpeta de preparación, caché, verificación, el paquete
+  viejo a `_para_borrar/`, el catálogo para «Detalles disponibles» y `/api/exportados`.
+- **Nombre**: el que escribió el usuario, limpio como pide §5.1 (sin acentos; 40 caracteres como
+  mucho); si viene vacío, el primer **`Zona_01`, `Zona_02`…** que no tenga ningún paquete en la
+  carpeta del DXF ni se esté exportando ahora (lo elige el Componedor: el trabajador publica en
+  la carpeta de preparación, vacía, y no vería los ya publicados). El resultado trae `nombre` y
+  `nombre_generado`, para que la zona guarde ese nombre (decisión B) y volver a exportarla la
+  reemplace. Paquete: `<nombre>_1-N<marca del estilo>`, como un bloque.
+- **Caché y verificación de una zona**: no hay handle. El paquete debe ser del Model Space
+  (`source.block_name` «Model_Space», `selection.kind` «modelspace»), con la misma ventana
+  (`selection.window` = la zona) y el mismo filtro de capas (`selection.layers` /
+  `exclude_layers`, sin distinguir mayúsculas); además, como un bloque, el SHA-256 del DXF, la
+  escala, el margen, el estilo y la página exacta (la zona a 1:N más los márgenes). Así la misma
+  zona con otras capas no sale de la caché.
+- **Antes de pedirlo**: zona y escala obligatorias; la página tiene que caber en el área de
+  dibujo (400 si no); el DXF con unidades verificadas (409 si no); el trabajador con protocolo
+  1.1 (409 si no).
+- **Colocación**: el centro de la zona va a `centro_mm` (por defecto, el centro del área de
+  dibujo); el resultado trae `posicion_mm` y `desde_centro_mm` como un bloque.
+- **Componer con máscara**: la verificación final de `componer` mide los trazos de cada detalle
+  en la hoja; los de una zona con máscara se recortan antes a la zona de la máscara trasladada a
+  su lugar (`DetalleColocado.mascara`), porque `get_drawings()` no aplica la máscara.
+
 ### Errores para el usuario
 
 `mensajes_trabajador.py` convierte los errores del trabajador que traen texto técnico de Python
@@ -278,6 +306,7 @@ bloque:
 | `GET /api/estilos` | `{estilos: [{nombre, sha256, descripcion}], por_defecto: {ctb, transparencia}, aviso}`: las tablas `.ctb` de `carpeta_ctb` y los valores de `componedor.json`. Nunca rutas. |
 | `POST /api/previa` | Cuerpo `{"ref": "<ref de la carpeta>", "estilo"?: {"ctb": <nombre de /api/estilos> \| null, "transparencia": bool}}` (sin `estilo`, el de `componedor.json`; un nombre que no es de la lista o una ruta: 400): encola `preview` con `plot_style` (la ruta la pone el servidor) y `print_transparency`. Responde `{tarea}`. 409 sin DXF o con la sesión vencida; 404 si el `ref` no está en la carpeta. El resultado de la tarea trae `px`, `cad_a_px`, `caja_cad`, `omitidos`, `en_cache` y `url` (nunca la ruta del PNG). |
 | `POST /api/previa/zona` | Cuerpo `{"zona"?: [xmin, ymin, xmax, ymax] \| null, "vista"?: [...] \| null, "excluir"?: [capas] \| null, "capas"?: [capas] \| null, "escala"?: N \| null, "estilo"?}` (unidades del dibujo; N entero de 1 a 100 000; `capas` y `excluir` no van juntas): encola `preview` de una zona (protocolo 1.1, §4.1). Responde `{tarea}`; dos pedidos iguales mientras se hace son una sola tarea. 400 si algo no vale; 409 sin DXF, con la sesión vencida o si el trabajador habla la 1.0. El resultado trae `px`, `cad_a_px`, `caja_cad`, `zona`, `vista`, `capas`, `excluir`, `filas_capas`, `grupos`, `entidades`, `escala`, `papel`, `en_cache` y `url`. |
+| `POST /api/exportar/zona` | Cuerpo `{"zona": [xmin, ymin, xmax, ymax], "escala": N, "capas"?: [...] \| null, "excluir"?: [...] \| null, "nombre"?: texto (vacío: Zona_NN), "centro_mm"?: [x, y], "estilo"?}`: un pedido `export` con un trabajo de zona (§5.4). Responde `{tarea}` (tipo `exportar`). El resultado trae lo mismo que el de un bloque (`paquete`, `manifiesto`, `estilo`, `posicion_mm`, `desde_centro_mm`, `detalle`, `en_cache`, `movidos`, `avisos`; `handle` null) y además `tipo: "zona"`, `nombre`, `nombre_generado`, `zona`, `capas` y `excluir`. 400 si algo no vale o no cabe; 409 sin DXF, con la sesión vencida, con el DXF cambiado, sin unidades verificadas o con el trabajador 1.0. |
 | `POST /api/exportar` | Cuerpo `{"bloques": [{"id", "handle", "sha256", "escala", "centro_mm"}], "estilo"?: {"ctb", "transparencia"}}` (hasta 200; `estilo` como en `/api/previa`): una tarea por bloque, `{tareas}` en el mismo orden. El paquete lleva la marca del estilo (`_p<sha6>`, `_t`) y se verifica que su manifiesto traiga ese estilo. El resultado de cada una trae `paquete`, `manifiesto` (relativo a la carpeta del editor), `estilo` (`{ctb, sha256, transparencia}` del manifiesto), `posicion_mm`, `desde_centro_mm`, `detalle` (la entrada del catálogo, con su miniatura y su `estilo`), `en_cache`, `movidos` y `avisos`. 409 sin DXF, con la sesión vencida, con el DXF cambiado o de otro DXF; 404 si el bloque no está; 400 si no cabe. |
 | `POST /api/trabajador/detener` | «Detener a la fuerza». `{detenido}`. |
 | `GET /api/exportados` | Las entradas de catálogo de lo exportado en esta sesión del servidor (para el editor que se recarga). |

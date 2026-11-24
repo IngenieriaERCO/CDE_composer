@@ -21,7 +21,8 @@ recibe rutas ni opciones para el comando del exportador. Lo único que el editor
 cuerpo es el `ref` de un bloque de la carpeta ya cargada; para «Exportar», la lista de bloques
 del plano (id, handle, sha256, escala, centro): la carpeta de salida y los nombres de paquete
 los decide el servidor; para la vista previa de una zona del Model Space, números y nombres de
-capa (zona, vista, capas o excluir, escala); y para la vista previa de la ortofoto, números y códigos EPSG (la caja
+capa (zona, vista, capas o excluir, escala); para exportar una zona, lo mismo más su nombre
+y su centro en la hoja (la carpeta y el nombre del paquete los decide el servidor); y para la vista previa de la ortofoto, números y códigos EPSG (la caja
 CAD de un detalle, mm por unidad, sistemas): la ortofoto la eligió el cuadro nativo.
 """
 
@@ -49,7 +50,7 @@ RUTA_PNG_ORTOFOTO = re.compile(r"^/api/ortofoto/previas/(o-\d+)$")
 RUTAS_GET = ("/", "/api/estado", "/api/exportados", "/api/ortofoto", "/api/localizacion",
               "/api/localizacion/imagen", "/api/estilos")
 RUTAS_POST = ("/api/dxf/elegir", "/api/dxf/recargar", "/api/previa", "/api/previa/zona",
-              "/api/exportar",
+              "/api/exportar", "/api/exportar/zona",
               "/api/trabajador/reiniciar", "/api/trabajador/detener", "/api/latido",
               "/api/ortofoto/elegir", "/api/ortofoto/quitar", "/api/ortofoto/previa",
               "/api/localizacion/elegir", "/api/localizacion/quitar")
@@ -230,6 +231,11 @@ def _manejador(servidor: ServidorEditor):
                 return app.pedir_previa_zona(
                     cuerpo.get("zona"), cuerpo.get("vista"), cuerpo.get("capas"),
                     cuerpo.get("excluir"), cuerpo.get("escala"), cuerpo.get("estilo"))
+            if ruta == "/api/exportar/zona":
+                return app.exportar_zona(
+                    cuerpo.get("zona"), cuerpo.get("capas"), cuerpo.get("excluir"),
+                    cuerpo.get("escala"), cuerpo.get("nombre"), cuerpo.get("centro_mm"),
+                    cuerpo.get("estilo"))
             if ruta == "/api/exportar":
                 return app.exportar(cuerpo.get("bloques"), cuerpo.get("estilo"))
             if ruta == "/api/trabajador/detener":

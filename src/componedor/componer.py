@@ -70,6 +70,7 @@ from componedor.composicion import MANTENER, hoja_base_con_rosa
 from componedor.comprobacion_dibujo import (
     es_fondo_blanco,
     limites_de_trazos,
+    recortar_a_zona,
     tiene_fondo_de_pagina,
 )
 from componedor.configuracion import ConfigOrtofoto
@@ -154,6 +155,9 @@ class DetalleColocado:
     dibujo: RectMM  # page_bounds_mm trasladado a mm de papel
     tiene_fondo: bool = True  # paquete antiguo con fondo blanco de página (tapa lo de abajo)
     escala: float | None = None  # N de 1:N (manifiesto)
+    # Zona de la máscara de recorte (manifiesto 1.5, pdf.drawing.mask) trasladada a mm de papel;
+    # None sin máscara. get_drawings() no aplica la máscara: la verificación final recorta a esto.
+    mascara: RectMM | None = None
 
 
 @dataclass
@@ -432,10 +436,13 @@ def _posiciones(plano: Plano, formato: Formato, aceptados: dict[Path, PaqueteAce
             continue
         dibujo = limites_dibujo_en_papel(aceptado.manifiesto.pdf.dibujo.limites_pagina_mm,
                                          alto, (x, y))
+        mascara = aceptado.manifiesto.pdf.dibujo.mascara_mm
         colocados.append((detalle, aceptado, doc,
                           DetalleColocado(detalle.id, aceptado.paquete.prefijo, ocupado, dibujo,
                                           con_fondo[ruta_pdf],
-                                          aceptado.manifiesto.escala.denominador)))
+                                          aceptado.manifiesto.escala.denominador,
+                                          limites_dibujo_en_papel(mascara, alto, (x, y))
+                                          if mascara is not None else None)))
     if errores:
         raise PlanoNoComponible(
             f"No se compone el plano: {len(errores)} detalle(s) fuera de '{ZONA}' "
@@ -661,9 +668,16 @@ def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
             # Su fondo blanco se reconoce por el TAMAÑO de la página (no por la posición
             # esperada): así, si el detalle quedó corrido, se mide su dibujo y no su fondo.
             pagina = rect_papel_a_pdf(colocado.ocupado, formato.alto_mm)
-            limites = limites_de_trazos([t for t in propios if not es_fondo_blanco(
+            dibujados = [t for t in propios if not es_fondo_blanco(
                 t, pymupdf.Rect(t["rect"].x0, t["rect"].y0, t["rect"].x0 + pagina.width,
-                                t["rect"].y0 + pagina.height))])
+                                t["rect"].y0 + pagina.height))]
+            if colocado.mascara is not None:
+                # Zona del Model Space: lo que cruza el borde está entero en el PDF y la máscara
+                # lo oculta; se mide lo que se ve (en mm de la hoja con Y abajo, como los trazos).
+                mx0, my0, mx1, my1 = colocado.mascara
+                dibujados = recortar_a_zona(dibujados, (mx0, formato.alto_mm - my1,
+                                                        mx1, formato.alto_mm - my0))
+            limites = limites_de_trazos(dibujados)
             if limites is None:
                 problemas.append(f"detalle '{colocado.id}': no tiene trazos que medir")
                 continue

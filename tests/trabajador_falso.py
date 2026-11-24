@@ -66,6 +66,13 @@ de los bloques), "capas": [{"name", "entities", "cad_state"}] (por defecto la «
 a todo el Model Space; `groups` solo sin zona ni vista; `paper` con `scale`; BAD_REQUEST si
 `layers` nombra capas que no existen. Caché `ms-<10 cifras>_<px>_visible.png`.
 
+`export` con trabajos de zona (§5.4): paquete 1.5 de «Model_Space» con `selection` (kind
+modelspace, window = zone, layers, exclude_layers) y máscara (`pdf.drawing.mask`). El dibujo es el
+contorno de la zona más una línea del centro que se sale de la zona y de la página, como lo que
+la máscara oculta (el falso no la recorta de verdad; `get_drawings()` tampoco la aplica). Con
+"zona_otra_ventana": true en el «DXF», el manifiesto dice otra ventana (para la verificación).
+La fila trae kind, zone, package_name y name_generated.
+
 Opciones de arranque para las pruebas: --protocolo 1.0 (un exportador sin zonas), --protocolo 2.0, --sin-ready, --basura (una línea que no
 es JSON antes de ready), --nieto RUTA (lanza un proceso nieto y escribe su PID en RUTA).
 """
@@ -504,10 +511,25 @@ class Falso:
                 self.error(id_, "OUTPUT_INVALID", f"Paquete repetido: «{paquete}».")
                 return
             vistos.add(paquete)
-            ref = self._referencia(id_, c, t)
-            if ref is None:
-                return
-            t["ref"] = ref  # lo demás del falso sigue por ref
+            if "zone" in t:
+                z = t.get("zone")
+                if not (isinstance(z, list) and len(z) == 4 and z[2] > z[0] and z[3] > z[1]):
+                    self.error(id_, "BAD_REQUEST", "«zone» no válida.", None,
+                               {"job": t.get("job")})
+                    return
+                capas = [f["name"].lower() for f in
+                         c["spec"].get("modelo", {}).get("capas") or [{"name": "0"}]]
+                sin_capa = [x for x in t.get("layers") or []
+                            if not any(fnmatch.fnmatchcase(k, x.lower()) for k in capas)]
+                if sin_capa:
+                    self.error(id_, "BAD_REQUEST", f"La capa «{sin_capa[0]}» no está en el DXF.")
+                    return
+                t["ref"] = None
+            else:
+                ref = self._referencia(id_, c, t)
+                if ref is None:
+                    return
+                t["ref"] = ref  # lo demás del falso sigue por ref
             m = re.match(r"^1:(\d+(?:\.\d+)?)$", str(t.get("scale", "")))
             if not m or float(m.group(1)) <= 0:
                 self.error(id_, "BAD_REQUEST", f"Escala no válida: «{t.get('scale')}».")
@@ -529,7 +551,10 @@ class Falso:
                 self.error(id_, "DXF_CHANGED", f"El DXF «{c['ruta'].name}» cambió.",
                            "Vuelva a cargarlo.", {"jobs": resultados})
                 return
-            bloque, spec_bloque = c["bloques"][t["ref"]]
+            if t["ref"] is None:
+                bloque, spec_bloque = {"name": "Model_Space"}, {}
+            else:
+                bloque, spec_bloque = c["bloques"][t["ref"]]
             for i, etapa in enumerate(ETAPAS_EXPORT, start=1):
                 self.etapa = etapa
                 if etapa == "draw" and c["spec"].get("export_no_cancelable_s"):
@@ -559,7 +584,8 @@ class Falso:
                                    "error": {"code": "EXPORT_FAILED",
                                              "message": spec_bloque["falla_export"]}})
                 continue
-            resultados.append(self.publicar(salida, t, bloque, spec_bloque, c))
+            resultados.append(self.publicar_zona(salida, t, c) if t["ref"] is None
+                              else self.publicar(salida, t, bloque, spec_bloque, c))
         publicados = sum(r["status"] == "published" for r in resultados)
         self.responder(id_, "export", {
             "output_dir": str(salida), "jobs": resultados, "summary": None,
@@ -642,6 +668,78 @@ class Falso:
                             (("pdf", ".pdf"), ("txt", ".txt"), ("manifest", ".manifest.json"))},
                 "validation_status": "complete",
                 "physical_scale_guaranteed": not spec_bloque.get("escala_no_garantizada"),
+                "page_size_mm": [ancho, alto], "notices": [], "error": None, "seconds": 0.01}
+
+    def publicar_zona(self, salida, t, c):
+        """Paquete 1.5 de una zona, con máscara (§5.4 y docs/manifiesto.md del exportador)."""
+        import pymupdf
+
+        n = float(t["scale"].split(":")[1])
+        margen, mm = c["margen"], c["mm_unidad"]
+        x0, y0, x1, y1 = t["zone"]
+        k = mm / n
+        ancho, alto = (x1 - x0) * k + 2 * margen, (y1 - y0) * k + 2 * margen
+        matriz = [k, 0.0, 0.0, -k, margen - k * x0, margen + k * y1]
+        zona_pag = [margen, margen, ancho - margen, alto - margen]
+        doc = pymupdf.open()
+        pagina = doc.new_page(width=ancho * MM_A_PT, height=alto * MM_A_PT)
+        zx0, zy0, zx1, zy1 = (v * MM_A_PT for v in zona_pag)
+        pagina.draw_rect(pymupdf.Rect(zx0, zy0, zx1, zy1), color=(0, 0, 0), width=0.5)
+        medio = (zy0 + zy1) / 2  # una «cota» que sale de la zona y de la página
+        pagina.draw_line(pymupdf.Point((zx0 + zx1) / 2, medio),
+                         pymupdf.Point(ancho * MM_A_PT + 40, medio), color=(0, 0, 0), width=0.25)
+        pdf = doc.tobytes()
+        doc.close()
+        paquete = t["package"]
+        ventana = list(t["zone"])
+        if c["spec"].get("zona_otra_ventana"):
+            ventana[0] -= 1.0
+        manifiesto = {
+            "document_type": "cde-detail-manifest", "schema_version": "1.5", "model_version": "2",
+            "generated_at": "2026-11-24T10:00:00-05:00",
+            "exporter": {"version": "0.0-falso", "ezdxf": "-", "pymupdf": "-"},
+            "source": {"dxf_name": c["dxf"]["name"], "dxf_sha256": c["dxf"]["sha256"],
+                       "dxf_bytes": c["dxf"]["bytes"], "block_name": "Model_Space",
+                       "block_definition_handle": "10D",
+                       "reference": {"handle": "112", "occurrence": 1, "total_occurrences": 1,
+                                     "layer": "0", "selection_method": "automatic"}},
+            "units": {"declared_code": 6, "name": "m", "millimeters_per_unit": mm,
+                      "status": "falso", "user_override": None},
+            "scale": {"requested": t["scale"], "denominator": n, "factor_mm_per_cad_unit": k,
+                      "physical_scale_guaranteed": True, "physical_scale_reason": None},
+            "pdf": {"file_name": f"{paquete}.pdf", "bytes": len(pdf),
+                    "sha256": hashlib.sha256(pdf).hexdigest(), "page_count": 1,
+                    "page_size_mm": [ancho, alto], "expected_page_size_mm": [ancho, alto],
+                    "margin_mm": margen, "content_size_mm": [ancho - 2 * margen, alto - 2 * margen],
+                    "drawing": {"cad_bounds": {"min": [x0, y0], "max": [x1, y1]},
+                                "page_bounds_mm": dict(zip(("x0", "y0", "x1", "y1"), zona_pag)),
+                                "cad_to_page": {"units": "mm", "origin": "top-left",
+                                                "y_axis": "down", "matrix": matriz},
+                                "mask": {"zone_cad": list(t["zone"]),
+                                         "zone_page_mm": dict(zip(("x0", "y0", "x1", "y1"),
+                                                                  zona_pag)),
+                                         "bleed_mm": 0.5}}},
+            "entities": {"total": 2, "by_type": [], "by_layer": [], "not_conserved": []},
+            "fonts": [], "dependencies": [],
+            "notices": {"counts": {"info": 0, "warning": 0, "critical": 0}, "by_category": {}},
+            "validation": {"status": "complete", "checks": []},
+            "selection": {"kind": "modelspace", "layers": t.get("layers") or [],
+                          "exclude_layers": t.get("exclude_layers") or [], "window": ventana,
+                          "window_from_block": None, "entities": 2},
+            "options": {"margin_mm": margen, "units": c["units"], "include_hidden_layers": None,
+                        "clip": True, **c.get("estilo", {})},
+        }
+        (salida / f"{paquete}.pdf").write_bytes(pdf)
+        (salida / f"{paquete}.txt").write_text(f"Zona falsa {ventana} a {t['scale']}\n",
+                                               encoding="utf-8")
+        (salida / f"{paquete}.manifest.json").write_text(
+            json.dumps(manifiesto, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"job": t.get("job"), "ref": None, "handle": None, "kind": "zone",
+                "zone": list(t["zone"]), "package_name": paquete, "name_generated": False,
+                "status": "published",
+                "package": {e: str(salida / f"{paquete}{x}") for e, x in
+                            (("pdf", ".pdf"), ("txt", ".txt"), ("manifest", ".manifest.json"))},
+                "validation_status": "complete", "physical_scale_guaranteed": True,
                 "page_size_mm": [ancho, alto], "notices": [], "error": None, "seconds": 0.01}
 
     def dibujar_previa(self, bloque, spec_bloque, lado, huella, estilo=None):
