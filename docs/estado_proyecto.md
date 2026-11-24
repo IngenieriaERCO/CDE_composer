@@ -2596,6 +2596,86 @@ todo OK):
   el PDF, cada casilla tiene los trazos del índice (554, 1, 507 y 5), con la opacidad 0,5;
 - `editor/planoalan.json` (guardado antes) se abre con las mismas convenciones y sin problemas.
 
+### Zonas del Model Space — Fases 10a y 10b (2026-11-24, sin commit)
+
+**Plan aprobado** (Fase 10, una subfase a la vez):
+- 10a: comprobación h con máscara;
+- 10b: servidor con protocolo 1.1 y vista previa de zona;
+- 10c: exportar una zona;
+- 10d: modo «Zonas del modelo» en el editor;
+- 10e: guardar las zonas en el plano.json y «Volver a exportar zonas».
+
+Decisiones del usuario:
+- A. Las zonas van en el plano.json (`dxf.zonas[]`).
+- B. Con el nombre vacío, la zona se queda con el nombre que generó el Exportador la primera vez
+  (`Zona_01`…). Si el usuario escribe uno, queda ese.
+- C. Las capas empiezan todas marcadas (modo «todas menos estas»); «solo estas» es una opción.
+- D. Un solo botón vuelve a exportar todas las zonas cuando cambie el DXF.
+
+**10a — Comprobación h con máscara** (manifiesto 1.5, `docs/manifiesto.md` del Exportador,
+«Cómo medir los trazos con máscara»):
+- `manifiesto.py`: `Dibujo.mascara_mm` = `pdf.drawing.mask.zone_page_mm`. Si `mask` falta
+  (esquemas 1.0–1.4) o es null, no hay máscara. Si viene, se valida (objeto, cuatro números,
+  x1 > x0 e y1 > y0).
+- `comprobacion_dibujo.py`: `recortar_a_zona` recorta el `rect` de cada trazo a la zona, a mano
+  con máximos y mínimos, sin `Rect.intersect`. Un segmento horizontal o vertical, de alto o ancho
+  cero, se conserva. Se descarta lo que queda entero fuera (la franja del `bleed_mm` o más allá).
+  `medir_limites_trazos(pagina, mascara_mm)` la usa.
+- `coherencia.py`: la h recorta a la máscara si la hay y lo dice en su nombre («recortados a la
+  máscara …»). Sin trazos dentro de la zona, falla con su propio mensaje. La g no cambia.
+- Con los paquetes de zona que dejó el Exportador (402ad72) en su
+  `data/verificacion/zonas_3`, `zonas_4` y `zonas_5`:
+  - antes, la h fallaba en los 4 con máscara de cada carpeta (de 12,9 a 63,1 mm);
+  - ahora los 14 paquetes 1.5 pasan integridad y coherencia completas, con la h en 0,000 mm;
+  - los de `zonas_1` (esquema 1.4, anteriores al arreglo del Exportador) siguen fallando la g,
+    como debe ser.
+
+**10b — Protocolo 1.1 y vista previa de zona**:
+- `trabajador.py`: los pedidos dicen `"protocol": "1.1"`. `admite_zonas(ready)` exige 1.1 o más
+  para las zonas; un trabajador 1.0 sigue sirviendo para bloques.
+- `previa_zona.py` (nuevo):
+  - `pedido_previa_zona` valida y arma el `preview` de una zona: `zona` y `vista` como cajas,
+    `capas` (solo estas) o `excluir` (todas menos estas, nunca las dos, sin comas) y `escala`
+    (entero de 1 a 100 000);
+  - `leer_previa_zona` lee la respuesta: `filas_capas`, `grupos`, `entidades`, `papel` y lo común
+    con la de un bloque (`previa_dxf.leer_previa`). Si no hay nada que dibujar, da un mensaje claro.
+- `aplicacion_editor.py`: `pedir_previa_zona`. Dos pedidos iguales mientras se hace son una sola
+  tarea. Da 409 si el trabajador habla la 1.0. El PNG sale por la misma `/api/previas/<id>`.
+- `servidor.py`: `POST /api/previa/zona`.
+- Pruebas con el falso: `tests/trabajador_falso.py` habla la 1.1 por defecto (con `--protocolo 1.0`
+  hace de exportador viejo) y responde `preview` de zona: grupos, filtro de capas, papel, caché
+  `ms-…` y `BAD_REQUEST` con una capa que no existe.
+- Con el **Exportador real y PRGD-25-1365-CIV-PL-106_1_VA.dxf**
+  (`data/verificacion/zonas_10b.py`; PNG y respuestas en `data/verificacion/zonas_10b/`), todo OK:
+  - `load` en 142 s; el trabajador dice protocolo 1.1 y manifiesto 1.5;
+  - todo el Model Space en 107 s: 6 grupos y 25 830 entidades;
+  - el grupo de la zona Zona_01 en 77 s: 16 824 entidades;
+  - la zona de Zona_01 sin las 4 capas de cotas, a 1:50, en 0,7 s: 13,40 × 13,00 mm, igual que el
+    cálculo a mano, y esas capas con `se_ve: false`;
+  - la misma zona a 1:20 sale de la caché, con el papel nuevo;
+  - «solo la capa 0» funciona;
+  - una capa que no existe da `BAD_REQUEST` con el mensaje del Exportador.
+
+**Pruebas**: **1433 pasan** y 1 se salta (antes 1383). ruff: los mismos 173 hallazgos de antes.
+- `test_coherencia_mascara` (12):
+  - recortar conserva los segmentos horizontales y verticales, descarta lo de fuera, conserva lo
+    que toca el borde y no cambia los trazos recibidos;
+  - el manifiesto sin máscara, con máscara y con 3 máscaras mal formadas;
+  - la h pasa con la máscara;
+  - el mismo PDF sin máscara falla solo la h;
+  - sin trazos dentro de la zona, falla con su mensaje.
+- `test_previa_zona` (31): el pedido y lo que no vale (12 casos), `admite_zonas` y la respuesta
+  del contrato (con grupos, sin papel y 8 respuestas que no cumplen).
+- `test_aplicacion_zona` (6): todo el Model Space con grupos, un grupo, la zona con capas
+  excluidas y escala, «solo estas», pedidos que no se pueden hacer, una tarea para dos pedidos
+  iguales y el exportador 1.0.
+- `test_servidor`: la ruta `/api/previa/zona` y su PNG.
+
+**Pendiente para la 10c**: la verificación final de `componer` (`componer.py`, «el dibujo quedó
+en…») mide los trazos de cada detalle colocado **sin** la máscara. Una zona con máscara puesta
+en la hoja fallaría ahí igual que fallaba la h. Se arregla con la misma `recortar_a_zona`, la
+zona trasladada a la posición del detalle, al colocar zonas (10c).
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

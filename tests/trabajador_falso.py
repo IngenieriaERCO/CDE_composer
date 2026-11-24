@@ -1,4 +1,4 @@
-"""Trabajador FALSO del exportador (protocolo 1.0) para las pruebas del Componedor.
+"""Trabajador FALSO del exportador (protocolo 1.1) para las pruebas del Componedor.
 
 Se lanza como el de verdad: `python trabajador_falso.py worker --work-dir CARPETA`. Sigue el
 contrato final (`docs/protocolo_trabajador.md` del exportador, aprobado el 2026-11-17) en lo que
@@ -59,11 +59,19 @@ preview: "marca": [x, y] (punto CAD) y "bounds_previa": {"min", "max"}
 si la de load es aproximada), "falla_export": "mensaje" (EXPORT_FAILED en ese trabajo) y
 "escala_no_garantizada": true.
 
-Opciones de arranque para las pruebas: --protocolo 2.0, --sin-ready, --basura (una línea que no
+Zonas del Model Space (protocolo 1.1, §4.1): `preview` con `zone` o `view` en lugar del bloque.
+El «DXF» puede traer "modelo": {"bounds": [x0, y0, x1, y1] (por defecto, la unión de las cajas
+de los bloques), "capas": [{"name", "entities", "cad_state"}] (por defecto la «0" con 10),
+"grupos": [{"number", "box", "entities"}]}. La imagen se ajusta a `view`, si no a `zone`, si no
+a todo el Model Space; `groups` solo sin zona ni vista; `paper` con `scale`; BAD_REQUEST si
+`layers` nombra capas que no existen. Caché `ms-<10 cifras>_<px>_visible.png`.
+
+Opciones de arranque para las pruebas: --protocolo 1.0 (un exportador sin zonas), --protocolo 2.0, --sin-ready, --basura (una línea que no
 es JSON antes de ready), --nieto RUTA (lanza un proceso nieto y escribe su PID en RUTA).
 """
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import math
@@ -274,6 +282,7 @@ class Falso:
         self.cargado = {"ruta": ruta, "firma": (estado.st_size, estado.st_mtime_ns), "spec": spec,
                         "huella": respuesta["dxf"]["fingerprint"], "dxf": respuesta["dxf"],
                         "units": datos.get("units"), "margen": respuesta["margin_mm"],
+                        "mm_unidad": respuesta["units"]["millimeters_per_unit"],
                         "bloques": {b["ref"]: (b, s) for b, s in
                                     zip(respuesta["blocks"], spec.get("blocks", []))}}
         self.responder(id_, "load", respuesta)
@@ -292,6 +301,9 @@ class Falso:
         if cambio:
             self.error(id_, "DXF_CHANGED", f"El DXF «{c['ruta'].name}» cambió desde que se cargó.",
                        "Vuelva a cargarlo.", {"dxf": str(c["ruta"])})
+            return
+        if "zone" in datos or "view" in datos:
+            self.previar_zona(id_, c, datos)
             return
         ref = self._referencia(id_, c, datos)
         if ref is None:
@@ -320,6 +332,78 @@ class Falso:
             return
         self.responder(id_, "preview", self.dibujar_previa(
             bloque, spec_bloque, int(datos.get("long_side_px") or 1500), c["huella"], estilo))
+
+    def previar_zona(self, id_, c, datos):
+        """§4.1: vista previa de una zona (o de todo el Model Space, con sus grupos)."""
+        import pymupdf  # solo aquí: load no lo necesita
+
+        modelo = c["spec"].get("modelo", {})
+        filas = modelo.get("capas") or [{"name": "0", "entities": 10}]
+        solo, excluir = datos.get("layers") or [], datos.get("exclude_layers") or []
+        casa = lambda capa, patrones: any(
+            fnmatch.fnmatchcase(capa.lower(), p.lower()) for p in patrones)
+        sin_capa = [p for p in solo if not any(casa(f["name"], [p]) for f in filas)]
+        if sin_capa:
+            self.error(id_, "BAD_REQUEST", f"La capa «{sin_capa[0]}» no está en el DXF.", None,
+                       {"layers": sin_capa})
+            return
+        estilo = self._estilo(id_, datos)
+        if estilo is None:
+            return
+        fin = time.monotonic() + float(c["spec"].get("previa_demora_s", 0))
+        while time.monotonic() < fin:
+            if self.cancelado.is_set():
+                self.error(id_, "CANCELLED", "Vista previa cancelada.")
+                return
+            time.sleep(0.01)
+        zona, vista = datos.get("zone"), datos.get("view")
+        if modelo.get("bounds"):
+            todo = modelo["bounds"]
+        else:
+            cajas = [b["bounds"] for b, _ in c["bloques"].values()]
+            todo = [min(k["min"][0] for k in cajas), min(k["min"][1] for k in cajas),
+                    max(k["max"][0] for k in cajas), max(k["max"][1] for k in cajas)]
+        x0, y0, x1, y1 = vista or zona or todo
+        lado = int(datos.get("long_side_px") or 1500)
+        s = lado / max(x1 - x0, y1 - y0)
+        ancho, alto = max(1, round((x1 - x0) * s)), max(1, round((y1 - y0) * s))
+        matriz = [s, 0.0, 0.0, -s, -s * x0, s * y1]
+        clave = hashlib.sha1(json.dumps([zona, vista, solo, excluir]).encode()).hexdigest()[:10]
+        png = (Path(self.args.work_dir) / "previews" / c["huella"]
+               / f"ms-{clave}_{lado}_visible{marca_estilo(estilo)}.png")
+        en_cache = png.is_file()
+        if not en_cache:
+            pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, ancho, alto), 1)
+            pix.clear_with()
+            png.parent.mkdir(parents=True, exist_ok=True)
+            pix.save(str(png))
+        filas_resp = []
+        for f in filas:
+            se_ve = (f.get("cad_state") is None and (not solo or casa(f["name"], solo))
+                     and not casa(f["name"], excluir))
+            filas_resp.append({"name": f["name"], "entities_in_view": f.get("entities", 10),
+                               "cad_state": f.get("cad_state"), "shown": se_ve})
+        papel, escala = None, datos.get("scale")
+        if escala is not None:
+            n = float(str(escala).split(":")[-1])
+            bx0, by0, bx1, by1 = zona or vista or todo
+            mm = c["mm_unidad"] / n
+            contenido = [(bx1 - bx0) * mm, (by1 - by0) * mm]
+            pagina = [v + 2 * c["margen"] for v in contenido]
+            papel = {"content_mm": contenido, "page_mm": pagina, "margin_mm": c["margen"],
+                     "fits_a1": (max(pagina) <= 841 and min(pagina) <= 594)}
+            escala = f"1:{n:g}"
+        self.responder(id_, "preview", {
+            "png": str(png), "kind": "zone", "ref": None, "handle": None, "px": [ancho, alto],
+            "bounds": {"min": [x0, y0], "max": [x1, y1]}, "cad_to_px": matriz,
+            "zone": zona, "view": [x0, y0, x1, y1], "layers": solo, "exclude_layers": excluir,
+            "layer_rows": filas_resp,
+            "entities": {"in_view": sum(f["entities_in_view"] for f in filas_resp),
+                         "drawn": sum(f["entities_in_view"] for f in filas_resp if f["shown"]),
+                         "without_bounds": 0},
+            "groups": modelo.get("grupos", []) if zona is None and vista is None else [],
+            "scale": escala, "paper": papel, "omitted": {"3DSOLID": 0, "REGION": 0},
+            "include_hidden_layers": None, "cached": en_cache, "seconds": 0.01, **estilo})
 
     def _estilo(self, id_, datos) -> dict | None:
         """{plot_style: {name, sha256} | None, print_transparency} del pedido (None si no vale)."""
@@ -651,7 +735,7 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("orden", choices=["worker"])
     p.add_argument("--work-dir", required=True)
-    p.add_argument("--protocolo", default="1.0")
+    p.add_argument("--protocolo", default="1.1")
     p.add_argument("--sin-ready", action="store_true")
     p.add_argument("--basura", action="store_true")
     p.add_argument("--nieto")

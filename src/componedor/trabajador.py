@@ -1,4 +1,4 @@
-"""Cliente del trabajador del Exportador Vectorial (`cde-exporter worker`, protocolo 1.0).
+"""Cliente del trabajador del Exportador Vectorial (`cde-exporter worker`, protocolo 1.1).
 
 El Componedor no importa código del exportador: lo lanza como COMANDO EXTERNO y le habla
 JSON por líneas (contrato: `docs/protocolo_trabajador.md` del repositorio del exportador).
@@ -17,6 +17,9 @@ Errores para el usuario (en español): `TrabajadorNoDisponible` (no arranca: no 
 instalado, no tiene la orden `worker`, no responde, otra versión del protocolo),
 `TrabajadorCaido` (el proceso terminó sin `close`) y `ErrorTrabajador` (el pedido terminó con
 `error`: código estable, mensaje, consejo y detalles del trabajador).
+
+Versión: los pedidos dicen `"protocol": "1.1"`. Un trabajador 1.0 los atiende igual (la misma
+versión mayor), pero no sabe de zonas del Model Space: `admite_zonas` lo dice con su `ready`.
 """
 
 import itertools
@@ -32,8 +35,9 @@ from pathlib import Path
 
 from componedor.proceso_windows import ProcesoEnJob, cerrar_job, lanzar_en_job
 
-PROTOCOLO = "1.0"
+PROTOCOLO = "1.1"
 MAYOR = "1"
+MENOR_ZONAS = 1  # zonas del Model Space en preview y export (protocolo 1.1, §4.1 y §5.4)
 ESPERA_READY_S = 60.0  # arranque en frío del exportador real: >30 s la primera vez (compila .pyc)
 ESPERA_CONTROL_S = 10.0  # cancel y status se responden enseguida (punto 4 del contrato)
 ESPERA_CIERRE_S = 5.0
@@ -86,6 +90,15 @@ def resolver_comando(comando: Sequence[str]) -> list[str]:
             f"No se encontró el comando «{programa}» del Exportador Vectorial. Instálelo o "
             f"indique su ruta en componedor.json (exportador.comando).")
     return [resuelto, *comando[1:]]
+
+
+def admite_zonas(listo: dict | None) -> bool:
+    """True si el `ready` del trabajador dice protocolo 1.1 o más (zonas del Model Space)."""
+    version = (listo or {}).get("protocol_version")
+    partes = str(version).split(".") if isinstance(version, str) else []
+    if len(partes) < 2 or partes[0] != MAYOR or not partes[1].isdigit():
+        return False
+    return int(partes[1]) >= MENOR_ZONAS
 
 
 def _mayor(version) -> str | None:

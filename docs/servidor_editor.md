@@ -129,8 +129,10 @@ En la carpeta `trabajo`:
 ## Cómo se habla con el trabajador
 
 El Componedor **no importa código del exportador**: lo lanza como comando externo y le habla JSON
-por líneas (protocolo 1.0; contrato en `docs/protocolo_trabajador.md` del repositorio del
-exportador, aprobado el 2026-11-17 y comparado con esta implementación). `load` se pide con el
+por líneas (protocolo 1.1 desde el 2026-11-24; contrato en `docs/protocolo_trabajador.md` del
+repositorio del exportador, aprobado el 2026-11-17 y comparado con esta implementación). Un
+trabajador 1.0 sigue sirviendo para bloques; la vista previa de zonas exige que su `ready` diga
+1.1 o más (`trabajador.admite_zonas`). `load` se pide con el
 margen de `componedor.json`, `units: null` e `include_layers: false`: la tabla de capas todavía
 no se usa y así la carga ahorra 1–2 s en bloques grandes.
 
@@ -180,6 +182,28 @@ Exportador Vectorial.»
 - `DXF_CHANGED` (el DXF cambió en el disco) o `NO_SESSION` (el trabajador ya no lo tiene): el
   editor muestra **Volver a cargar** (`POST /api/dxf/recargar`), que repite `load` con la ruta
   que el servidor ya conoce.
+
+### Vista previa de una zona del Model Space (`preview` con `zone`/`view`, Fase 10b)
+
+- `POST /api/previa/zona`; lo valida y lo arma `previa_zona.py`. Siempre **solo capas visibles**
+  del CAD (`include_hidden_layers: null`), 1 500 px y el estilo de impresión como en la de un
+  bloque.
+- Sin `zona` ni `vista`: **todo el Model Space**, con los `groups` del trabajador (grupos de dibujo
+  separados por huecos, de más a menos entidades). El editor ofrece cada grupo como `vista` para
+  acercarse.
+- `zona` (el rectángulo del usuario) con `escala`: el resultado trae `papel` (tamaño en la hoja a
+  1:N, página con los márgenes de `load` y si cabe en A1). Cambiar solo la escala devuelve la
+  imagen de la caché del trabajador con el `papel` nuevo.
+- Capas: `excluir` («todas menos estas», el modo con que empieza el editor) o `capas` («solo
+  estas»), nunca las dos; admiten `*` y `?`; sin comas. Una capa de `capas` que no existe:
+  la tarea falla con `BAD_REQUEST` del trabajador.
+- El resultado trae `filas_capas` (`nombre`, `entidades` en la vista, `estado_cad`, `se_ve`) para
+  las casillas del editor, y `entidades` (`en_vista`, `dibujadas`, `sin_caja`).
+- La vista previa **no recorta**: lo que cruza el borde se ve entero hasta el borde de la imagen
+  (la exportación sí recorta).
+- Tiempos con PRGD (97 MB, exportador 402ad72, CTB de `componedor.json`): `load` 142 s; todo el
+  Model Space 107 s (incluye calcular las cajas de todo el Model Space, una vez por sesión); un
+  grupo de 16 824 entidades 77 s; una zona pequeña 0,5–0,7 s; otra escala, 0,2 s (caché).
 
 ### Exportar (`export`, etapa 3)
 
@@ -253,6 +277,7 @@ bloque:
 | `POST /api/dxf/recargar` | «Volver a cargar»: `load` otra vez con la ruta del último DXF elegido. 409 si no hay ninguno o ya se está cargando. |
 | `GET /api/estilos` | `{estilos: [{nombre, sha256, descripcion}], por_defecto: {ctb, transparencia}, aviso}`: las tablas `.ctb` de `carpeta_ctb` y los valores de `componedor.json`. Nunca rutas. |
 | `POST /api/previa` | Cuerpo `{"ref": "<ref de la carpeta>", "estilo"?: {"ctb": <nombre de /api/estilos> \| null, "transparencia": bool}}` (sin `estilo`, el de `componedor.json`; un nombre que no es de la lista o una ruta: 400): encola `preview` con `plot_style` (la ruta la pone el servidor) y `print_transparency`. Responde `{tarea}`. 409 sin DXF o con la sesión vencida; 404 si el `ref` no está en la carpeta. El resultado de la tarea trae `px`, `cad_a_px`, `caja_cad`, `omitidos`, `en_cache` y `url` (nunca la ruta del PNG). |
+| `POST /api/previa/zona` | Cuerpo `{"zona"?: [xmin, ymin, xmax, ymax] \| null, "vista"?: [...] \| null, "excluir"?: [capas] \| null, "capas"?: [capas] \| null, "escala"?: N \| null, "estilo"?}` (unidades del dibujo; N entero de 1 a 100 000; `capas` y `excluir` no van juntas): encola `preview` de una zona (protocolo 1.1, §4.1). Responde `{tarea}`; dos pedidos iguales mientras se hace son una sola tarea. 400 si algo no vale; 409 sin DXF, con la sesión vencida o si el trabajador habla la 1.0. El resultado trae `px`, `cad_a_px`, `caja_cad`, `zona`, `vista`, `capas`, `excluir`, `filas_capas`, `grupos`, `entidades`, `escala`, `papel`, `en_cache` y `url`. |
 | `POST /api/exportar` | Cuerpo `{"bloques": [{"id", "handle", "sha256", "escala", "centro_mm"}], "estilo"?: {"ctb", "transparencia"}}` (hasta 200; `estilo` como en `/api/previa`): una tarea por bloque, `{tareas}` en el mismo orden. El paquete lleva la marca del estilo (`_p<sha6>`, `_t`) y se verifica que su manifiesto traiga ese estilo. El resultado de cada una trae `paquete`, `manifiesto` (relativo a la carpeta del editor), `estilo` (`{ctb, sha256, transparencia}` del manifiesto), `posicion_mm`, `desde_centro_mm`, `detalle` (la entrada del catálogo, con su miniatura y su `estilo`), `en_cache`, `movidos` y `avisos`. 409 sin DXF, con la sesión vencida, con el DXF cambiado o de otro DXF; 404 si el bloque no está; 400 si no cabe. |
 | `POST /api/trabajador/detener` | «Detener a la fuerza». `{detenido}`. |
 | `GET /api/exportados` | Las entradas de catálogo de lo exportado en esta sesión del servidor (para el editor que se recarga). |

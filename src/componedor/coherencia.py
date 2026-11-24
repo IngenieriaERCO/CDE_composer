@@ -10,7 +10,9 @@ en este orden (ver docs/contrato_paquete.md):
   e) matriz: a = factor, d = -factor (relativa < 1e-6), b = c = 0 (|b|, |c| <= 1e-9·factor);
   f) las esquinas de cad_bounds pasadas por la matriz = page_bounds_mm (±0,01 mm);
   g) page_bounds_mm dentro de la página;
-  h) trazos medidos en el PDF (sin el fondo blanco) = page_bounds_mm (±0,5 mm);
+  h) trazos medidos en el PDF (sin el fondo blanco) = page_bounds_mm (±0,5 mm). Con
+     máscara de recorte (pdf.drawing.mask, esquema 1.5) cada trazo se recorta antes a
+     mask.zone_page_mm, porque get_drawings() no aplica la máscara;
   i) regla de uso: scale.physical_scale_guaranteed debe ser true.
 """
 
@@ -66,7 +68,8 @@ def verificar_coherencia(paquete: Paquete,
         if rotacion != 0:
             return resultado
         visible = tamano_visible_mm(pagina)
-        trazos = medir_limites_trazos(pagina)
+        mascara = dibujo.mascara_mm
+        trazos = medir_limites_trazos(pagina, mascara)
     finally:
         doc.close()
 
@@ -126,15 +129,20 @@ def verificar_coherencia(paquete: Paquete,
                _rect(dibujo.limites_pagina_mm), "exacto",
                "" if ok else "el dibujo declarado se sale de la página del PDF"))
 
-    # h) trazos reales del PDF = page_bounds_mm
+    # h) trazos reales del PDF = page_bounds_mm (con máscara, recortados a su zona)
+    nombre_h = "h) Trazos del PDF vs page_bounds_mm"
+    if mascara is not None:
+        nombre_h += f" (recortados a la máscara {_rect(mascara)})"
     if trazos is None:
-        agregar(_c("h) Trazos del PDF vs page_bounds_mm", False, _rect(dibujo.limites_pagina_mm),
-                   "sin trazos", f"±{TOL_TRAZOS_MM} mm", "el PDF no tiene trazos que medir"))
+        agregar(_c(nombre_h, False, _rect(dibujo.limites_pagina_mm),
+                   "sin trazos", f"±{TOL_TRAZOS_MM} mm",
+                   "el PDF no tiene trazos que medir" if mascara is None else
+                   "el PDF no tiene trazos dentro de la zona de la máscara de recorte"))
     else:
         dif = _dif_max(trazos, dibujo.limites_pagina_mm)
         resultado.datos["diferencia_trazos_mm"] = dif
         ok = dif <= TOL_TRAZOS_MM
-        agregar(_c("h) Trazos del PDF vs page_bounds_mm", ok, _rect(dibujo.limites_pagina_mm),
+        agregar(_c(nombre_h, ok, _rect(dibujo.limites_pagina_mm),
                    f"{_rect(trazos)} (dif. máx. {dif:.3f} mm)", f"±{TOL_TRAZOS_MM} mm",
                    "" if ok else f"los trazos del PDF no están donde dice page_bounds_mm "
                                  f"(diferencia máx. {dif:.3f} mm)"))

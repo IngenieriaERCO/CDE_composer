@@ -259,6 +259,24 @@ def test_vista_previa_y_su_png(servidor):
     assert esperar(servidor, r["tarea"]["id"])["estado"] == "terminada"
 
 
+def test_vista_previa_de_una_zona(servidor):
+    """Protocolo 1.1: todo el Model Space o una zona, y el PNG por la misma ruta."""
+    assert pedido(servidor, "POST", "/api/previa/zona", cuerpo=b"{}")[0] == 409  # sin DXF
+    _, r = pedido(servidor, "POST", "/api/dxf/elegir")
+    assert esperar(servidor, r["tarea"]["id"])["estado"] == "terminada"
+    estado, r = pedido(servidor, "POST", "/api/previa/zona", cuerpo=b'{"zona": [1, 2]}')
+    assert estado == 400 and "«zona» debe ser" in r["error"]
+    cuerpo = json.dumps({"zona": [1000, 2000, 1005, 2002], "excluir": ["COTAS"],
+                         "escala": 50}).encode()
+    estado, r = pedido(servidor, "POST", "/api/previa/zona", cuerpo=cuerpo)
+    assert estado == 200 and r["tarea"]["tipo"] == "previa_zona"
+    foto = esperar(servidor, r["tarea"]["id"])
+    assert foto["estado"] == "terminada", foto["error"]
+    assert foto["resultado"]["papel"]["contenido_mm"] == [100.0, 40.0]
+    estado, png = pedido(servidor, "GET", foto["resultado"]["url"])
+    assert estado == 200 and png[:4] == bytes([0x89]) + b"PNG"
+
+
 def test_exportar_y_detener(tmp_path):
     """Etapa 3: POST /api/exportar con la lista de bloques; POST /api/trabajador/detener."""
     (tmp_path / "editor.html").write_text(HTML, encoding="utf-8")

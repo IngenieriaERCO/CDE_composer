@@ -5,6 +5,7 @@ componedor necesita para componer (campos presentes, tipos, números finitos y p
 enumerados, versión mayor del esquema). No se calcula el hash ni se compara con el PDF
 (subfases 2.3 y 2.4). Los campos informativos (exporter, source, entities, fonts,
 dependencies, notices, options) no se validan y los campos desconocidos se ignoran.
+`pdf.drawing.mask` (esquema 1.5) es opcional; si viene, su `zone_page_mm` se valida.
 
 Todos los problemas se juntan en un solo `ManifiestoInvalido`, uno por línea, con la ruta
 del campo (p. ej. «pdf.page_size_mm: falta el campo»).
@@ -86,6 +87,9 @@ class Dibujo:
     limites_cad: tuple[float, float, float, float]  # (xmin, ymin, xmax, ymax) en unidades CAD
     limites_pagina_mm: tuple[float, float, float, float]  # (x0, y0, x1, y1), mm, Y abajo
     matriz: MatrizCad  # cad_to_page: CAD -> mm de página, origen arriba-izquierda, Y abajo
+    # pdf.drawing.mask.zone_page_mm (desde el esquema 1.5): la zona del Model Space en la
+    # página (x0, y0, x1, y1; mm, Y abajo), sin el bleed_mm. None sin máscara de recorte.
+    mascara_mm: tuple[float, float, float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -192,8 +196,9 @@ def _construir(lec: "_Lector", ruta: Path) -> Manifiesto | None:
                 lec.error(f"pdf.drawing.cad_to_page.{clave}",
                         f"debe ser '{esperado_ctp}'; tiene {valor!r}")
         matriz = lec.numeros("pdf.drawing.cad_to_page.matrix", 6)
+        mascara = _leer_mascara(lec)
         if cmin and cmax and None not in limites and matriz:
-            dibujo = Dibujo((*cmin, *cmax), limites, MatrizCad(*matriz))
+            dibujo = Dibujo((*cmin, *cmax), limites, MatrizCad(*matriz), mascara)
 
     estado = lec.texto("validation.status")
     if estado is not None and estado not in ESTADOS_VALIDACION:
@@ -209,6 +214,26 @@ def _construir(lec: "_Lector", ruta: Path) -> Manifiesto | None:
         pdf=GeometriaPdf(nombre, tamano_bytes, sha, paginas, tamano, esperado, margen, dibujo),
         estado_validacion=estado, bloque=bloque,
     )
+
+
+def _leer_mascara(lec: "_Lector") -> tuple[float, float, float, float] | None:
+    """`pdf.drawing.mask.zone_page_mm` (esquema 1.5). Falta (1.0–1.4) o es null: sin máscara.
+
+    Si hay máscara, su zona se usa en la comprobación h (coherencia.py), así que se valida:
+    cuatro números finitos con x1 > x0 e y1 > y0.
+    """
+    dibujo = lec.datos.get("pdf", {}).get("drawing")
+    if not isinstance(dibujo, dict) or dibujo.get("mask") is None:
+        return None
+    if not lec.objeto("pdf.drawing.mask"):
+        return None
+    zona = tuple(lec.numero(f"pdf.drawing.mask.zone_page_mm.{k}") for k in ("x0", "y0", "x1", "y1"))
+    if None in zona:
+        return None
+    if zona[2] <= zona[0] or zona[3] <= zona[1]:
+        lec.error("pdf.drawing.mask.zone_page_mm", "debe cumplir x1 > x0 e y1 > y0")
+        return None
+    return zona
 
 
 class _Lector:

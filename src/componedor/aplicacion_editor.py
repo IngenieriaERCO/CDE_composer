@@ -17,6 +17,11 @@ se publicó y pasó la verificación (`exportar_dxf.verificar`), el viejo se mue
 Después se calcula su posición por el centro CAD. «Detener a la
 fuerza» cierra el trabajador sin esperar (`Canal.detener`).
 
+Zonas del Model Space (protocolo 1.1, previa_zona.py): `pedir_previa_zona` encola un
+`preview` con `zone`/`view` en lugar del handle: todo el Model Space (con sus grupos), un grupo
+o el rectángulo del usuario, con el filtro de capas y la escala para el tamaño en la hoja. El PNG
+se entrega igual que el de un bloque. Si el trabajador habla la 1.0, error 409 claro.
+
 Estilo de impresión (estilos_impresion.py): `estilos()` da la lista de tablas .ctb de
 `exportador.carpeta_ctb` y los valores por defecto. El editor manda en cada vista previa y
 exportación `estilo: {"ctb": <nombre de la lista> | null, "transparencia": bool}` (sin él, los
@@ -27,6 +32,7 @@ se carga es la que eligió el cuadro; el editor nunca manda rutas.
 """
 
 import itertools
+import json
 import os
 import threading
 import time
@@ -72,10 +78,16 @@ from componedor.previa_dxf import (
     pedido_previa,
     png_dentro,
 )
+from componedor.previa_zona import (
+    PedidoZonaInvalido,
+    leer_previa_zona,
+    pedido_previa_zona,
+)
 from componedor.trabajador import (
     ARCHIVO_REGISTRO,
     Trabajador,
     TrabajadorNoDisponible,
+    admite_zonas,
     resolver_comando,
 )
 
@@ -129,7 +141,8 @@ class AplicacionEditor:
         self._tarea_carga: str | None = None
         self._ruta_dxf: Path | None = None  # la del último DXF elegido (para «Volver a cargar»)
         self._previas: dict[str, Path] = {}  # tarea de vista previa terminada → su PNG
-        self._previa_por_ref: dict[tuple[str, str], str] = {}  # (sesión, ref) → tarea
+        # (sesión, ref, estilo) o (sesión, "zona", pedido) → tarea en cola o en curso
+        self._previa_por_ref: dict[tuple[str, ...], str] = {}
         self._candado = threading.Lock()
         self._exportacion: dict[tuple[str, str, float], str] = {}  # (sha, handle, N) → tarea
         self._exportados: dict[str, dict] = {}  # manifiesto (para el editor) → entrada de catálogo
@@ -313,12 +326,7 @@ class AplicacionEditor:
         if not isinstance(ref, str) or not ref:
             raise ErrorAplicacion(400, "Falta «ref» (el bloque de la carpeta del DXF).")
         tabla, transparencia = self._estilo(estilo)
-        dxf = self.estado()["dxf"]
-        if dxf is None:
-            raise ErrorAplicacion(409, "Todavía no se cargó ningún DXF: use «Cargar DXF».")
-        if not dxf["sesion_activa"]:
-            raise ErrorAplicacion(409, "El trabajador se reinició desde que se cargó el DXF: "
-                                       "vuelva a cargarlo («Volver a cargar»).")
+        dxf = self._dxf_activo()
         bloque = next((b for b in dxf["bloques"] if b["ref"] == ref), None)
         if bloque is None:
             raise ErrorAplicacion(404, f"El bloque «{ref}» no está en la carpeta del DXF "
@@ -335,6 +343,49 @@ class AplicacionEditor:
                 procesar=lambda data, t: self._al_previar(data, t, ref))
             self._previa_por_ref[clave] = tarea.id
         return {"tarea": tarea.foto()}
+
+    def _dxf_activo(self) -> dict:
+        """La carpeta del DXF cargado, si su sesión sigue viva en el trabajador (si no, 409)."""
+        dxf = self.estado()["dxf"]
+        if dxf is None:
+            raise ErrorAplicacion(409, "Todavía no se cargó ningún DXF: use «Cargar DXF».")
+        if not dxf["sesion_activa"]:
+            raise ErrorAplicacion(409, "El trabajador se reinició desde que se cargó el DXF: "
+                                       "vuelva a cargarlo («Volver a cargar»).")
+        return dxf
+
+    def pedir_previa_zona(self, zona=None, vista=None, capas=None, excluir=None,
+                          escala=None, estilo=None) -> dict:
+        """Encola `preview` de una zona del Model Space (§4.1). {"tarea": foto}.
+
+        Sin `zona` ni `vista`: todo el Model Space, con sus grupos. Dos pedidos iguales
+        mientras el primero está en cola o en curso son una sola tarea."""
+        tabla, transparencia = self._estilo(estilo)
+        dxf = self._dxf_activo()
+        if not admite_zonas(self.canal.listo):
+            version = (self.canal.listo or {}).get("protocol_version")
+            raise ErrorAplicacion(409, f"El Exportador Vectorial instalado habla el protocolo "
+                                       f"{version} y no sabe de zonas del Model Space (hace "
+                                       f"falta el 1.1): actualícelo.")
+        try:
+            datos = pedido_previa_zona(dxf["sesion"], zona, vista, capas, excluir, escala)
+        except PedidoZonaInvalido as e:
+            raise ErrorAplicacion(400, str(e)) from None
+        datos.update(impresion.opciones(tabla, transparencia))
+        clave = (dxf["sesion"], "zona", json.dumps(datos, sort_keys=True))
+        with self._candado:
+            previa = self.canal.tarea(self._previa_por_ref.get(clave, ""))
+            if previa is not None and previa.estado in (EN_COLA, EN_CURSO):
+                return {"tarea": previa.foto()}
+            tarea = self.canal.encolar("previa_zona", "preview", datos,
+                                       procesar=self._al_previar_zona)
+            self._previa_por_ref[clave] = tarea.id
+        return {"tarea": tarea.foto()}
+
+    def _al_previar_zona(self, data: dict, tarea: Tarea) -> dict:
+        previa = leer_previa_zona(data, self.carpeta_previas)  # PreviaInvalida es ValueError
+        self._previas[tarea.id] = previa.pop("png")
+        return {**previa, "url": f"/api/previas/{tarea.id}"}
 
     def _al_previar(self, data: dict, tarea: Tarea, ref: str) -> dict:
         previa = leer_previa(data, self.carpeta_previas)  # PreviaInvalida es ValueError

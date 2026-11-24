@@ -53,7 +53,7 @@ def test_el_trabajador_se_lanza_al_primer_pedido(canal, tmp_path):
     assert t.estado == TERMINADA and t.resultado["blocks"][0]["name"] == "B1"
     assert t.avance["percent"] == 100.0 and t.generacion == 1
     e = canal.estado()
-    assert e["estado"] == LISTO and e["listo"]["protocol_version"] == "1.0"
+    assert e["estado"] == LISTO and e["listo"]["protocol_version"] == "1.1"
     assert len(canal.lanzados) == 1
 
 

@@ -125,7 +125,7 @@ La integridad NO compara tamaño de página, escala ni matriz: eso es la coheren
 | e | Matriz: a = factor, d = −factor, b = c = 0 | relativa < 1e-6 | Si b o c ≠ 0: «matriz con giro o inclinación: todavía no soportada» (limitación del componedor, no manifiesto inválido). |
 | f | Las 4 esquinas de `cad_bounds` pasadas por la matriz = `page_bounds_mm` | ±0,01 mm | `page_bounds_mm` no es `cad_bounds` transformado. |
 | g | `page_bounds_mm` dentro de la página (0 ≤ x0 < x1 ≤ ancho, 0 ≤ y0 < y1 ≤ alto) | exacto | El dibujo declarado se sale de la página. |
-| h | Trazos del PDF (`comprobacion_dibujo`, sin el fondo blanco) = `page_bounds_mm` | ±0,5 mm | Los trazos no están donde dice el manifiesto (diferencia máxima). |
+| h | Trazos del PDF (`comprobacion_dibujo`, sin el fondo blanco) = `page_bounds_mm`. Con máscara de recorte (`pdf.drawing.mask`, esquema 1.5) cada trazo se recorta antes, a mano, a `mask.zone_page_mm`: `get_drawings()` no aplica la máscara | ±0,5 mm | Los trazos no están donde dice el manifiesto (diferencia máxima); con máscara, también «sin trazos dentro de la zona de la máscara». |
 | i | **Regla de uso:** `scale.physical_scale_guaranteed` = true | exacto | «escala física no garantizada»; cita `scale.physical_scale_reason` si viene. |
 
 **Regla de uso de `physical_scale_guaranteed`.** El componedor solo compone a escala
@@ -219,6 +219,7 @@ Pueden faltar, venir en `null` o cambiar de forma sin que el componedor falle. N
 | `1.2` | `selection.clip` (recorte a la zona de `cad extract-modelspace`) y avisos `MODELSPACE_CLIPPED` / `MODELSPACE_NOT_CLIPPED`. | Sin probar con un paquete real: no hubo paquetes de Model Space recortado. Solo agrega claves que se ignoran. |
 | `1.3` | En `options`: `units`, `instancing`, `xobject`, `clip`, `exporter_version`. | Probada: los paquetes de «Exportar» del editor (etapa 3 y bloques anónimos, PRGD y GUAMO) se importan, se verifican y se componen. |
 | `1.4` | En `options`: `plot_style` (`null` o `{name, sha256}` de la CTB) y `print_transparency`; avisos `PLOT_STYLE_APPLIED` y `HATCH_TRANSPARENT_OMITTED`. | **Probada el 2026-11-19** con el Exportador real (dev, 7154704) y PRGD: «via tunez» 1:500 y la mesa I1.M1.PV1_12900 1:75, con las opciones por defecto y con `plot_style` = `CTB_ERCO_V2.ctb` y `print_transparency: false`. Se importan, aparecen en el catálogo del editor y se componen (con ortofoto y cuadrícula). No hizo falta ningún cambio. |
+| `1.5` | `pdf.drawing.mask` (`null`, o `zone_cad`, `zone_page_mm` y `bleed_mm` de la máscara de recorte de una zona del Model Space); con máscara, `cad_bounds` y `page_bounds_mm` son lo que se ve. | **Probada el 2026-11-24** con los paquetes de zona del Exportador (402ad72) en `data/verificacion/zonas_3`, `zonas_4` y `zonas_5` de su repositorio: los 14 pasan integridad y coherencia (h con diferencia 0,000 mm). `manifiesto.py` lee `mask.zone_page_mm` (si viene, se valida) y la h recorta los trazos a esa zona. |
 
 ## 5. Quién valida qué
 
