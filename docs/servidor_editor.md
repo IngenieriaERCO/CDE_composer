@@ -37,6 +37,50 @@ Edge  ──HTTP (127.0.0.1, token)──>  servidor del Componedor  ──JSON 
 
    Al final, «No exportables» (XREF, sin definición…) y los avisos del trabajador.
 
+### Zonas del modelo, paso a paso
+
+Para exportar como detalle un trozo del Model Space (no un bloque):
+
+1. Doble clic en `Abrir editor.bat` y **Cargar DXF** (con PRGD, unos 2 minutos: la barra dice en
+   qué va y cuánto lleva; el resto del editor se puede usar mientras tanto).
+2. En la carpeta del DXF, **Zonas del modelo…**. Se abre un cuadro grande:
+   - la primera vez se pide la vista de **todo el Model Space**. Con un DXF grande tarda más de
+     un minuto (calcula las cajas de todo el dibujo, una vez por sesión): el cuadro «Trabajando…»
+     dice el avance, cuánto lleva y tiene **Cancelar**. Se puede cerrar el cuadro y seguir;
+   - la vista se maneja **como en AutoCAD**:
+
+     | Ratón | Qué hace |
+     |---|---|
+     | Rueda | Acerca o aleja hacia donde apunta el cursor |
+     | Rueda apretada y arrastrar | Mueve la vista |
+     | Doble clic con la rueda | Ver todo el Model Space |
+     | Clic izquierdo y arrastrar | Dibuja la zona (rectángulo rojo), a cualquier zoom |
+     | Clic izquierdo en un grupo (G1, G2…) | Va a ese grupo |
+
+     Al girar la rueda la imagen que hay se agranda o achica al instante; cuando se deja de
+     mover la rueda (medio segundo), se pide al exportador una **vista nítida** de lo que se ve
+     (una barra arriba dice «Pidiendo la vista nítida… · lleva N s», con **Cancelar**; se puede
+     seguir moviendo y dibujando mientras tanto). Si la imagen que hay ya alcanza, o esa vista ya
+     se pidió, no se pide nada;
+   - arriba, «Todo el Model Space» y un botón por **grupo de dibujo** («Grupo 1 · 16 824
+     entidades»), como atajos.
+3. **Dibuje la zona** con el clic izquierdo. Acérquese con la rueda todo lo que haga falta: la
+   zona se guarda en coordenadas del dibujo y queda exacta a cualquier zoom. Al dibujarla se
+   propone la escala.
+4. **Capas**: todas marcadas al empezar (se exportan todas menos las que desmarque); con «Solo
+   las marcadas», solo las marcadas. Se listan las capas con algo en la vista (con cuántas
+   entidades); las apagadas o congeladas en el CAD salen en gris (no se dibujan). **Ver la imagen
+   con el filtro de capas** pide las vistas con ese filtro, para ver lo que se va a exportar.
+5. **Escala**: el tamaño del dibujo y de la página en la hoja; en rojo, si no cabe en el área de
+   dibujo del A1, con la escala que sí cabe.
+6. **Nombre** (opcional; vacío: `Zona_01`, `Zona_02`…) y **Exportar zona**: barra de avance y
+   Cancelar. Al terminar dice el paquete y que **ya está en «Detalles disponibles»** (debajo de la
+   carpeta del DXF), desde donde se agrega al plano como cualquier detalle. La zona se queda con
+   su nombre: exportarla otra vez reemplaza el paquete (el viejo va a `_para_borrar/`).
+
+El estilo de impresión es el del panel del DXF. Guardar las zonas en el plano.json para volver a
+exportarlas es la Fase 10e.
+
 Si el servidor no arranca, `Abrir editor.bat` abre el editor sin servidor, como antes. Con doble
 clic en `editor.html` también se abre sin servidor: el botón «Cargar DXF» aparece desactivado y
 explica cómo abrirlo.
@@ -150,7 +194,10 @@ no se usa y así la carga ahorra 1–2 s en bloques grandes.
   `BUSY`, se anota y se reintenta una vez.
 - **Cancelar**: una tarea en cola se quita al instante; a la que está en curso se le manda
   `cancel`. Si el trabajador no la cancela en 60 s, o no responde al `cancel` en 10 s, se detiene
-  a la fuerza (se cierra su Job) y el próximo pedido lanza otro trabajador.
+  a la fuerza (se cierra su Job) y el próximo pedido lanza otro trabajador. Si responde que **no
+  la acepta** (el pedido ya estaba terminando y su respuesta viene en camino), se espera igual a
+  que termine sola: detenerlo perdería la sesión del DXF. Antes se lo detenía en el acto, y la
+  rueda de «Zonas del modelo», que cancela a menudo la vista que esperaba, lo dejaba ver.
 - **Caídas**: si el trabajador termina sin que se le pida, la tarea falla con un mensaje claro y el
   próximo pedido lanza otro. Tras **2 caídas seguidas** el canal se detiene y el editor muestra
   **Reiniciar trabajador**. Cada trabajador nuevo es una sesión nueva: la carpeta del DXF anterior
@@ -243,6 +290,32 @@ Exportador Vectorial.»
   «Volver a cargar».
 - Las carpetas `.cde-tmp-*` que el exportador usa (o deja) en la salida se ignoran al buscar
   paquetes (`localizar_paquetes`).
+
+### El cuadro «Zonas del modelo» (Fase 10d)
+
+- `editor_zonas.js` (lógica, probada en Node: px ↔ CAD con `cad_a_px`, el rectángulo arrastrado
+  como zona CAD a milésimas de unidad, el grupo bajo un clic, el tamaño en la hoja igual que
+  `exportar_zona.pagina_de_zona`, el filtro de capas y los cuerpos de `/api/previa/zona` y
+  `/api/exportar/zona`) y `editor_panel_zonas.js` (el `<dialog>`; la imagen y los recuadros en un
+  SVG con `viewBox` en px de la imagen, así el ratón se lleva a px con `getScreenCTM`).
+- La vista como en AutoCAD: la **cámara** es la ventana CAD que se ve. El `viewBox` del SVG sale
+  de la cámara y de la matriz `cad_a_px` de la imagen que hay, así la rueda (`zoomEnPunto`: el
+  punto bajo el cursor se queda) y el arrastre con la rueda (`desplazar`) escalan la imagen al
+  instante, sin pedir nada. El botón de la rueda no activa el autodesplazamiento del navegador.
+- Vista nítida: 450 ms después de la última vuelta de rueda o del fin del arrastre se mira si
+  la imagen que hay sirve (`necesitaVistaNitida`: cubre lo que se ve de dibujo y tiene al menos
+  0,75 px de imagen por px de pantalla). Si no, se pide `vista` = lo que se ve recortado a la
+  caja de todo el Model Space (a milésimas de unidad). Si lo que se ve abarca todo el Model
+  Space, es la vista de todo (de la caché). Las ya pedidas se guardan en el editor; pedir otra
+  cancela la que esperaba. Con «Ver la imagen con el filtro de capas», las vistas llevan el
+  filtro.
+- La zona, los grupos y el rectángulo que se arrastra se guardan en coordenadas del dibujo y se
+  dibujan con la matriz de la imagen que se ve: son exactos a cualquier zoom. Los grosores y las
+  letras no cambian con el zoom (`vector-effect: non-scaling-stroke`).
+- Lo largo no congela nada: todo es asíncrono; el cuadro «Trabajando…» y la carga del DXF dicen
+  cuánto llevan (se repinta cada segundo).
+- Al exportar, el detalle se registra en «Detalles disponibles» (`EditorUI.registrarDetalles`) y
+  el campo «Nombre» toma el nombre usado (también el generado).
 
 ### Exportar una zona del Model Space (`export` con un trabajo de zona, Fase 10c)
 

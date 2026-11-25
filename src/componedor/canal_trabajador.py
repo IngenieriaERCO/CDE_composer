@@ -313,13 +313,23 @@ class Canal:
                          "Vuelva a intentarlo; el próximo pedido arranca otro trabajador.")
 
     def _cancelar_en_curso(self, tarea: Tarea, trabajador: Trabajador | None) -> None:
+        """Manda `cancel` y espera a que la tarea termine; si no termina, a la fuerza.
+
+        Solo si el trabajador NO RESPONDE al `cancel` se lo detiene enseguida. Si responde que
+        no lo acepta (el pedido ya estaba terminando y su respuesta viene en camino, o todavía
+        no había empezado), se espera lo mismo que con uno aceptado: matarlo perdería la sesión
+        (con un DXF grande, más de un minuto de carga) por una tarea que termina sola. Esto
+        pasa a menudo con la rueda de «Zonas del modelo», que cancela la vista que esperaba.
+        """
         aceptado = False
+        respondio = False
         if trabajador is not None and tarea.id_pedido is not None:
             try:
                 aceptado = trabajador.cancelar(tarea.id_pedido)
+                respondio = True
             except (TimeoutError, TrabajadorCaido, ErrorTrabajador, OSError):
                 aceptado = False  # no responde: a la fuerza ya
-        limite = time.monotonic() + (self.espera_cancelar_s if aceptado else 0)
+        limite = time.monotonic() + (self.espera_cancelar_s if respondio else 0)
         while tarea.estado == EN_CURSO and time.monotonic() < limite:
             time.sleep(0.05)
         if tarea.estado == EN_CURSO and trabajador is not None:

@@ -54,7 +54,9 @@ MARCADORES = {
     "/*@@JS_UI@@*/": "editor_ui.js",
     "/*@@JS_SERVIDOR@@*/": "editor_servidor.js",
     "/*@@JS_DXF@@*/": "editor_dxf.js",
+    "/*@@JS_ZONAS@@*/": "editor_zonas.js",  # Fase 10d: lógica de «Zonas del modelo»
     "/*@@JS_PANEL_DXF@@*/": "editor_panel_dxf.js",
+    "/*@@JS_PANEL_ZONAS@@*/": "editor_panel_zonas.js",  # el diálogo «Zonas del modelo»
     "/*@@JS_PANEL_ORTOFOTO@@*/": "editor_panel_ortofoto.js",
     "/*@@JS_PANEL_LOCALIZACION@@*/": "editor_panel_localizacion.js",
 }

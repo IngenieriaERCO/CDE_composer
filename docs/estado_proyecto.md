@@ -2742,6 +2742,151 @@ ruff: los mismos 173 hallazgos de antes.
   - sin el recorte, la verificación final fallaría.
 - `test_servidor`: `/api/exportar/zona` y `/api/exportados`.
 
+10c: commit dc1d794 en dev, con push (2026-11-24).
+
+### Zonas del Model Space — Fase 10d: «Zonas del modelo» en el editor (2026-11-24, sin commit)
+
+**Qué se hizo**
+- `editor_zonas.js` (nuevo, lógica sin pantalla, en Node y en el navegador):
+  - px ↔ CAD con `cad_a_px`;
+  - el rectángulo arrastrado como zona CAD (normalizada, limitada a la imagen, a milésimas de
+    unidad; menos de 4 px es un clic);
+  - el grupo bajo un clic (el más chico que lo contiene);
+  - la vista «de cerca» (la zona más 15 %);
+  - el tamaño en la hoja (igual que `exportar_zona.pagina_de_zona`), si cabe en el área de
+    dibujo del A1 y la escala sugerida;
+  - el filtro de capas (modos «excluir» y «solo»);
+  - los cuerpos de `/api/previa/zona` y `/api/exportar/zona` y los textos (zona, grupo, «lleva
+    1 min 05 s»).
+- `editor_panel_zonas.js` (nuevo): el cuadro «Zonas del modelo». Tiene la imagen con los grupos
+  (G1, G2…) y la zona en un SVG, los botones de grupo, el arrastre con el ratón y «Ver la zona de
+  cerca». Las capas van con casillas (todas marcadas al empezar; «Solo las marcadas»; las
+  apagadas en el CAD en gris), con «Ver con estas capas». Luego la escala con el tamaño en la
+  hoja (en rojo si no cabe, con la escala que sí), el nombre opcional y «Exportar zona». Lo largo
+  se muestra en el cuadro «Trabajando…» con barra, mensaje del trabajador, tiempo transcurrido
+  (se repinta cada segundo) y «Cancelar». Las vistas ya pedidas se guardan; pedir otra cancela la
+  que esperaba. Lo exportado va a «Detalles disponibles» (`EditorUI.registrarDetalles`) y el
+  nombre usado (también el generado) queda en el campo.
+- `editor_panel_dxf.js`: botón «Zonas del modelo…» en la carpeta del DXF (desactivado si hay que
+  volver a cargar), «lleva …» en la barra de la carga del DXF y `estiloPedido()`.
+- `editor_servidor.js`: `previaZona` y `exportarZona`. `editor_html.py` y `editor.html`: los dos
+  JS nuevos. `editor.css`: el cuadro.
+
+**Cómo probarlo**: `Abrir editor.bat` → «Cargar DXF» → «Zonas del modelo…» (paso a paso en
+`docs/servidor_editor.md`, «Zonas del modelo, paso a paso»).
+
+**Verificación en Edge** (`data/verificacion/verificar_zonas.mjs`, ratón real por CDP; capturas en
+`data/verificacion/zonas_salida/`). Todo OK, sin errores de JavaScript.
+- Con el trabajador falso (`servidor_bloques_prueba.py --zonas`):
+  - el cuadro «Trabajando…», con «lleva N s», la explicación y «Cancelar»;
+  - dos grupos (botones y recuadros), y un clic en el grupo 1 abre su vista;
+  - la zona arrastrada da exactamente [100, 140, 200, 200];
+  - escala sugerida 1:200; a 1:50 avisa en rojo «No cabe… Pruebe 1:200» y «Exportar zona» queda
+    desactivado;
+  - todas las capas marcadas al empezar; desmarcar COTAS; con «solo» y ninguna, no se exporta;
+  - la capa apagada sale en gris;
+  - «Ver la zona de cerca» sin COTAS;
+  - al exportar con el nombre vacío sale `Zona_01_1-200`, el campo queda en `Zona_01` y aparece
+    en «Detalles disponibles».
+- Con el **Exportador real y PRGD** (paquetes en `data/verificacion/zonas_real/paquetes/`):
+  - la carga muestra «Leyendo el DXF con ezdxf — … · lleva 19 s» y la página responde (10 ms);
+  - el DXF queda cargado en 80 s;
+  - la primera vista muestra «Dibujando el Model Space: 1950 de 25830 — 34 % · lleva 15 s» y
+    tarda 37 s: 6 grupos;
+  - el grupo 1 tarda 22 s;
+  - la zona de la sección, dibujada con el ratón tras «Ver la zona de cerca», sale exacta
+    (±5 mm);
+  - sin las 4 capas de cotas, a 1:20: «página 43,5 × 42,5 mm… Cabe»;
+  - «Exportar zona» da `Prueba10d_seccion_1-20_pb4a909_t`, que aparece en «Detalles
+    disponibles».
+  - Esta vez fue más rápido que en la 10b, porque el equipo tenía menos carga.
+- Ajuste después de mirar las capturas: en PRGD los grupos están a cientos de km y cada uno es un
+  punto en la imagen. Por eso un clic **cerca** de un grupo o en su etiqueta «G1» también lo abre
+  (`grupoEnPunto` con tolerancia).
+
+**Pruebas**: **1455 pasan**, 1 se salta (antes 1446) y 1 falla de forma intermitente: la misma
+de `test_servidor` de la 10c, ajena a las zonas, que sola pasa. ruff: los mismos 173 hallazgos.
+- `test_editor_zonas_js` (9, en Node):
+  - px ↔ CAD;
+  - la zona arrastrada (al revés, un clic, limitada a la imagen);
+  - el grupo bajo el clic y cerca;
+  - el tamaño en la hoja igual que Python, el aviso y la escala sugerida;
+  - el filtro de capas y sus textos;
+  - el orden de las capas;
+  - los cuerpos de los pedidos;
+  - la vista alrededor y los textos;
+  - el editor generado trae los dos JS.
+
+#### Ajuste de la 10d: la vista como en AutoCAD (2026-11-24, sin commit)
+
+Pedido: rueda para acercar y alejar hacia el cursor, rueda apretada y arrastrar para mover,
+doble clic con la rueda para ver todo y clic izquierdo y arrastrar para dibujar la zona (también
+acercada). La imagen se escala al instante y, al parar la rueda, se pide una vista nítida (con
+aviso y usando la caché). La zona queda exacta a cualquier zoom. Ya no hace falta «Ver la zona de
+cerca».
+
+**Qué se hizo**
+- `editor_zonas.js`: la cámara (`encuadrar`, `zoomEnPunto`, `desplazar`, `factorRueda` de
+  ×1,25 por clic de rueda), `cajaDeImagen`, `necesitaVistaNitida` (cubre lo que se ve del dibujo
+  y tiene al menos 0,75 px de imagen por px de pantalla) e `interseccion`. `zonaDesdeArrastre`
+  recibe los puntos ya en coordenadas del dibujo; menos de 4 px de pantalla es un clic. Se
+  quitó `vistaAlrededor`.
+- `editor_panel_zonas.js`, reescrito el visor:
+  - la cámara en coordenadas CAD y el `viewBox` sacado de ella y de la matriz de la imagen que
+    hay;
+  - la rueda con `passive: false`;
+  - la rueda apretada mueve, sin el autodesplazamiento de Windows;
+  - doble clic con la rueda (dos en 400 ms) para ver todo;
+  - clic izquierdo para dibujar o, si es un clic, ir al grupo (24 px de tolerancia);
+  - la vista nítida 450 ms después de parar, con la imagen actual si alcanza, la de todo si se
+    ve todo, la caché del editor o un pedido nuevo que cancela el anterior;
+  - los grupos y la zona siempre visibles, con grosores fijos en pantalla;
+  - la casilla «Ver la imagen con el filtro de capas» en lugar de «Ver con estas capas»;
+  - la barra chica «Pidiendo la vista nítida… · lleva N s · Cancelar» arriba, que no tapa ni
+    bloquea.
+- **Error de pantalla encontrado en la verificación**: soltar el arrastre fuera del visor, sobre
+  el fondo del diálogo, no llegaba al visor y la zona se perdía. Ahora el fin del arrastre se
+  escucha en toda la ventana (y en `lostpointercapture`) y el punto se limita al borde del visor.
+- **Error de antes, encontrado por la rueda** (`canal_trabajador.py`): si el trabajador respondía
+  «no aceptado» a un `cancel` (el pedido ya estaba terminando), el canal lo detenía a la fuerza en
+  el acto, y se perdía la sesión del DXF. Ahora solo se lo detiene en el acto si no responde; si
+  responde, se espera a que la tarea termine (mismo plazo de 60 s). El trabajador falso tiene
+  `--cancel-no-aceptado` para probarlo.
+
+**Cómo probarlo**: `Abrir editor.bat` → «Cargar DXF» → «Zonas del modelo…»; rueda, rueda apretada,
+doble clic con la rueda y clic izquierdo (tabla en `docs/servidor_editor.md`).
+
+**Verificación en Edge** (`data/verificacion/verificar_zonas.mjs`, ratón real por CDP: rueda,
+botón de la rueda, doble clic con la rueda, clic y arrastre izquierdo). **48 comprobaciones, todo
+OK** con el falso (3 de 3 corridas) y con PRGD real.
+- Con el falso:
+  - cada clic de rueda da ×0,800, ×0,512 o ×1,250, y el punto bajo el cursor se queda (0,02 a
+    0,09 px) con la imagen escalada al instante;
+  - cinco clics seguidos no piden nada y, al parar, se pide la vista nítida;
+  - la rueda apretada mueve y lo de debajo del cursor sigue debajo;
+  - la zona arrastrada con la vista acercada sale exacta (±1 px) y su rectángulo sigue exacto
+    tras otro zoom (±1,5 px);
+  - soltar fuera del visor deja la zona en el borde;
+  - el doble clic con la rueda ve todo, de la caché, sin pedidos nuevos;
+  - siguen pasando los grupos, «no cabe», capas, el filtro y exportar `Zona_01`.
+- Con PRGD:
+  - carga en 49 s y todo el Model Space en 31 s;
+  - de cientos de km a la sección en 4 tandas de rueda (5 vistas pedidas), con la barra chica
+    mientras llega la nítida;
+  - la rueda apretada trae la sección al centro;
+  - la zona dibujada es exactamente [4736058,98, 2234185,8, 4736059,65, 2234186,45];
+  - con el filtro de capas, 1:20 da 43,5 × 42,5 mm y se exporta `Prueba10d_seccion_1-20…`, que
+    queda en «Detalles disponibles»;
+  - el doble clic con la rueda abarca todo al instante y llega la vista de todo con el filtro;
+  - sin errores de JavaScript y sin detener el trabajador.
+
+**Pruebas**: **1459 pasan** y 1 se salta (antes 1455). ruff: los mismos 173 hallazgos.
+- `test_editor_zonas_js` (11):
+  - cámara: encuadrar, zoom con el punto fijo, desplazar y factor de la rueda;
+  - `necesitaVistaNitida` en 6 casos;
+  - `interseccion` y la zona desde el arrastre en coordenadas del dibujo.
+- `test_canal_trabajador`: un «cancel no aceptado» ya no mata al trabajador.
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

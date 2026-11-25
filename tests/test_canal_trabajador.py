@@ -117,6 +117,28 @@ def test_cancelar_a_la_fuerza_si_no_se_nota_a_tiempo(canal, tmp_path):
     assert len(canal.lanzados) == 2
 
 
+def test_cancel_no_aceptado_no_mata_al_trabajador(tmp_path):
+    """El trabajador responde «no aceptado» (su respuesta ya venía en camino): el canal espera
+    a que la tarea termine sola y NO lo detiene a la fuerza (se perdería la sesión del DXF)."""
+    lanzados = []
+
+    def fabrica():
+        t = Trabajador(comando_falso("--cancel-no-aceptado"), tmp_path / "trabajo")
+        lanzados.append(t)
+        return t
+
+    c = Canal(fabrica, espera_cancelar_s=5)
+    try:
+        t = cargar(c, dxf_falso(tmp_path / "lenta.dxf", demora_s=0.3))
+        while t.id_pedido is None or t.avance.get("stage") != "read":
+            time.sleep(0.02)
+        assert c.cancelar(t.id)
+        assert esperar(t).estado == TERMINADA and not t.forzada
+        assert len(lanzados) == 1 and lanzados[0].vivo  # el mismo trabajador, con su sesión
+    finally:
+        c.cerrar()
+
+
 def test_dos_caidas_seguidas_detienen_el_canal(canal, tmp_path):
     cae = dxf_falso(tmp_path / "cae.dxf", caer_en_paso=1)
     t1 = esperar(cargar(canal, cae))

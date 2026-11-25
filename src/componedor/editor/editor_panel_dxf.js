@@ -21,6 +21,9 @@
  *   reintentar(bloque) → olvida un error para volver a pedirla.
  * Una vista previa es la de un DXF (sha256) y un handle: sirve a cualquier escala.
  *
+ * «Zonas del modelo…» (Fase 10d): botón de la carpeta que abre el diálogo de
+ * editor_panel_zonas.js (window.EditorPanelZonas). La carga del DXF muestra cuánto lleva.
+ *
  * Bloques anónimos (*U que ofrece el trabajador): subsección «Anónimos (opcionales) (N)»,
  * cerrada por defecto, con un filtro por texto y las mismas tarjetas (nombre = etiqueta, capa +
  * handle). Cada tarjeta tiene «Ver vista previa»: la misma vista previa del bloque (la que
@@ -196,6 +199,14 @@
     resumen.appendChild(nodo("span", { class: "dato" }, " · " + D.resumenDxf(catalogo)));
     c.appendChild(resumen);
     c.appendChild(nodo("div", { class: "dato" }, D.detalleDxf(catalogo)));
+    if (window.EditorPanelZonas) {
+      const zonas = nodo("button", { type: "button", id: "btn-zonas-modelo" }, "Zonas del modelo…");
+      zonas.disabled = !catalogo.sesion_activa || !!vista.recargar;
+      zonas.title = zonas.disabled ? "Vuelva a cargar el DXF para usar las zonas del modelo."
+        : "Ver el Model Space, dibujar una zona y exportarla como un detalle más";
+      zonas.addEventListener("click", () => window.EditorPanelZonas.abrir());
+      c.appendChild(zonas);
+    }
     if (!catalogo.sesion_activa || vista.recargar) {
       const aviso = nodo("div", { class: "aviso-dxf" }, vista.recargar ||
         "El trabajador del exportador se reinició desde que se cargó este DXF: la lista sigue " +
@@ -253,7 +264,11 @@
       const barra = nodo("progress", { max: "100" });
       if (typeof vista.tarea.avance.percent === "number") barra.value = vista.tarea.avance.percent;
       caja.appendChild(barra);
-      caja.appendChild(nodo("div", { class: "dato" }, D.textoAvance(vista.tarea)));
+      let texto = D.textoAvance(vista.tarea);
+      if (vista.inicioTarea && window.EditorZonas) {
+        texto += " · lleva " + window.EditorZonas.textoTranscurrido((Date.now() - vista.inicioTarea) / 1000);
+      }
+      caja.appendChild(nodo("div", { class: "dato" }, texto));
       const cancelar = nodo("button", { type: "button" }, "Cancelar");
       cancelar.disabled = !!vista.tarea.cancelando;
       cancelar.addEventListener("click", () => accion(() => cliente.cancelar(vista.tarea.id)));
@@ -478,7 +493,9 @@
     // El estilo de impresión elegido ({ctb, sha256, transparencia}) o null (sin lista todavía).
     estilo: estiloElegido,
     // La carpeta del DXF cargado (o null): el panel de la ortofoto toma de aquí dxf.crs.
-    catalogo: () => (vista.estado && vista.estado.dxf) || null };
+    catalogo: () => (vista.estado && vista.estado.dxf) || null,
+    // El estilo tal como lo pide el servidor ({ctb, transparencia}, sin sha256) o null.
+    estiloPedido: () => vista.estilo || null };
 
   // ---------------------------------------------------------------------------------------
   // Exportar (etapa 3).
@@ -655,6 +672,7 @@
   }
 
   async function seguir(id) {
+    vista.inicioTarea = Date.now(); // para «lleva 1 min 05 s» (la carga de un DXF grande tarda)
     try {
       await S.seguirTarea(cliente, id, (foto) => {
         vista.tarea = foto;

@@ -73,7 +73,9 @@ la máscara oculta (el falso no la recorta de verdad; `get_drawings()` tampoco l
 "zona_otra_ventana": true en el «DXF», el manifiesto dice otra ventana (para la verificación).
 La fila trae kind, zone, package_name y name_generated.
 
-Opciones de arranque para las pruebas: --protocolo 1.0 (un exportador sin zonas), --protocolo 2.0, --sin-ready, --basura (una línea que no
+Opciones de arranque para las pruebas: --cancel-no-aceptado (responde `accepted: false` y sigue
+trabajando, como el real con un pedido cuya respuesta ya viene en camino), --protocolo 1.0 (un
+exportador sin zonas), --protocolo 2.0, --sin-ready, --basura (una línea que no
 es JSON antes de ready), --nieto RUTA (lanza un proceso nieto y escribe su PID en RUTA).
 """
 
@@ -203,7 +205,8 @@ class Falso:
                                               "session": f"s-{self.sesion}" if self.dxf else None,
                                               "dxf": self.dxf, "memory_mb": 12})
             elif comando == "cancel":
-                aceptado = self.en_curso is not None and datos.get("target") == self.en_curso
+                aceptado = (self.en_curso is not None and datos.get("target") == self.en_curso
+                            and not self.args.cancel_no_aceptado)
                 if aceptado:
                     self.cancelado.set()
                 self.responder(id_, comando, {"accepted": aceptado})
@@ -837,6 +840,8 @@ def main() -> int:
     p.add_argument("--sin-ready", action="store_true")
     p.add_argument("--basura", action="store_true")
     p.add_argument("--nieto")
+    p.add_argument("--cancel-no-aceptado", action="store_true",
+                   help="responde accepted: false y sigue (como el real con un pedido que ya termina)")
     p.add_argument("--preview-cache-mb", type=int, default=500)
     args = p.parse_args()
     return Falso(args).correr()

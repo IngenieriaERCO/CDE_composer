@@ -79,6 +79,9 @@
       // Etapa 3: un pedido «export» por bloque; «Detener a la fuerza»; lo ya exportado.
       exportar: (bloques, estilo) => pedir("POST", "/api/exportar", estilo ? { bloques, estilo } : { bloques }),
       detener: () => pedir("POST", "/api/trabajador/detener"),
+      // Zonas del Model Space (Fase 10d): solo números y nombres de capa; nunca rutas.
+      previaZona: (cuerpo) => pedir("POST", "/api/previa/zona", cuerpo),
+      exportarZona: (cuerpo) => pedir("POST", "/api/exportar/zona", cuerpo),
       exportados: () => pedir("GET", "/api/exportados"),
       tarea: (id) => pedir("GET", tarea(id)),
       cancelar: (id) => pedir("POST", tarea(id) + "/cancelar"),

@@ -374,6 +374,18 @@ Cada paquete se verifica (`importar_paquete` y que sea el pedido) y el bloque pa
 detalle normal, puesto por el centro CAD. Lo ya publicado se reutiliza; los paquetes viejos que
 se reemplazan se mueven a `_para_borrar/`.
 
+**Zonas del modelo** (Fase 10, con `Abrir editor.bat` y un DXF cargado): el botón «Zonas del
+modelo…» de la carpeta del DXF abre un cuadro con la vista previa de todo el **Model Space** y sus
+grupos de dibujo. La vista se maneja **como en AutoCAD** (rueda: acercar y alejar hacia el cursor;
+rueda apretada y arrastrar: mover; doble clic con la rueda: ver todo) y la imagen se vuelve a
+pedir nítida al dejar de mover la rueda. Con el clic izquierdo se dibuja un **rectángulo**, a
+cualquier zoom, se marcan las **capas** (todas al
+empezar; opción «solo las marcadas»), se elige la **escala** (con el tamaño en la hoja y aviso si
+no cabe en el A1) y un **nombre** opcional (vacío: `Zona_01`, `Zona_02`…). «Exportar zona» la
+publica en `data/input/dxf/<DXF>/` como un paquete más, que aparece en **«Detalles disponibles»**.
+Lo que cruza el borde de la zona se corta en el PDF (máscara de recorte, todo vector). Paso a paso
+en [docs/servidor_editor.md](docs/servidor_editor.md#zonas-del-modelo-paso-a-paso).
+
 ### Elementos fijos de la plantilla y datos del editor
 
 El rótulo v2 trae un elemento dentro del área de dibujo: la rosa de los vientos. Se declara

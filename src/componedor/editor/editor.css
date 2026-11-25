@@ -349,3 +349,51 @@ main { flex: 1; display: flex; min-height: 0; }
 .form-rotulo .controles-muestra input[type="number"] { width: 64px; }
 .form-rotulo .controles-muestra input[type="color"] { width: 36px; height: 22px; padding: 0; }
 .form-rotulo .miniatura-muestra svg { display: block; }
+
+/* «Zonas del modelo» (Fase 10d) */
+#btn-zonas-modelo { margin: 6px 0; }
+.dialogo-zonas { width: 96vw; height: 94vh; max-width: none; max-height: none; padding: 10px 12px;
+  border: 1px solid var(--borde); border-radius: 6px; box-sizing: border-box; }
+.dialogo-zonas[open] { display: flex; flex-direction: column; }
+.dialogo-zonas::backdrop { background: rgba(17, 24, 39, 0.45); }
+.cabecera-zonas { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.cabecera-zonas h3 { margin: 0; font-size: 15px; }
+.cuerpo-zonas { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 330px; gap: 12px; margin-top: 8px; }
+.izq-zonas { display: flex; flex-direction: column; min-height: 0; gap: 6px; }
+.navegacion-zonas { display: flex; flex-wrap: wrap; gap: 6px; }
+.visor-zonas { position: relative; flex: 1; min-height: 0; border: 1px solid var(--borde); background: #f8fafc; }
+.lamina-zonas { width: 100%; height: 100%; display: block; cursor: crosshair; user-select: none; touch-action: none; }
+.lamina-zonas .fondo-lamina { fill: #fff; }
+.lamina-zonas.moviendo { cursor: grabbing; }
+.lamina-zonas .grupo-lamina { fill: rgba(37, 99, 235, 0.06); stroke: #2563eb; stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke; stroke-width: 1.2; }
+.lamina-zonas .etiqueta-grupo { fill: #1d4ed8; font-family: system-ui, sans-serif; font-weight: 600; }
+.lamina-zonas .zona-lamina { fill: rgba(220, 38, 38, 0.08); stroke: #dc2626; vector-effect: non-scaling-stroke;
+  stroke-width: 2; }
+.lamina-zonas .zona-temporal { fill: rgba(220, 38, 38, 0.08); stroke: #dc2626; stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke; stroke-width: 1.5; }
+.ocupado-zonas { position: absolute; background: #fff; border: 1px solid var(--borde); border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15); gap: 6px; }
+.ocupado-zonas.grande { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(460px, 90%); padding: 12px;
+  display: flex; flex-direction: column; }
+.ocupado-zonas.grande progress { width: 100%; }
+/* La vista nítida: una barra arriba, que no tapa el dibujo. */
+.ocupado-zonas.chico { left: 8px; right: 8px; top: 8px; padding: 4px 8px; display: flex; align-items: center; }
+.ocupado-zonas.chico progress { width: 120px; flex: none; }
+.ocupado-zonas.chico .dato { flex: 1; font-size: 12px; }
+.ocupado-zonas[hidden] { display: none; }
+.der-zonas { overflow-y: auto; min-height: 0; padding-right: 4px; }
+.seccion-zona { border-top: 1px solid var(--borde); padding: 6px 0 8px; }
+.seccion-zona h4 { margin: 2px 0 6px; font-size: 13px; }
+.seccion-zona .botones { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+.seccion-zona .fila { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+.seccion-zona .fila input { flex: 1; min-width: 0; }
+.modos-capas { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
+.lista-capas { max-height: 30vh; overflow-y: auto; border: 1px solid var(--borde); padding: 4px 6px; margin: 4px 0; }
+.capa-zona { display: block; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.capa-zona.oculta { color: #9ca3af; }
+#tamano-zona.no-cabe { color: #b91c1c; font-weight: 600; }
+#btn-exportar-zona { margin: 6px 0; }
+.resultado-zona progress { width: 100%; }
+.ok-zona { color: #166534; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; padding: 6px; font-size: 12px; }
+.seccion-zona label.dato { display: block; margin: 2px 0; }
