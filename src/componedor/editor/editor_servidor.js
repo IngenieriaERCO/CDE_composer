@@ -84,6 +84,8 @@
       // Zonas del Model Space (Fase 10d): solo números y nombres de capa; nunca rutas.
       previaZona: (cuerpo) => pedir("POST", "/api/previa/zona", cuerpo),
       exportarZona: (cuerpo) => pedir("POST", "/api/exportar/zona", cuerpo),
+      // Fase 10e: el nombre Zona_NN de una zona que se agrega a la hoja (ocupados: los de la hoja).
+      nombreZona: (ocupados) => pedir("POST", "/api/zonas/nombre", { ocupados: ocupados || [] }),
       exportados: () => pedir("GET", "/api/exportados"),
       tarea: (id) => pedir("GET", tarea(id)),
       cancelar: (id) => pedir("POST", tarea(id) + "/cancelar"),

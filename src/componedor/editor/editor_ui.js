@@ -96,6 +96,9 @@
   // ---------------------------------------------------------------------------------------
 
   const esBloque = (c) => !!c.bloque;
+  // Zona borrador (Fase 10e): un «bloque» sin exportar cuyo origen es un rectángulo del Model
+  // Space (c.bloque.zona = {rect, capas, excluir, modo, desmarcadas}); su nombre es c.bloque.nombre.
+  const esZona = (c) => !!(c.bloque && c.bloque.zona);
   const paginaBloque = (c) => B.paginaMm(c.bloque.tamano_m, c.escala, c.bloque.dxf.margen_mm);
   const paginaDe = (c) => esBloque(c) ? B.rectCentrado(c.centro, paginaBloque(c)) : L.paginaEnPapel(c.detalle, c.pos);
   const dibujoDe = (c) => esBloque(c) ? B.rectDibujo(c.centro, paginaBloque(c), c.bloque.dxf.margen_mm)
@@ -273,9 +276,21 @@
           B.textoEscala(c.escala) + ")." });
       }
     }
-    if (bloques.length) {
-      lista.push({ nivel: "aviso", ids: [], texto: bloques.length + " bloque(s) del DXF sin exportar: el plano " +
+    const zonas = bloques.filter(esZona);
+    const soloBloques = bloques.length - zonas.length;
+    if (soloBloques) {
+      lista.push({ nivel: "aviso", ids: [], texto: soloBloques + " bloque(s) del DXF sin exportar: el plano " +
         "se guarda como versión 3 y componer pedirá exportarlos primero." });
+    }
+    if (zonas.length) {
+      lista.push({ nivel: "aviso", ids: zonas.map((c) => c.id), texto: zonas.length + " zona(s) borrador sin " +
+        "exportar: todavía NO se guardan en el plano.json (llega con la subfase 10e3). Expórtelas con " +
+        "«Exportar bloques y zonas» antes de guardar." });
+    }
+    const ZE = window.EditorZonas;
+    for (const [a, b] of (ZE ? ZE.zonasRepetidas(estado.colocaciones) : [])) {
+      lista.push({ nivel: "muy_fuerte", ids: [a, b], texto: "'" + a + "' y '" + b + "' tienen el mismo nombre y la " +
+        "misma escala: serían el MISMO paquete. Cambie el nombre de una." });
     }
     return lista;
   }
@@ -477,7 +492,8 @@
     rectSvg(nodoSvg("rect", { class: "pagina" }, g), pagina);
     rectSvg(nodoSvg("rect", { class: "dibujo" }, g), dibujoDe(c));
     nodoSvg("text", { class: "etiqueta", x: r.x + 3, y: r.y + 11 }, g).textContent =
-      c.id + " · " + B.textoEscala(c.escala) + " · vista previa (sin exportar)";
+      c.id + " · " + B.textoEscala(c.escala) + (esZona(c) ? " · zona borrador (sin exportar)" : " · vista previa (sin exportar)");
+    if (esZona(c)) g.classList.add("zona-borrador");
     const estadoTexto = !e.cabe ? "no cabe: sobran " + mm1(e.exceso[0]) + " × " + mm1(e.exceso[1]) + " mm" +
       (sugeridaDe(c) ? "; sugerida " + B.textoEscala(sugeridaDe(c)) : "")
       : !e.dentro ? "se sale del área de dibujo"
@@ -744,10 +760,11 @@
     const titulo = nodo("div", { class: "fila" });
     titulo.appendChild(nodo("strong", {}, c.id));
     const etiqueta = etiquetaDe(b); // un anónimo se muestra por capa + handle, no por su *U
-    titulo.appendChild(nodo("span", { class: "medida" }, " · bloque «" + etiqueta + "» · sin exportar"));
-    const filas = [titulo,
+    titulo.appendChild(nodo("span", { class: "medida" }, esZona(c) ? " · zona borrador del Model Space · sin exportar"
+      : " · bloque «" + etiqueta + "» · sin exportar"));
+    const filas = [titulo, ...(esZona(c) ? filasZona(c) : [
       nodo("div", { class: "medida" }, b.dxf.nombre + (etiqueta !== b.nombre ? " · anónimo " + b.nombre : "") +
-        (b.ocurrencia > 1 || b.total_ocurrencias > 1 ? " · ocurrencia " + b.ocurrencia : "") + " · handle " + b.handle),
+        (b.ocurrencia > 1 || b.total_ocurrencias > 1 ? " · ocurrencia " + b.ocurrencia : "") + " · handle " + b.handle)]),
       nodo("div", { class: "medida" }, "Tamaño real: " + numero1(b.tamano_m[0]) + " × " + numero1(b.tamano_m[1]) + " m")];
     const fila = nodo("div", { class: "fila" });
     fila.appendChild(nodo("label", { for: "escala-bloque" }, "Escala"));
@@ -787,6 +804,7 @@
     filas.push(nodo("div", { class: "medida" }, "Teclas + y − (o el tirador de la esquina) cambian la escala."));
     const botones = nodo("div", { class: "botones" });
     const acciones = [
+      ...(esZona(c) && window.EditorPanelZonas ? [["Editar zona…", () => window.EditorPanelZonas.editar(c)]] : []),
       ["Centrar", () => moverCentro(c, B.centroZona(ZONA))],
       ["Escala sugerida", () => sugerida && cambiarEscala(c, sugerida)],
       ["Ajustar a la hoja", () => ajustarALaHoja(c)],
@@ -802,6 +820,103 @@
       botones.appendChild(boton);
     }
     panel.replaceChildren(...filas, casillaOrtofoto(c), botones);
+  }
+
+  /** Lo propio de una zona borrador en el panel Selección: nombre (editable), DXF, zona y capas. */
+  function filasZona(c) {
+    const b = c.bloque;
+    const z = b.zona;
+    const fila = nodo("div", { class: "fila" });
+    fila.appendChild(nodo("label", { for: "nombre-zona-hoja" }, "Nombre"));
+    const input = nodo("input", { type: "text", id: "nombre-zona-hoja", maxlength: "40" });
+    input.value = b.nombre;
+    input.title = "El nombre del paquete al exportar (<nombre>_1-N). No cambia al exportar.";
+    input.addEventListener("change", () => renombrarZona(c, input.value));
+    fila.appendChild(input);
+    const n = (v) => v.toFixed(3).replace(".", ",");
+    const capas = z.capas ? "solo " + z.capas.length + " capa(s)" : z.excluir ? "todas menos " + z.excluir.length
+      : "todas las capas";
+    return [fila,
+      nodo("div", { class: "medida" }, b.dxf.nombre + " · zona X " + n(z.rect[0]) + " a " + n(z.rect[2]) +
+        ", Y " + n(z.rect[1]) + " a " + n(z.rect[3])),
+      nodo("div", { class: "medida" }, "Capas: " + capas + ". «Editar zona…» abre el Model Space para cambiar el " +
+        "rectángulo o las capas.")];
+  }
+
+  /** Cambia el nombre de una zona borrador (limpio como lo dejará el servidor; único en la hoja). */
+  function renombrarZona(c, texto) {
+    const ZE = window.EditorZonas;
+    const r = ZE ? ZE.limpiarNombre(texto) : { nombre: texto };
+    if (r.error) {
+      mensaje(r.error, "error");
+      pintarPropiedades();
+      return;
+    }
+    const otros = new Set(estado.colocaciones.filter((x) => x !== c).map((x) => x.id.toLowerCase()));
+    if (otros.has(r.nombre.toLowerCase())) {
+      mensaje("Ya hay un elemento «" + r.nombre + "» en el plano: elija otro nombre.", "error");
+      pintarPropiedades();
+      return;
+    }
+    if (r.nombre !== c.bloque.nombre) {
+      const antes = c.id;
+      c.bloque.nombre = r.nombre;
+      c.bloque.etiqueta = r.nombre;
+      c.id = r.nombre;
+      if (estado.seleccion === antes) estado.seleccion = c.id;
+      marcarCambios();
+    }
+    actualizar();
+  }
+
+  /**
+   * «Agregar a la hoja» del cuadro «Zonas del modelo» (Fase 10e): la zona como borrador, con su
+   * nombre (Zona_01… o el escrito) y su tamaño real a la escala elegida, centrada en el área de
+   * dibujo (corrida si ya hay otra ahí). z: {nombre, rect, capas, excluir, modo, desmarcadas,
+   * escala, catalogo}. Devuelve su id.
+   */
+  function agregarZona(z) {
+    const catalogo = z.catalogo;
+    const mmU = catalogo.unidades && catalogo.unidades.mm_por_unidad;
+    const ids = new Set(estado.colocaciones.map((c) => c.id));
+    const c = { id: L.idUnico(z.nombre, ids), escala: z.escala, bloque: null };
+    c.bloque = datosZona(z, catalogo, mmU, c.id);
+    let centro = B.centroZona(ZONA);
+    const ocupado = (p) => estado.colocaciones.some((x) => esBloque(x) && x.centro[0] === p[0] && x.centro[1] === p[1]);
+    for (let i = 0; i < 20 && ocupado(centro); i++) centro = [centro[0] + 10, centro[1] - 10];
+    c.centro = B.centroLimitado(centro, paginaBloque(c), ZONA);
+    estado.colocaciones.push(c);
+    estado.seleccion = c.id;
+    marcarCambios();
+    actualizar();
+    return c.id;
+  }
+
+  function datosZona(z, catalogo, mmU, nombre) {
+    const ZE = window.EditorZonas;
+    const tam = ZE.tamanoM(z.rect, mmU);
+    return { dxf: dxfDe(catalogo), nombre, etiqueta: nombre, handle: null, ocurrencia: 1, total_ocurrencias: 1,
+      tamano_m: tam, caja_exacta: true, sugerida: B.escalaSugerida(tam, catalogo.margen_mm, ZONA),
+      escalas: catalogo.escalas || B.ESCALAS,
+      zona: { rect: z.rect.slice(), capas: z.capas || null, excluir: z.excluir || null, modo: z.modo || "excluir",
+        desmarcadas: (z.desmarcadas || []).slice() } };
+  }
+
+  /** «Editar zona…» → «Guardar cambios en la hoja»: otro rectángulo, capas o escala; el centro y
+   *  el nombre se quedan. */
+  function actualizarZona(id, z) {
+    const c = estado.colocaciones.find((x) => x.id === id && esZona(x));
+    if (!c) return false;
+    const catalogo = z.catalogo;
+    const anterior = c.bloque;
+    c.bloque = datosZona(z, catalogo, catalogo.unidades.mm_por_unidad, anterior.nombre);
+    c.escala = z.escala;
+    if (P()) P().soltar(anterior); // la vista previa de la zona vieja ya no hace falta
+    c.original = null;
+    estado.seleccion = c.id;
+    marcarCambios();
+    actualizar();
+    return true;
   }
 
   function campoCentro(etiqueta, valor, indice) {
@@ -848,7 +963,8 @@
     const lista = document.getElementById("lista-plano");
     lista.replaceChildren(...estado.colocaciones.map((c) => {
       const li = nodo("li", { class: c.id === estado.seleccion ? "sel" : "" }, esBloque(c)
-        ? c.id + " (centro " + mm1(c.centro[0]) + "; " + mm1(c.centro[1]) + ") · " + B.textoEscala(c.escala) + " · sin exportar"
+        ? c.id + " (centro " + mm1(c.centro[0]) + "; " + mm1(c.centro[1]) + ") · " + B.textoEscala(c.escala) +
+          (esZona(c) ? " · zona borrador" : " · sin exportar")
         : c.id + " (" + mm1(c.pos[0]) + "; " + mm1(c.pos[1]) + ")");
       li.addEventListener("click", () => seleccionar(c.id));
       return li;
@@ -1355,6 +1471,11 @@
       mensaje("El plano está vacío: agregue al menos un detalle antes de guardar.", "error");
       return;
     }
+    if (estado.colocaciones.every(esZona)) {
+      mensaje("En el plano solo hay zonas borrador, que todavía no se guardan (llega con la subfase 10e3): " +
+        "expórtelas con «Exportar bloques y zonas» y guarde después.", "error");
+      return;
+    }
     const texto = textoPlano();
     if (window.showSaveFilePicker) {
       try {
@@ -1379,13 +1500,14 @@
   /** plano.json con los detalles, la rosa y (si se abrió un plano que lo traía) el rótulo.
    *  Sin los campos retirados del rótulo (disenador, revisor): R.paraGuardar los quita. */
   function textoPlano() {
-    return L.serializarPlano(estado.colocaciones, DATOS, {
+    // Las zonas borrador todavía no se guardan (subfase 10e3): el plano sale sin ellas (con aviso).
+    return L.serializarPlano(estado.colocaciones.filter((c) => !esZona(c)), DATOS, {
       rosa: estado.rosa, rotulo: R.paraGuardar(estado.rotulo), original: estado.original,
       ortofoto: estado.ortofoto });
   }
 
   function guardado(nombre, descargado) {
-    estado.cambios = false;
+    estado.cambios = estado.colocaciones.some(esZona); // los borradores no quedaron guardados
     mostrarComando(nombre);
     // Bloques sin exportar: se guarda igual (versión 3), con aviso; componer los pedirá.
     const avisos = advertenciasBloques().map((a) => a.texto);
@@ -1529,7 +1651,8 @@
    */
   function aplicarExportado(idPlano, resultado) {
     const i = estado.colocaciones.findIndex((c) => c.id === idPlano && esBloque(c) &&
-      c.bloque.handle === resultado.handle && c.escala === resultado.escala);
+      (esZona(c) ? resultado.tipo === "zona" : c.bloque.handle === resultado.handle) &&
+      c.escala === resultado.escala);
     if (i < 0) return false; // se quitó o se cambió mientras se exportaba
     const c = estado.colocaciones[i];
     const [detalle] = registrarDetalles([resultado.detalle]);
@@ -1553,6 +1676,9 @@
 
   window.EditorUI = { agregarBloque, catalogoCambiado, refrescar: () => actualizar(),
     colocaciones: () => estado.colocaciones, zona: () => ZONA, aplicarExportado, registrarDetalles,
+    // Zonas borrador (Fase 10e): agregar desde el cuadro «Zonas del modelo», cambiarla al editarla,
+    // y los nombres que ya usa el plano (para pedir el siguiente Zona_NN).
+    agregarZona, actualizarZona, nombresEnUso: () => estado.colocaciones.map((c) => c.id),
     ortofoto: () => estado.ortofoto, fijarOrtofoto, cajasOrtofoto,
     marcadosOrtofoto: () => marcados().length, extendida, cuadriculas: () => ultimasCuadriculas,
     // Imagen de localización (y su escala): valores del rótulo que no edita el formulario.

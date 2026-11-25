@@ -672,6 +672,28 @@ class AplicacionEditor:
                 self._zonas_en_curso[(str(carpeta), base.lower())] = foto["id"]
         return {"tarea": foto}
 
+    def nombre_zona(self, ocupados=None) -> dict:
+        """El nombre de una zona que se agrega a la hoja (Fase 10e, decisión B): el primer
+        `Zona_NN` sin paquetes en la carpeta del DXF, ni exportándose, ni en `ocupados` (los
+        nombres de las zonas que ya están en la hoja). {"nombre"}. La zona se queda con él."""
+        if self.config is None or self.config.paquetes is None:
+            raise ErrorAplicacion(409, SIN_SECCION)
+        dxf = self._dxf_activo()
+        if ocupados is None:
+            ocupados = []
+        if not (isinstance(ocupados, list) and len(ocupados) <= 2000
+                and all(isinstance(n, str) for n in ocupados)):
+            raise ErrorAplicacion(400, "«ocupados» debe ser una lista de nombres.")
+        carpeta = carpeta_del_dxf(self.config.paquetes, dxf["dxf"]["nombre"])
+        with self._candado:
+            reservados = list(ocupados) + [
+                nombre for (c, nombre), id_tarea in self._zonas_en_curso.items()
+                if c == str(carpeta) and self._en_curso(id_tarea)]
+            try:
+                return {"nombre": nombre_libre(carpeta, reservados)}
+            except PedidoZonaInvalido as e:
+                raise ErrorAplicacion(400, str(e)) from None
+
     def _en_curso(self, id_tarea: str) -> bool:
         t = self.canal.tarea(id_tarea) if self.canal else None
         return t is not None and t.estado in (EN_COLA, EN_CURSO)

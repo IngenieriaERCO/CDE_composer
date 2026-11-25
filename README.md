@@ -381,8 +381,11 @@ rueda apretada y arrastrar: mover; doble clic con la rueda: ver todo) y la image
 pedir nítida al dejar de mover la rueda. Con el clic izquierdo se dibuja un **rectángulo**, a
 cualquier zoom, se marcan las **capas** (todas al
 empezar; opción «solo las marcadas»), se elige la **escala** (con el tamaño en la hoja y aviso si
-no cabe en el A1) y un **nombre** opcional (vacío: `Zona_01`, `Zona_02`…). «Exportar zona» la
-publica en `data/input/dxf/<DXF>/` como un paquete más, que aparece en **«Detalles disponibles»**.
+no cabe en el A1) y un **nombre** opcional (vacío: `Zona_01`, `Zona_02`…). **«Agregar a la
+hoja»** la pone en el A1 como **borrador**: con su tamaño real a esa escala y la
+vista previa encima, se mueve y cambia de escala como un bloque, y **«Exportar bloques y zonas»**
+la publica en `data/input/dxf/<DXF>/` y la deja como detalle real en el mismo sitio (y en
+**«Detalles disponibles»**). Los borradores todavía no se guardan en el plano.json (subfase 10e3).
 Lo que cruza el borde de la zona se corta en el PDF (máscara de recorte, todo vector). Con un
 Exportador 1.2, la vista previa del Model Space se prepara en segundo plano desde la carga (el
 editor dice «Preparando la vista previa… · lleva N s» y luego «lista»); desde entonces cada vista

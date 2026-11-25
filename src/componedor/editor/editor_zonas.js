@@ -16,6 +16,11 @@
  * La zona es un rectángulo CAD [xmin, ymin, xmax, ymax]. Su página en la hoja, a 1:N, mide
  * ancho·mm_por_unidad/N + 2·margen (igual que exportar_zona.pagina_de_zona en Python).
  *
+ * Zonas borrador en la hoja (Fase 10e): una zona agregada a la hoja es una colocación como un
+ * bloque sin exportar (c.bloque con `zona`), con su nombre fijo (Zona_01…, editable) y su
+ * centro en el papel. «Exportar bloques y zonas» manda un /api/exportar/zona por cada una
+ * (`pedidosZonas`), con el centro del borrador: el detalle queda donde estaba.
+ *
  * Capas: modo "excluir" (el que se usa al empezar: todas marcadas, se exportan todas menos las
  * desmarcadas) o modo "solo" (se exportan solo las marcadas).
  */
@@ -267,26 +272,80 @@
     return cuerpo;
   }
 
-  /**
-   * Cuerpo de POST /api/exportar/zona, o {error} si falta algo: la zona, una escala válida, que
-   * quepa y el filtro de capas. El nombre vacío lo genera el servidor (Zona_01…).
-   */
-  function cuerpoExportar(e) {
-    if (!e.zona) return { error: "Dibuje la zona: arrastre un rectángulo sobre la vista previa." };
-    const escala = B.leerEscalaEscrita(e.escala);
-    if (escala.error) return { error: escala.error };
-    if (e.filtro.error) return { error: e.filtro.error };
-    const t = tamanoEnHoja(e.zona, e.mmPorUnidad, escala.n, e.margen, e.area);
-    if (!t.cabe) return { error: t.aviso };
-    const cuerpo = { zona: e.zona, escala: escala.n, nombre: (e.nombre || "").trim() };
-    if (e.filtro.capas) cuerpo.capas = e.filtro.capas;
-    if (e.filtro.excluir) cuerpo.excluir = e.filtro.excluir;
-    if (e.estilo) cuerpo.estilo = e.estilo;
-    return cuerpo;
-  }
-
   /** Clave de la caché de vistas previas del editor (el mismo pedido da la misma imagen). */
   const clavePrevia = (cuerpo) => JSON.stringify(cuerpo);
+
+  // ---------------------------------------------------------------------------------------
+  // Zonas borrador en la hoja (Fase 10e)
+  // ---------------------------------------------------------------------------------------
+
+  const MAX_NOMBRE = 40; // igual que exportar_zona.MAX_NOMBRE
+
+  /**
+   * El nombre como lo dejará el servidor (nombres_paquete.limpiar): sin acentos y solo A–Z,
+   * a–z, 0–9, «.», «-», «_» (lo demás, «_»), sin puntos al principio. {nombre} o {error}.
+   */
+  function limpiarNombre(texto) {
+    const sinTildes = String(texto || "").trim().normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^\x00-\x7f]/g, "");
+    const limpio = sinTildes.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^\.+/, "");
+    if (!limpio.replace(/_/g, "")) return { error: "El nombre necesita al menos una letra o un número." };
+    if (limpio.length > MAX_NOMBRE) return { error: "El nombre es muy largo (como mucho " + MAX_NOMBRE + " caracteres)." };
+    return { nombre: limpio };
+  }
+
+  const esZona = (c) => !!(c && c.bloque && c.bloque.zona);
+
+  /**
+   * Los pedidos de /api/exportar/zona de las zonas borrador del plano: {pedidos: [{id, cuerpo}],
+   * omitidos: [{id, motivo}]}. Las mismas reglas que los bloques (editor_bloques.pedidosExportar):
+   * el DXF cargado y su sesión, que quepa y no se salga del área de dibujo. El cuerpo lleva el
+   * centro del borrador (centro_mm): el detalle exportado queda donde estaba.
+   */
+  function pedidosZonas(colocaciones, catalogo, areaDibujo, estilo) {
+    const pedidos = [];
+    const omitidos = [];
+    for (const c of colocaciones) {
+      if (!esZona(c)) continue;
+      const b = c.bloque;
+      const pagina = B.paginaMm(b.tamano_m, c.escala, b.dxf.margen_mm);
+      const e = B.estadoCaja(c.centro, pagina, areaDibujo);
+      let motivo = null;
+      if (!catalogo) motivo = "cargue «" + b.dxf.nombre + "» con «Cargar DXF»";
+      else if (catalogo.dxf.sha256 !== b.dxf.sha256) {
+        motivo = catalogo.dxf.nombre === b.dxf.nombre
+          ? "el DXF cambió desde que se dibujó la zona: «Volver a cargar» primero"
+          : "es de «" + b.dxf.nombre + "» y el cargado es «" + catalogo.dxf.nombre + "»";
+      } else if (!catalogo.sesion_activa) motivo = "vuelva a cargar el DXF («Volver a cargar»)";
+      else if (!e.cabe) motivo = "no cabe a " + B.textoEscala(c.escala) + ": cambie la escala";
+      else if (!e.dentro) motivo = "se sale del área de dibujo: muévala";
+      if (motivo) {
+        omitidos.push({ id: c.id, motivo });
+        continue;
+      }
+      const z = b.zona;
+      const cuerpo = { zona: z.rect.slice(), escala: c.escala, nombre: b.nombre,
+        centro_mm: [Math.round(c.centro[0] * 100) / 100, Math.round(c.centro[1] * 100) / 100] };
+      if (z.capas) cuerpo.capas = z.capas.slice();
+      if (z.excluir) cuerpo.excluir = z.excluir.slice();
+      if (estilo) cuerpo.estilo = estilo;
+      pedidos.push({ id: c.id, cuerpo });
+    }
+    return { pedidos, omitidos };
+  }
+
+  /** Dos zonas del plano con el mismo nombre y escala serían el MISMO paquete: [[id, id], …]. */
+  function zonasRepetidas(colocaciones) {
+    const vistas = new Map();
+    const repetidas = [];
+    for (const c of colocaciones) {
+      if (!esZona(c)) continue;
+      const k = c.bloque.nombre.toLowerCase() + "|" + c.escala;
+      if (vistas.has(k)) repetidas.push([vistas.get(k), c.id]);
+      else vistas.set(k, c.id);
+    }
+    return repetidas;
+  }
 
   // ---------------------------------------------------------------------------------------
   // Textos
@@ -316,6 +375,7 @@
   return { MIN_PX, RESOLUCION_MIN, MODOS, pxACad, cadAPx, cajaAPx, zonaDesdeArrastre, redondear,
     encuadrar, zoomEnPunto, desplazar, factorRueda, cajaDeImagen, necesitaVistaNitida, interseccion,
     grupoEnPunto, paginaZona, tamanoM, escalaSugerida, tamanoEnHoja, ordenarCapas, textoEstadoCad,
-    filtroCapas, textoFiltro, cuerpoPrevia, cuerpoExportar, clavePrevia, textoGrupo, textoTranscurrido,
+    filtroCapas, textoFiltro, cuerpoPrevia, clavePrevia, limpiarNombre, esZona,
+    pedidosZonas, zonasRepetidas, textoGrupo, textoTranscurrido,
     textoZona };
 });

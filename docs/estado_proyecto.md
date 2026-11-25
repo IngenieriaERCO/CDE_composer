@@ -2948,6 +2948,87 @@ del Model Space en segundo plano tras `load`: mandar la CTB y la transparencia a
 - `test_previa_zona`: `preparada`.
 - `test_aplicacion_editor`: el `load` lleva `prepare_preview`.
 
+Ajuste 1.2: commit d109f18 en dev, con push (2026-11-25).
+
+### Zonas del Model Space — Fase 10e1 y 10e2: zonas borrador en la hoja y «Exportar bloques y zonas» (2026-11-25, sin commit)
+
+**Plan aprobado de la 10e** (replanteada: las zonas se ven en la hoja antes de exportarlas):
+- 10e1: zonas borrador en la hoja;
+- 10e2: «Exportar bloques y zonas»;
+- 10e3: guardarlas en el plano.json (`dxf.zonas[]` con su posición);
+- 10e4: «Volver a exportar zonas».
+
+Decisiones:
+- A. El cuadro ya no exporta: su botón es «Agregar a la hoja».
+- B. El nombre (`Zona_01`…) se pone al agregar la zona, es editable y no cambia al exportar.
+- C. «Se pisa» usa las mismas reglas que los detalles.
+- D. La misma zona puede ir dos veces (cada copia es un paquete distinto).
+
+**Qué se hizo**
+- Una zona borrador es una colocación como un bloque sin exportar, con `c.bloque.zona = {rect,
+  capas, excluir, modo, desmarcadas}`, `handle` null, el nombre como id y su tamaño real en m.
+  Hereda la caja exacta, el centro fijo al cambiar la escala (selector, + / −, tirador), el
+  arrastre, «no cabe», «se sale» y las advertencias de traslape.
+- `editor_ui.js`:
+  - `agregarZona` (centrada en el área, corrida si ya hay otra), `actualizarZona` y
+    `nombresEnUso`;
+  - panel Selección de la zona: nombre editable (limpio como en el servidor y único en la hoja),
+    la zona, las capas y «Editar zona…»;
+  - en la hoja dice «zona borrador (sin exportar)»;
+  - advertencias: cuántas zonas faltan por exportar (no se guardan todavía) y una muy fuerte si
+    dos tienen el mismo nombre y escala;
+  - guardar deja fuera los borradores, con aviso, y si solo hay borradores no guarda.
+- `editor_panel_zonas.js`: el paso 4 es «Nombre y agregar a la hoja». El nombre vacío lo pide a
+  `POST /api/zonas/nombre`. «Editar zona…» abre el cuadro con la zona y «Guardar cambios en
+  «Zona_01»» (`editar(c)`). Se quitó «Exportar zona».
+- `editor_panel_dxf.js`:
+  - la vista previa de un borrador es la de su zona con su filtro (rápida con la vista
+    preparada);
+  - «Exportar bloques y zonas del plano (N)»: los bloques como antes y un `/api/exportar/zona`
+    por zona, con el centro del borrador; cada uno pasa a ser el detalle real en su sitio.
+- `editor_zonas.js`: `limpiarNombre` (igual que `nombres_paquete.limpiar`), `pedidosZonas`
+  (mismas reglas que los bloques: DXF y sesión, cabe, dentro) y `zonasRepetidas`; se quitó
+  `cuerpoExportar`. `editor_bloques.pedidosExportar` deja fuera las zonas.
+- Servidor: `AplicacionEditor.nombre_zona` y `POST /api/zonas/nombre` (el primer `Zona_NN` sin
+  paquete en la carpeta del DXF, ni exportándose, ni en la hoja).
+
+**Cómo probarlo**:
+1. `Abrir editor.bat` → «Cargar DXF» → esperar «Vista previa lista» → «Zonas del modelo…».
+2. Dibujar la zona, poner la escala y «Agregar a la hoja» (otra vez, a otra escala, si se
+   quiere). Cerrar el cuadro.
+3. En el A1: arrastrar, + / −, renombrar o «Editar zona…» en Selección.
+4. «Exportar bloques y zonas del plano (N)».
+
+**Verificación en Edge** (`data/verificacion/verificar_zonas_hoja.mjs`, ratón y teclado reales;
+capturas en `data/verificacion/zonas_hoja_salida/`). **Todo OK** con el falso y con PRGD real,
+sin errores de JavaScript.
+- PRGD:
+  - carga en 115 s y vista previa preparada a los 172 s;
+  - de todo el Model Space a la sección, 4 tandas de rueda en 6 s;
+  - la zona dibujada con el ratón (±2 mm);
+  - «Agregar a la hoja» da `Zona_01` (1:20) y la misma zona otra vez da `Zona_02` (1:10), con su
+    vista previa encima;
+  - arrastrar en el A1 mueve lo arrastrado (±1,5 mm);
+  - «+» pasa de 1:10 a 1:5 con el centro quieto, y «−» vuelve;
+  - si se pisan, avisa;
+  - renombrar a «Sección copia» da `Seccion_copia`;
+  - «Editar zona…» guarda a 1:40 en el mismo centro;
+  - «Exportar bloques y zonas del plano (2)» deja los dos detalles reales centrados donde
+    estaban sus borradores (diferencia de 0,0000005 mm) y en «Detalles disponibles».
+- La primera corrida completa (falso y PRGD seguidos) se cortó a los 24 min. Se quedó al pasar
+  a la página del servidor real: el aviso «¿Salir de la página?» (el editor con cambios sin
+  guardar) no se aceptaba. El script ahora lo acepta y tiene `--solo-real`.
+- Una vez el script agarró la zona de abajo cuando otra la tapaba entera; ahora arrastra la de
+  arriba, como haría el usuario. El editor se portó bien en los dos casos.
+
+**Pruebas**: **1482 pasan** y 1 se salta (antes 1475). ruff: los mismos 173 hallazgos.
+- `test_editor_zonas_js`: `limpiarNombre` igual que Python, `pedidosZonas` (2 de 4 se exportan,
+  con sus motivos; sin DXF, con otro o con la sesión vencida, ninguna), `zonasRepetidas` y que
+  `pedidosExportar` deja fuera las zonas.
+- `test_exportar_zona`: el nombre de una zona nueva (ocupados, publicados, sin distinguir
+  mayúsculas, 400), sin DXF (409) y dos zonas de la hoja con su nombre y su centro (la misma
+  zona a dos escalas, centrada donde estaba el borrador).
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

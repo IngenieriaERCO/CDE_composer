@@ -26,6 +26,10 @@
  * 61 % · lleva 32 s», «Vista previa lista» o por qué falló. Mientras se prepara, el estado se
  * consulta cada segundo. Con un exportador 1.0/1.1 no hay línea.
  *
+ * Zonas borrador en la hoja (Fase 10e): su vista previa es la de la zona (con su filtro de capas;
+ * rápida con la vista preparada del exportador 1.2) y «Exportar bloques y zonas» las exporta con
+ * el centro del borrador (/api/exportar/zona): cada una pasa a ser el detalle real en su sitio.
+ *
  * «Zonas del modelo…» (Fase 10d): botón de la carpeta que abre el diálogo de
  * editor_panel_zonas.js (window.EditorPanelZonas). La carga del DXF muestra cuánto lleva.
  *
@@ -356,7 +360,8 @@
   // Vistas previas (etapa 2).
   // ---------------------------------------------------------------------------------------
 
-  const clave = (b) => b.dxf.sha256 + "|" + b.handle + "|" + D.claveEstilo(vista.estilo);
+  const clave = (b) => b.dxf.sha256 + "|" + (b.zona
+    ? "zona:" + JSON.stringify([b.zona.rect, b.zona.capas, b.zona.excluir]) : b.handle) + "|" + D.claveEstilo(vista.estilo);
   const avisarUI = () => {
     pintarMiniaturas();
     if (UI()) UI().refrescar();
@@ -372,6 +377,16 @@
     if (!catalogo.sesion_activa || vista.recargar) {
       return { estado: "recargar", mensaje: "Sin vista previa: vuelva a cargar el DXF («Volver a cargar»)." };
     }
+    if (b.zona) { // zona borrador: la vista de la zona, con su filtro de capas
+      const mmU = catalogo.unidades ? catalogo.unidades.mm_por_unidad : null;
+      if (!mmU) return { estado: "error", mensaje: "El DXF no tiene unidades verificadas: sin vista previa." };
+      const e = { estado: "pidiendo", zona: b.zona, caja_cad: { min: [b.zona.rect[0], b.zona.rect[1]],
+        max: [b.zona.rect[2], b.zona.rect[3]] }, estilo: vista.estilo, mm_por_unidad: mmU, url: null, datos: null,
+        tarea: null };
+      previas.set(k, e);
+      pedirPrevia(k, e);
+      return e;
+    }
     const bc = catalogo.bloques.find((x) => x.handle === b.handle);
     if (!bc) return { estado: "error", mensaje: "El bloque ya no está en el DXF cargado." };
     const e = { estado: "pidiendo", ref: bc.ref, caja_cad: bc.caja_cad, estilo: vista.estilo,
@@ -386,7 +401,11 @@
 
   async function pedirPrevia(k, e) {
     try {
-      const r = await cliente.previa(e.ref, e.estilo || undefined);
+      const r = e.zona
+        ? await cliente.previaZona(Object.assign({ zona: e.zona.rect, vista: e.zona.rect },
+          e.zona.capas ? { capas: e.zona.capas } : {}, e.zona.excluir ? { excluir: e.zona.excluir } : {},
+          e.estilo ? { estilo: e.estilo } : {}))
+        : await cliente.previa(e.ref, e.estilo || undefined);
       e.tarea = r.tarea.id;
       const fin = await S.seguirTarea(cliente, r.tarea.id, () => {});
       if (previas.get(k) !== e) return; // se soltó mientras tanto
@@ -555,15 +574,18 @@
 
   function seccionExportar() {
     const ui = UI();
-    const bloques = ui ? ui.colocaciones().filter((c) => c.bloque).length : 0;
+    const pendientes = ui ? ui.colocaciones().filter((c) => c.bloque) : [];
+    const bloques = pendientes.length;
+    const zonas = pendientes.filter((c) => c.bloque.zona).length;
     if (!bloques && !x.trabajos.length) return null;
     const caja = nodo("div", { class: "exportar-dxf" });
     caja.appendChild(nodo("div", { class: "nombre" }, "Exportar"));
     const enCurso = x.trabajos.some(enMarcha);
     const boton = nodo("button", { type: "button", id: "btn-exportar" },
-      "Exportar bloques del plano (" + bloques + ")");
+      (zonas ? "Exportar bloques y zonas del plano (" : "Exportar bloques del plano (") + bloques + ")");
     boton.disabled = !bloques || enCurso || x.pidiendo;
-    boton.title = "Un paquete (PDF + manifiesto) por bloque, a su escala, en la carpeta de paquetes del DXF";
+    boton.title = "Un paquete (PDF + manifiesto) por bloque y por zona, a su escala, en la carpeta de paquetes " +
+      "del DXF; cada uno queda como detalle en el lugar de su borrador";
     boton.addEventListener("click", exportar);
     caja.appendChild(boton);
     if (vista.estilo) {
@@ -614,21 +636,32 @@
     if (!ui) return;
     const catalogo = vista.estado && vista.estado.dxf;
     const { pedidos, omitidos } = B.pedidosExportar(ui.colocaciones(), catalogo, ui.zona());
-    x.omitidos = omitidos;
+    const zonas = window.EditorZonas
+      ? window.EditorZonas.pedidosZonas(ui.colocaciones(), catalogo, ui.zona(), vista.estilo || null)
+      : { pedidos: [], omitidos: [] };
+    x.omitidos = omitidos.concat(zonas.omitidos);
     x.trabajos = x.trabajos.filter(enMarcha); // los terminados de antes ya no hacen falta
-    if (!pedidos.length) {
+    if (!pedidos.length && !zonas.pedidos.length) {
       pintar();
       return;
     }
     x.pidiendo = true;
     pintar();
-    let r;
+    let r = { tareas: [] };
+    const nuevos = [];
     try {
-      r = await cliente.exportar(pedidos, vista.estilo || undefined);
+      if (pedidos.length) r = await cliente.exportar(pedidos, vista.estilo || undefined);
+      // Una tarea por zona, con el centro del borrador: el detalle queda donde estaba.
+      for (const p of zonas.pedidos) {
+        const t = { foto: (await cliente.exportarZona(p.cuerpo)).tarea, ids: [p.id], escala: p.cuerpo.escala };
+        nuevos.push(t);
+      }
     } catch (err) {
       if (err.estadoHttp === 409) vista.recargar = err.message; // DXF cambiado o sesión vencida
       else vista.error = err.message;
       x.pidiendo = false;
+      x.trabajos.push(...nuevos);
+      await Promise.all(nuevos.map(seguirExportacion));
       await refrescar();
       return;
     }
@@ -643,8 +676,9 @@
       }
       porTarea.get(foto.id).ids.push(pedidos[i].id);
     });
+    x.trabajos.push(...nuevos);
     pintar();
-    await Promise.all([...porTarea.values()].map(seguirExportacion));
+    await Promise.all([...porTarea.values(), ...nuevos].map(seguirExportacion));
     await refrescar();
   }
 

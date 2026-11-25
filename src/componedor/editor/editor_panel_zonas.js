@@ -21,8 +21,11 @@
  * Capas: todas marcadas al empezar (se exportan todas menos las desmarcadas); opción «Solo las
  * marcadas»; «Ver la imagen con el filtro de capas» pide las vistas con el filtro.
  * Escala (sugerida al dibujar la zona), tamaño en la hoja y aviso si no cabe en el A1. Nombre
- * opcional (vacío: Zona_01, Zona_02…) y «Exportar zona»: el detalle aparece en «Detalles
- * disponibles» (EditorUI.registrarDetalles).
+ * opcional (vacío: Zona_01, Zona_02…, que da el servidor al agregarla) y «Agregar a la hoja»
+ * (Fase 10e): la zona queda en el A1 como borrador, con su tamaño real a esa escala
+ * (EditorUI.agregarZona); se mueve y cambia de escala allí y se exporta con «Exportar bloques y
+ * zonas». «Editar zona…» del panel Selección abre este cuadro con esa zona: «Guardar cambios en
+ * la hoja» le cambia el rectángulo, las capas o la escala (el centro y el nombre se quedan).
  *
  * Arriba, la línea de la vista previa preparada del exportador 1.2 (la del panel del DXF):
  * «Preparando… 61 % · lleva 32 s» o «lista: el zoom ya va rápido» o por qué falló.
@@ -60,7 +63,7 @@
     pidiendo: null, // {foto, inicio, clave, cuerpo, explicacion}
     cache: new Map(), // clave del pedido → {cuerpo, resultado, url}
     zona: null, modo: "excluir", desmarcadas: new Set(), capas: [], filas: [], verVacias: false,
-    conFiltro: false, escala: "", nombre: "", exportando: null, exportada: null, error: null,
+    conFiltro: false, escala: "", nombre: "", agregando: false, agregada: null, editando: null, error: null,
     nitidas: 0, // cuántas veces se pidió (o tomó de la caché) una vista nítida (para verificar)
   };
   window.EditorPruebaZonas = z;
@@ -122,7 +125,7 @@
     const textoZona = nodo("div", { class: "dato", id: "texto-zona" });
     const botonesZona = nodo("div", { class: "botones" });
     const borrar = nodo("button", { type: "button", id: "borrar-zona" }, "Borrar zona");
-    borrar.addEventListener("click", () => { z.zona = null; z.exportada = null; pintar(); });
+    borrar.addEventListener("click", () => { z.zona = null; z.agregada = null; pintar(); });
     botonesZona.append(borrar);
     sZona.append(textoZona, botonesZona);
     // Capas
@@ -170,19 +173,23 @@
     filaEscala.append(escala, lista);
     const tamano = nodo("div", { class: "dato", id: "tamano-zona" });
     sEscala.append(filaEscala, tamano);
-    // Nombre y exportar
-    const sNombre = seccion("4. Nombre y exportar");
+    // Nombre y agregar a la hoja (Fase 10e)
+    const sNombre = seccion("4. Nombre y agregar a la hoja");
     const filaNombre = nodo("div", { class: "fila" });
     filaNombre.appendChild(nodo("label", { for: "nombre-zona" }, "Nombre"));
     const nombre = nodo("input", { id: "nombre-zona", autocomplete: "off",
-      placeholder: "Vacío: Zona_01, Zona_02…", maxlength: "40" });
+      placeholder: "Vacío: Zona_01, Zona_02… (se pone al agregarla)", maxlength: "40" });
     nombre.addEventListener("input", () => { z.nombre = nombre.value; });
     filaNombre.appendChild(nombre);
-    const exportar = nodo("button", { type: "button", class: "principal", id: "btn-exportar-zona" }, "Exportar zona");
-    exportar.addEventListener("click", exportarZona);
+    const agregar = nodo("button", { type: "button", class: "principal", id: "btn-agregar-zona" }, "Agregar a la hoja");
+    agregar.addEventListener("click", agregarALaHoja);
+    const dejar = nodo("button", { type: "button", id: "btn-dejar-editar", hidden: "" }, "Dejar de editar");
+    dejar.addEventListener("click", () => { z.editando = null; z.agregada = null; pintar(); });
+    const botonesAgregar = nodo("div", { class: "botones" });
+    botonesAgregar.append(agregar, dejar);
     const estiloTexto = nodo("div", { class: "dato", id: "estilo-zona" });
     const resultado = nodo("div", { class: "resultado-zona", id: "resultado-zona" });
-    sNombre.append(filaNombre, exportar, estiloTexto, resultado);
+    sNombre.append(filaNombre, botonesAgregar, estiloTexto, resultado);
     const error = nodo("div", { class: "error-dxf", id: "error-zonas", hidden: "" });
     der.append(error, sZona, sCapas, sEscala, sNombre);
 
@@ -195,7 +202,7 @@
       reloj = null;
     });
     partes = { titulo, preparacion, navegacion, lamina, ocupado, textoZona, borrar, listaCapas, resumenCapas,
-      casillaFiltro, casillaVacias, escala, tamano, nombre, exportar, estiloTexto, resultado, error };
+      casillaFiltro, casillaVacias, escala, tamano, nombre, agregar, dejar, estiloTexto, resultado, error };
     prepararRaton(lamina);
   }
 
@@ -220,13 +227,36 @@
     pintar();
   }
 
+  /**
+   * «Editar zona…» de una zona borrador de la hoja: el cuadro con su rectángulo, capas y escala,
+   * la vista sobre ella, y «Guardar cambios en la hoja» en lugar de «Agregar a la hoja».
+   */
+  function editar(c) {
+    abrir();
+    const b = c.bloque;
+    const zb = b.zona;
+    z.editando = c.id;
+    z.agregada = null;
+    z.zona = zb.rect.slice();
+    z.modo = zb.modo || "excluir";
+    z.desmarcadas = new Set(zb.desmarcadas || zb.excluir || []);
+    z.escala = String(c.escala);
+    z.nombre = b.nombre;
+    partes.escala.value = z.escala;
+    partes.nombre.value = b.nombre;
+    for (const r of dialogo.querySelectorAll("input[name=modo-capas]")) r.checked = r.value === z.modo;
+    z.camara = E.encuadrar(zb.rect, aspecto(), 0.3);
+    if (z.vista) pedirNitida(false);
+    pintar();
+  }
+
   /** Otro DXF (u otra sesión): lo de antes no sirve. */
   function reiniciar(sesion) {
     if (z.pidiendo && z.pidiendo.foto) cliente.cancelar(z.pidiendo.foto.id).catch(() => {});
     for (const v of z.cache.values()) URL.revokeObjectURL(v.url);
     Object.assign(z, { sesion, vista: null, todo: null, camara: null, pidiendo: null, cache: new Map(),
       zona: null, modo: "excluir", desmarcadas: new Set(), capas: [], filas: [], conFiltro: false,
-      escala: "", nombre: "", exportando: null, exportada: null, error: null });
+      escala: "", nombre: "", agregando: false, agregada: null, editando: null, error: null });
     if (partes) {
       partes.escala.value = "";
       partes.nombre.value = "";
@@ -398,6 +428,7 @@
   function mostrar(v) {
     z.vista = v;
     if (!z.camara) z.camara = E.encuadrar(z.todo ? z.todo.caja : E.cajaDeImagen(v.resultado.cad_a_px, v.resultado.px), aspecto());
+    else programarNitida(); // p. ej. «Editar zona…» antes de tener la primera vista: la nítida de la zona
     // Todas las capas del DXF (layer_rows las trae todas, con lo que hay en esta vista).
     z.filas = v.resultado.filas_capas;
     z.capas = z.filas.map((f) => f.nombre);
@@ -525,7 +556,7 @@
 
   function fijarZona(zona) {
     z.zona = zona;
-    z.exportada = null;
+    z.agregada = null;
     const c = catalogo();
     const mmU = c && c.unidades ? c.unidades.mm_por_unidad : null;
     if (mmU && area()) {
@@ -543,51 +574,68 @@
   }
 
   // ---------------------------------------------------------------------------------------
-  // Exportar
+  // Agregar a la hoja (Fase 10e)
   // ---------------------------------------------------------------------------------------
 
-  function cuerpoExportar() {
+  /** Lo que va a la hoja ({rect, capas, excluir, modo, desmarcadas, escala, catalogo}) o {error}.
+   *  Puede no caber: queda en rojo en la hoja, como un bloque (no se puede exportar así). */
+  function datosAgregar() {
     const c = catalogo();
     if (!c || !c.unidades || !c.unidades.mm_por_unidad) {
       return { error: "El DXF no tiene unidades verificadas: no se sabe el tamaño en la hoja." };
     }
-    return E.cuerpoExportar({ zona: z.zona, escala: z.escala, nombre: z.nombre, filtro: filtro(),
-      mmPorUnidad: c.unidades.mm_por_unidad, margen: c.margen_mm, area: area(), estilo: estilo() });
+    if (!z.zona) return { error: "Dibuje la zona: con el clic izquierdo, arrastre un rectángulo sobre la vista." };
+    const n = B.leerEscalaEscrita(z.escala);
+    if (n.error) return { error: n.error };
+    const f = filtro();
+    if (f.error) return { error: f.error };
+    return { rect: z.zona.slice(), capas: f.capas, excluir: f.excluir, modo: z.modo, desmarcadas: [...z.desmarcadas],
+      escala: n.n, catalogo: c };
   }
 
-  async function exportarZona() {
-    const cuerpo = cuerpoExportar();
-    if (cuerpo.error) {
-      z.error = cuerpo.error;
+  async function agregarALaHoja() {
+    const datos = datosAgregar();
+    const ui = UI();
+    if (datos.error || !ui) {
+      z.error = datos.error || "El editor no está listo.";
       pintar();
       return;
     }
     z.error = null;
-    z.exportada = null;
-    const x = { foto: null, inicio: Date.now(), cuerpo };
-    z.exportando = x;
+    if (z.editando) {
+      if (ui.actualizarZona(z.editando, datos)) {
+        z.agregada = "Zona «" + z.editando + "» cambiada en la hoja (" + B.textoEscala(datos.escala) + "). " +
+          "Cierre este cuadro para verla.";
+      } else {
+        z.error = "La zona «" + z.editando + "» ya no está en la hoja.";
+      }
+      z.editando = null;
+      pintar();
+      return;
+    }
+    z.agregando = true;
     pintar();
     try {
-      const r = await cliente.exportarZona(cuerpo);
-      x.foto = r.tarea;
-      x.foto = await S.seguirTarea(cliente, r.tarea.id, (foto) => {
-        x.foto = foto;
-        pintarResultado();
-      });
-      if (x.foto.estado === "terminada") {
-        const res = x.foto.resultado;
-        if (UI()) UI().registrarDetalles([res.detalle]); // «Detalles disponibles»
-        z.exportada = res;
-        // La zona se queda con su nombre (también el generado): volver a exportarla la reemplaza.
-        z.nombre = res.nombre;
-        partes.nombre.value = res.nombre;
-      } else if (x.foto.estado === "fallida") {
-        z.error = D.textoError(x.foto);
+      let nombre;
+      if ((z.nombre || "").trim()) {
+        const r = E.limpiarNombre(z.nombre);
+        if (r.error) throw new Error(r.error);
+        if (ui.nombresEnUso().some((x) => x.toLowerCase() === r.nombre.toLowerCase())) {
+          throw new Error("Ya hay un elemento «" + r.nombre + "» en el plano: elija otro nombre.");
+        }
+        nombre = r.nombre;
+      } else {
+        nombre = (await cliente.nombreZona(ui.nombresEnUso())).nombre; // Zona_01, Zona_02…
       }
+      const id = ui.agregarZona(Object.assign({ nombre }, datos));
+      z.agregada = "Agregada a la hoja como «" + id + "» (" + B.textoEscala(datos.escala) + "). Cierre este cuadro " +
+        "para verla, moverla o cambiarle la escala; puede agregar más zonas (o la misma a otra escala).";
+      z.nombre = "";
+      partes.nombre.value = "";
     } catch (err) {
       z.error = err.message;
     }
-    z.exportando = null;
+    z.agregando = false;
     pintar();
   }
 
@@ -780,40 +828,25 @@
   }
 
   function pintarBotonExportar() {
-    const cuerpo = cuerpoExportar();
-    partes.exportar.disabled = !!cuerpo.error || !!z.exportando;
-    partes.exportar.title = cuerpo.error || "Exporta la zona (PDF + manifiesto) a la carpeta de paquetes del DXF";
+    const datos = datosAgregar();
+    const b = partes.agregar;
+    b.textContent = z.editando ? "Guardar cambios en «" + z.editando + "»" : "Agregar a la hoja";
+    b.disabled = !!datos.error || z.agregando;
+    b.title = datos.error || (z.editando ? "Cambia el rectángulo, las capas o la escala de esa zona en la hoja"
+      : "Pone la zona en el A1 como borrador, con su tamaño real a esa escala (se exporta desde la hoja)");
+    partes.dejar.hidden = !z.editando;
+    partes.nombre.disabled = !!z.editando;
+    partes.nombre.title = z.editando ? "El nombre de una zona de la hoja se cambia en el panel Selección." : "";
     const e = panelDxf() && panelDxf().estilo ? panelDxf().estilo() : null;
-    partes.estiloTexto.textContent = e ? "Con el estilo: " + D.textoEstilo(e) + " (el del panel del DXF)." : "";
+    partes.estiloTexto.textContent = e ? "Vistas con el estilo: " + D.textoEstilo(e) + " (el del panel del DXF)." : "";
   }
 
   function pintarResultado() {
     const caja = partes.resultado;
-    const x = z.exportando;
-    if (x) {
-      const barra = nodo("progress", { max: "100" });
-      const a = x.foto && x.foto.avance;
-      if (a && typeof a.percent === "number") barra.value = a.percent;
-      const texto = (x.foto ? D.textoAvance(x.foto) : "Pidiendo la exportación…") +
-        " · lleva " + E.textoTranscurrido((Date.now() - x.inicio) / 1000);
-      const cancelar = nodo("button", { type: "button", id: "cancelar-exportar-zona" }, "Cancelar");
-      cancelar.disabled = !x.foto;
-      cancelar.addEventListener("click", () => x.foto && cliente.cancelar(x.foto.id).catch(() => {}));
-      caja.replaceChildren(barra, nodo("div", { class: "dato" }, texto), cancelar);
-      return;
-    }
-    const r = z.exportada;
-    if (!r) {
-      caja.replaceChildren();
-      return;
-    }
-    const t = "Exportada: " + r.paquete + (r.en_cache ? " (ya estaba publicada: se usó tal cual)" : "") +
-      (r.nombre_generado ? " · nombre generado: " + r.nombre : "") +
-      ". Ya está en «Detalles disponibles»" + (r.movidos && r.movidos.length
-      ? "; " + r.movidos.length + " archivo(s) viejos movidos a _para_borrar." : ".");
-    caja.replaceChildren(nodo("div", { class: "ok-zona" }, t));
+    caja.replaceChildren(...(z.agregando ? [nodo("div", { class: "dato" }, "Agregando a la hoja…")]
+      : z.agregada ? [nodo("div", { class: "ok-zona" }, z.agregada)] : []));
   }
 
   // Lo usa editor_panel_dxf.js (botón «Zonas del modelo…»).
-  window.EditorPanelZonas = { abrir };
+  window.EditorPanelZonas = { abrir, editar };
 })();

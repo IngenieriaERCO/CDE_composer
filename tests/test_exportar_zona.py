@@ -228,3 +228,44 @@ def test_sin_el_recorte_la_verificacion_final_fallaria(armar, tmp_path, monkeypa
          "posicion_mm": [round(v, 2) for v in r["posicion_mm"]]}]}), encoding="utf-8")
     with pytest.raises(Exception, match="el dibujo quedó en"):
         componer_plano(leer_plano(plano), tmp_path / "plano.pdf")
+
+
+# --- el nombre de una zona que se agrega a la hoja (Fase 10e) --------------------------------
+
+def test_nombre_de_una_zona_nueva(armar, tmp_path):
+    app = armar()
+    assert app.nombre_zona() == {"nombre": "Zona_01"}
+    # Los de la hoja (ocupados) y los ya publicados en la carpeta del DXF no se repiten.
+    assert app.nombre_zona(["Zona_01", "Seccion"]) == {"nombre": "Zona_02"}
+    _hecha(app, app.exportar_zona(ZONA, escala=50, nombre="Zona_01"))
+    assert app.nombre_zona() == {"nombre": "Zona_02"}
+    assert app.nombre_zona(["zona_02"]) == {"nombre": "Zona_03"}  # sin distinguir mayúsculas
+    with pytest.raises(ErrorAplicacion, match="«ocupados»") as e:
+        app.nombre_zona("Zona_01")
+    assert e.value.estado_http == 400
+
+
+def test_nombre_de_zona_sin_dxf(tmp_path):
+    cfg = ConfigExportador(comando_falso(), tmp_path / "trabajo", 5.0, None, tmp_path / "paquetes",
+                           tmp_path / "_para_borrar")
+    app = AplicacionEditor(tmp_path / "editor.html", ZONA_A1, cfg, elegir=lambda i: None)
+    try:
+        with pytest.raises(ErrorAplicacion, match="Todavía no se cargó") as e:
+            app.nombre_zona()
+        assert e.value.estado_http == 409
+    finally:
+        app.cerrar()
+
+
+def test_dos_zonas_de_la_hoja_con_su_nombre_y_su_centro(armar, tmp_path):
+    """Lo que hace «Exportar bloques y zonas»: cada zona con su nombre fijo y el centro de su
+    borrador; la misma zona dos veces (otra escala, otro nombre) son dos paquetes."""
+    app = armar()
+    a = _hecha(app, app.exportar_zona(ZONA, escala=50, nombre="Zona_01", centro_mm=[150.0, 450.0]))
+    b = _hecha(app, app.exportar_zona(ZONA, escala=20, nombre="Zona_02", centro_mm=[400.0, 200.0]))
+    assert (a["paquete"], b["paquete"]) == ("Zona_01_1-50", "Zona_02_1-20")
+    assert not a["nombre_generado"] and not b["nombre_generado"]
+    for r, centro in ((a, (150.0, 450.0)), (b, (400.0, 200.0))):
+        ancho, alto = r["detalle"]["tamano_pagina_mm"]
+        x, y = r["posicion_mm"]
+        assert (x + ancho / 2, y + alto / 2) == pytest.approx(centro, abs=0.01)  # en su sitio

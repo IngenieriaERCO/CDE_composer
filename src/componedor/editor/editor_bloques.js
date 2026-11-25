@@ -386,7 +386,7 @@
     const pedidos = [];
     const omitidos = [];
     for (const c of colocaciones) {
-      if (!c.bloque) continue;
+      if (!c.bloque || c.bloque.zona) continue; // las zonas borrador van por su cuenta (editor_zonas)
       const b = c.bloque;
       const pagina = paginaMm(b.tamano_m, c.escala, b.dxf.margen_mm);
       const e = estadoCaja(c.centro, pagina, zona);

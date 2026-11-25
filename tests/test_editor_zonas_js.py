@@ -159,17 +159,6 @@ def test_cuerpos_de_los_pedidos():
     assert previa[0] == {}  # todo el Model Space
     assert previa[1] == {"zona": [1, 2, 3, 4], "vista": [0, 0, 5, 5], "excluir": ["COTAS"],
                          "escala": 50, "estilo": {"ctb": None, "transparencia": True}}
-    base = {"zona": [100, 200, 102, 201], "escala": "1:50", "nombre": "  Sección VF ",
-            "filtro": {"capas": ["0"], "excluir": None}, "mmPorUnidad": 1000, "margen": 5,
-            "area": AREA, "estilo": None}
-    assert js("return E.cuerpoExportar(entrada);", base) == {
-        "zona": [100, 200, 102, 201], "escala": 50, "nombre": "Sección VF", "capas": ["0"]}
-    for cambio, texto in (({"zona": None}, "Dibuje la zona"),
-                          ({"escala": "1:abc"}, "Escala no válida"),
-                          ({"escala": "2"}, "No cabe en el área de dibujo del A1"),
-                          ({"filtro": {"error": "Marque al menos una capa"}}, "Marque al menos")):
-        r = js("return E.cuerpoExportar(entrada);", {**base, **cambio})
-        assert texto in r["error"]
 
 
 def test_textos():
@@ -188,6 +177,76 @@ def test_el_editor_generado_trae_las_zonas(detalle, tmp_path):
     formato = Path(componedor.__file__).parents[2] / "formatos" / "A1_ERCO.json"
     salida = generar_editor(detalle.parent, formato, tmp_path / "editor")
     html = Path(salida).read_text(encoding="utf-8")
-    assert "window.EditorPanelZonas = { abrir }" in html
+    assert "window.EditorPanelZonas = { abrir, editar }" in html
     assert "raiz.EditorZonas = api" in html
     assert "@@JS_ZONAS@@" not in html and "@@JS_PANEL_ZONAS@@" not in html
+
+
+# --- zonas borrador en la hoja (Fase 10e) ---------------------------------------------------
+
+def test_limpiar_nombre_como_python():
+    from componedor.nombres_paquete import limpiar
+
+    for texto in ("Sección VF", "Zona_01", "  Poste 1a5 ", "Ñandú (2)", ".oculto", "a/b\\c"):
+        r = js("return E.limpiarNombre(entrada);", texto)
+        assert r == {"nombre": limpiar(texto.strip())}, texto
+    assert "al menos una letra" in js("return E.limpiarNombre(entrada);", "¿?")["error"]
+    assert "muy largo" in js("return E.limpiarNombre(entrada);", "x" * 41)["error"]
+
+
+def _zona(id_, escala, centro, nombre=None, sha="ab", rect=(100.0, 200.0, 102.0, 201.0), **zona):
+    return {"id": id_, "escala": escala, "centro": list(centro),
+            "bloque": {"dxf": {"sha256": sha, "nombre": "PRGD.dxf", "margen_mm": 5},
+                       "nombre": nombre or id_, "handle": None, "tamano_m": [rect[2] - rect[0], rect[3] - rect[1]],
+                       "zona": {"rect": list(rect), "capas": zona.get("capas"), "excluir": zona.get("excluir"),
+                                "modo": "excluir", "desmarcadas": []}}}
+
+
+def test_pedidos_de_las_zonas_borrador():
+    catalogo = {"dxf": {"sha256": "ab", "nombre": "PRGD.dxf"}, "sesion_activa": True}
+    colocaciones = [
+        _zona("Zona_01", 50, (300, 300), excluir=["COTAS"]),
+        _zona("Zona_02", 2, (300, 300)),  # 2 m a 1:2 = 1000 mm: no cabe
+        _zona("Zona_03", 50, (30, 30)),  # se sale del área (página 50 × 30)
+        _zona("Seccion", 20, (200.004, 150.996), capas=["0"]),
+        {"id": "Viga", "escala": 50, "centro": [100, 100],
+         "bloque": {"dxf": {"sha256": "ab"}, "handle": "1A", "tamano_m": [1, 1]}},  # un bloque: no
+        {"id": "Detalle", "pos": [0, 0], "detalle": {}},
+    ]
+    r = js("const [c, cat, a] = entrada; return E.pedidosZonas(c, cat, a, {ctb: null, transparencia: false});",
+           [colocaciones, catalogo, AREA])
+    assert [p["id"] for p in r["pedidos"]] == ["Zona_01", "Seccion"]
+    assert r["pedidos"][0]["cuerpo"] == {
+        "zona": [100.0, 200.0, 102.0, 201.0], "escala": 50, "nombre": "Zona_01", "centro_mm": [300, 300],
+        "excluir": ["COTAS"], "estilo": {"ctb": None, "transparencia": False}}
+    assert r["pedidos"][1]["cuerpo"]["capas"] == ["0"]
+    assert r["pedidos"][1]["cuerpo"]["centro_mm"] == [200.0, 151.0]  # a centésimas de mm
+    assert {o["id"]: o["motivo"] for o in r["omitidos"]} == {
+        "Zona_02": "no cabe a 1:2: cambie la escala", "Zona_03": "se sale del área de dibujo: muévala"}
+    # Sin el DXF, con otro o con la sesión vencida: no se exporta ninguna.
+    otro = js("const [c, a] = entrada; return [E.pedidosZonas(c, null, a), "
+              "E.pedidosZonas(c, {dxf: {sha256: 'cd', nombre: 'PRGD.dxf'}, sesion_activa: true}, a), "
+              "E.pedidosZonas(c, {dxf: {sha256: 'ab', nombre: 'PRGD.dxf'}, sesion_activa: false}, a)];",
+              [colocaciones[:1], AREA])
+    assert [x["pedidos"] for x in otro] == [[], [], []]
+    assert "cargue «PRGD.dxf»" in otro[0]["omitidos"][0]["motivo"]
+    assert "el DXF cambió" in otro[1]["omitidos"][0]["motivo"]
+    assert "vuelva a cargar" in otro[2]["omitidos"][0]["motivo"]
+
+
+def test_zonas_repetidas_mismo_nombre_y_escala():
+    colocaciones = [_zona("A", 50, (0, 0), nombre="Seccion"), _zona("B", 20, (0, 0), nombre="Seccion"),
+                    _zona("C", 50, (0, 0), nombre="SECCION"), _zona("D", 50, (0, 0), nombre="Otra")]
+    assert js("return E.zonasRepetidas(entrada);", colocaciones) == [["A", "C"]]
+
+
+def test_los_bloques_no_incluyen_las_zonas():
+    import json as _json
+
+    script = (f"const B = require({_json.dumps(str(CARPETA_JS / 'editor_bloques.js'))});"
+              "const c = JSON.parse(require('fs').readFileSync(0, 'utf8'));"
+              "process.stdout.write(JSON.stringify(B.pedidosExportar(c, {dxf: {sha256: 'ab', nombre: 'x'}, "
+              "sesion_activa: true, bloques: []}, [22.7, 22.7, 662.4, 571.3])));")
+    r = subprocess.run([NODE, "-e", script], input=_json.dumps([_zona("Zona_01", 50, (300, 300))]),
+                       capture_output=True, text=True, encoding="utf-8", check=False)
+    assert _json.loads(r.stdout) == {"pedidos": [], "omitidos": []}

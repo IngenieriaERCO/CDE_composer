@@ -73,13 +73,30 @@ Para exportar como detalle un trozo del Model Space (no un bloque):
    con el filtro de capas** pide las vistas con ese filtro, para ver lo que se va a exportar.
 5. **Escala**: el tamaño del dibujo y de la página en la hoja; en rojo, si no cabe en el área de
    dibujo del A1, con la escala que sí cabe.
-6. **Nombre** (opcional; vacío: `Zona_01`, `Zona_02`…) y **Exportar zona**: barra de avance y
-   Cancelar. Al terminar dice el paquete y que **ya está en «Detalles disponibles»** (debajo de la
-   carpeta del DXF), desde donde se agrega al plano como cualquier detalle. La zona se queda con
-   su nombre: exportarla otra vez reemplaza el paquete (el viejo va a `_para_borrar/`).
+6. **Nombre** (opcional) y **Agregar a la hoja** (Fase 10e): la zona queda en el A1 como
+   **borrador** (sin exportar), centrada en el área de dibujo, con el tamaño real que tendría a
+   esa escala y su vista previa encima. Si el nombre va vacío, el servidor le da el primer
+   `Zona_01`, `Zona_02`… libre (ni en la hoja ni ya publicado); se puede cambiar después y **no
+   cambia al exportar**. Se puede agregar la misma zona otra vez, por ejemplo a otra escala
+   (otro nombre, otro paquete). El cuadro queda abierto para seguir.
+7. **En la hoja**, un borrador se maneja como un bloque del DXF:
+   - se **arrastra** con el ratón (por su centro, con el paso elegido) o con las flechas;
+   - la **escala** se cambia con el selector del panel Selección, las teclas **+ / −** o el
+     tirador de la esquina, y el centro no se mueve;
+   - en rojo si no cabe o se sale del área; las advertencias de siempre si **se pisa** con otro
+     elemento (las mismas reglas de los detalles), y una muy fuerte si dos zonas tienen el mismo
+     nombre y escala (serían el mismo paquete);
+   - el panel Selección muestra el **nombre** (editable), la zona y las capas, y **Editar
+     zona…**: abre el cuadro con esa zona, y «Guardar cambios en «Zona_01»» le cambia el
+     rectángulo, las capas o la escala (el centro y el nombre se quedan).
+8. **Exportar bloques y zonas del plano (N)** (abajo de la carpeta del DXF): un paquete por
+   bloque y por zona, uno a la vez, con barra de avance y Cancelar. Cada zona se pide con el
+   **centro de su borrador** y pasa a ser el detalle real **en ese mismo sitio** (y queda en
+   «Detalles disponibles»).
 
-El estilo de impresión es el del panel del DXF. Guardar las zonas en el plano.json para volver a
-exportarlas es la Fase 10e.
+El estilo de impresión es el del panel del DXF. **Todavía no se guardan** los borradores en el
+plano.json (subfase 10e3): al guardar con zonas sin exportar, el plano sale sin ellas y lo avisa;
+expórtelas antes. Volver a exportar las zonas cuando cambie el DXF es la 10e4.
 
 Si el servidor no arranca, `Abrir editor.bat` abre el editor sin servidor, como antes. Con doble
 clic en `editor.html` también se abre sin servidor: el botón «Cargar DXF» aparece desactivado y
@@ -343,8 +360,30 @@ s las lejanas).
   letras no cambian con el zoom (`vector-effect: non-scaling-stroke`).
 - Lo largo no congela nada: todo es asíncrono; el cuadro «Trabajando…» y la carga del DXF dicen
   cuánto llevan (se repinta cada segundo).
-- Al exportar, el detalle se registra en «Detalles disponibles» (`EditorUI.registrarDetalles`) y
-  el campo «Nombre» toma el nombre usado (también el generado).
+- «Agregar a la hoja» (Fase 10e) pide el nombre a `POST /api/zonas/nombre` (si va vacío) y llama
+  a `EditorUI.agregarZona`; «Editar zona…» del panel Selección llama a
+  `EditorPanelZonas.editar(c)` y «Guardar cambios» a `EditorUI.actualizarZona`.
+
+### Zonas borrador en la hoja (Fase 10e1 y 10e2)
+
+- Un borrador es una colocación como un bloque sin exportar (`c.bloque`, `c.escala`,
+  `c.centro`) con `c.bloque.zona = {rect, capas, excluir, modo, desmarcadas}`, `handle` null, su
+  nombre en `c.bloque.nombre` (= su id) y su tamaño real en m. Por eso hereda la caja exacta, el
+  centro fijo al cambiar la escala, el arrastre, «no cabe» y las advertencias de traslape.
+- Vista previa en la hoja: `EditorPanelDxf.previa` pide `/api/previa/zona` con `zona` = `vista`
+  = el rectángulo y su filtro de capas (con la vista preparada del exportador 1.2, en menos de un
+  segundo); la imagen se coloca con la misma fórmula de los bloques (centro CAD → centro).
+- «Exportar bloques y zonas»: `EditorBloques.pedidosExportar` deja fuera las zonas y
+  `EditorZonas.pedidosZonas` arma un `/api/exportar/zona` por cada una (nombre fijo, capas o
+  excluir, escala, estilo y `centro_mm` = el centro del borrador, a centésimas de mm); omite, con
+  el motivo, las que no caben, se salen, son de otro DXF o con la sesión vencida.
+  `EditorUI.aplicarExportado` cambia el borrador por el detalle (se reconoce por id, escala y
+  `tipo: "zona"`).
+- `POST /api/zonas/nombre` `{ocupados: [nombres de la hoja]}` → `{nombre}`: el primer `Zona_NN`
+  libre (`exportar_zona.nombre_libre`: sin paquete en la carpeta del DXF, ni exportándose, ni en
+  la hoja).
+- Guardar: `textoPlano` deja fuera los borradores (con aviso en Advertencias y al guardar); si
+  solo hay borradores, no guarda y lo dice.
 
 ### Exportar una zona del Model Space (`export` con un trabajo de zona, Fase 10c)
 
@@ -408,6 +447,7 @@ bloque:
 | `GET /api/estilos` | `{estilos: [{nombre, sha256, descripcion}], por_defecto: {ctb, transparencia}, aviso}`: las tablas `.ctb` de `carpeta_ctb` y los valores de `componedor.json`. Nunca rutas. |
 | `POST /api/previa` | Cuerpo `{"ref": "<ref de la carpeta>", "estilo"?: {"ctb": <nombre de /api/estilos> \| null, "transparencia": bool}}` (sin `estilo`, el de `componedor.json`; un nombre que no es de la lista o una ruta: 400): encola `preview` con `plot_style` (la ruta la pone el servidor) y `print_transparency`. Responde `{tarea}`. 409 sin DXF o con la sesión vencida; 404 si el `ref` no está en la carpeta. El resultado de la tarea trae `px`, `cad_a_px`, `caja_cad`, `omitidos`, `en_cache` y `url` (nunca la ruta del PNG). |
 | `POST /api/previa/zona` | Cuerpo `{"zona"?: [xmin, ymin, xmax, ymax] \| null, "vista"?: [...] \| null, "excluir"?: [capas] \| null, "capas"?: [capas] \| null, "escala"?: N \| null, "estilo"?}` (unidades del dibujo; N entero de 1 a 100 000; `capas` y `excluir` no van juntas): encola `preview` de una zona (protocolo 1.1, §4.1). Responde `{tarea}`; dos pedidos iguales mientras se hace son una sola tarea. 400 si algo no vale; 409 sin DXF, con la sesión vencida o si el trabajador habla la 1.0. El resultado trae `px`, `cad_a_px`, `caja_cad`, `zona`, `vista`, `capas`, `excluir`, `filas_capas`, `grupos`, `entidades`, `escala`, `papel`, `en_cache` y `url`. |
+| `POST /api/zonas/nombre` | Cuerpo `{"ocupados": [nombres]}` (los de la hoja): el primer `Zona_NN` sin paquete en la carpeta del DXF, ni exportándose, ni ocupado. `{nombre}`. 409 sin DXF o con la sesión vencida; 400 si `ocupados` no es una lista de textos. |
 | `POST /api/exportar/zona` | Cuerpo `{"zona": [xmin, ymin, xmax, ymax], "escala": N, "capas"?: [...] \| null, "excluir"?: [...] \| null, "nombre"?: texto (vacío: Zona_NN), "centro_mm"?: [x, y], "estilo"?}`: un pedido `export` con un trabajo de zona (§5.4). Responde `{tarea}` (tipo `exportar`). El resultado trae lo mismo que el de un bloque (`paquete`, `manifiesto`, `estilo`, `posicion_mm`, `desde_centro_mm`, `detalle`, `en_cache`, `movidos`, `avisos`; `handle` null) y además `tipo: "zona"`, `nombre`, `nombre_generado`, `zona`, `capas` y `excluir`. 400 si algo no vale o no cabe; 409 sin DXF, con la sesión vencida, con el DXF cambiado, sin unidades verificadas o con el trabajador 1.0. |
 | `POST /api/exportar` | Cuerpo `{"bloques": [{"id", "handle", "sha256", "escala", "centro_mm"}], "estilo"?: {"ctb", "transparencia"}}` (hasta 200; `estilo` como en `/api/previa`): una tarea por bloque, `{tareas}` en el mismo orden. El paquete lleva la marca del estilo (`_p<sha6>`, `_t`) y se verifica que su manifiesto traiga ese estilo. El resultado de cada una trae `paquete`, `manifiesto` (relativo a la carpeta del editor), `estilo` (`{ctb, sha256, transparencia}` del manifiesto), `posicion_mm`, `desde_centro_mm`, `detalle` (la entrada del catálogo, con su miniatura y su `estilo`), `en_cache`, `movidos` y `avisos`. 409 sin DXF, con la sesión vencida, con el DXF cambiado o de otro DXF; 404 si el bloque no está; 400 si no cabe. |
 | `POST /api/trabajador/detener` | «Detener a la fuerza». `{detenido}`. |
