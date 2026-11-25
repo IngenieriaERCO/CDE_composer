@@ -226,7 +226,39 @@
       (delDetalle.transparencia !== false) === (elegido.transparencia !== false);
   }
 
-  return { ETAPAS, SIN_NOTICIAS_S, LIMITE_TARJETAS, textoDetalle, textoEstilo, claveEstilo, mismoEstilo, tamanoArchivo, textoUnidades, textoTamano,
+  /** «45 s», «1 min 05 s». */
+  function transcurrido(segundos) {
+    const s = Math.max(0, Math.floor(segundos || 0));
+    return s < 60 ? s + " s" : Math.floor(s / 60) + " min " + String(s % 60).padStart(2, "0") + " s";
+  }
+
+  /**
+   * La vista previa preparada en segundo plano (protocolo 1.2 del exportador): {clase, texto,
+   * porcentaje} para la línea del editor, o null si no hay nada que decir (exportador 1.0/1.1).
+   * prep: dxf.preparacion de /api/estado ({estado, porcentaje, transcurrido_s, segundos, error}).
+   */
+  function textoPreparacion(prep) {
+    if (!prep || !prep.estado) return null;
+    if (prep.estado === "preparando") {
+      const avance = typeof prep.porcentaje === "number" ? " " + numero(prep.porcentaje, 0) + " %" : "";
+      return { clase: "preparando", porcentaje: typeof prep.porcentaje === "number" ? prep.porcentaje : null,
+        texto: "Preparando la vista previa del Model Space…" + avance + " · lleva " + transcurrido(prep.transcurrido_s) +
+          ". Mientras tanto las vistas lejanas tardan; cuando esté lista, el zoom de «Zonas del modelo» irá rápido." };
+    }
+    if (prep.estado === "lista") {
+      const tardo = typeof prep.segundos === "number" ? " (se preparó en " + transcurrido(prep.segundos) + ")" : "";
+      return { clase: "lista", porcentaje: 100,
+        texto: "Vista previa lista" + tardo + ": el zoom de «Zonas del modelo» ya va rápido." };
+    }
+    if (prep.estado === "fallida") {
+      return { clase: "fallida", porcentaje: null,
+        texto: "No se pudo preparar la vista previa" + (prep.error ? ": " + prep.error : "") +
+          ". Todo sigue funcionando; las vistas lejanas tardan más." };
+    }
+    return null; // «detenida» (otro load): no hay nada que avisar
+  }
+
+  return { ETAPAS, SIN_NOTICIAS_S, LIMITE_TARJETAS, textoPreparacion, transcurrido, textoDetalle, textoEstilo, claveEstilo, mismoEstilo, tamanoArchivo, textoUnidades, textoTamano,
     textoOcurrencia, textoEscala, nombreBloque, lineasBloque, separarBloques, filtrarBloques, textosAnonimos,
     resumenDxf, detalleDxf, textoAvance, textoError };
 });

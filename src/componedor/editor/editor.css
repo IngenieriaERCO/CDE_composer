@@ -397,3 +397,12 @@ main { flex: 1; display: flex; min-height: 0; }
 .resultado-zona progress { width: 100%; }
 .ok-zona { color: #166534; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; padding: 6px; font-size: 12px; }
 .seccion-zona label.dato { display: block; margin: 2px 0; }
+
+/* Vista previa preparada por el exportador 1.2: preparando / lista / falló */
+.preparacion-dxf { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 4px 6px; margin: 4px 0;
+  border-radius: 4px; border: 1px solid var(--borde); }
+.preparacion-dxf[hidden] { display: none; }
+.preparacion-dxf progress { width: 90px; flex: none; }
+.preparacion-dxf.preparando { background: #eff6ff; border-color: #bfdbfe; color: #1e3a8a; }
+.preparacion-dxf.lista { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+.preparacion-dxf.fallida { background: #fffbeb; border-color: #fde68a; color: #92400e; }

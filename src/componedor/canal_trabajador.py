@@ -83,8 +83,10 @@ class Tarea:
 
 class Canal:
     def __init__(self, fabrica: Callable[[], Trabajador],
-                 espera_cancelar_s: float = ESPERA_CANCELAR_S, max_caidas: int = MAX_CAIDAS):
+                 espera_cancelar_s: float = ESPERA_CANCELAR_S, max_caidas: int = MAX_CAIDAS,
+                 al_evento: Callable[[str, dict], None] | None = None):
         self._fabrica = fabrica
+        self._al_evento = al_evento  # eventos del trabajador (protocolo 1.2), de cualquiera
         self.espera_cancelar_s = espera_cancelar_s
         self.max_caidas = max_caidas
         self._cola: deque[Tarea] = deque()
@@ -271,6 +273,7 @@ class Canal:
         tarea.avance = {"percent": 0.0, "stage": "start",
                         "message": "Arrancando el trabajador del exportador…"}
         trabajador = self._fabrica()
+        trabajador.al_evento = self._al_evento
         try:
             listo = trabajador.iniciar()
         except TrabajadorNoDisponible as e:

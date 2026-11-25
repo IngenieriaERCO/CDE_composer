@@ -1,4 +1,4 @@
-"""Trabajador FALSO del exportador (protocolo 1.1) para las pruebas del Componedor.
+"""Trabajador FALSO del exportador (protocolo 1.2) para las pruebas del Componedor.
 
 Se lanza como el de verdad: `python trabajador_falso.py worker --work-dir CARPETA`. Sigue el
 contrato final (`docs/protocolo_trabajador.md` del exportador, aprobado el 2026-11-17) en lo que
@@ -72,6 +72,13 @@ contorno de la zona más una línea del centro que se sale de la zona y de la p�
 la máscara oculta (el falso no la recorta de verdad; `get_drawings()` tampoco la aplica). Con
 "zona_otra_ventana": true en el «DXF», el manifiesto dice otra ventana (para la verificación).
 La fila trae kind, zone, package_name y name_generated.
+
+Vista previa preparada (protocolo 1.2, §4.2): tras responder a `load` (salvo con
+`prepare_preview: false` o con --protocolo 1.0/1.1), prepara en segundo plano y manda eventos
+`preview_progress` (boxes, draw, index), y `preview_ready` (con la CTB y la transparencia de
+`prepare_preview`) o `preview_failed`. `load` responde `preview_preparation` (running). El
+«DXF» puede traer "preparar_s" (lo que tarda, 0,3 s por defecto) y "preparar_falla" (el
+mensaje de `preview_failed`). La preparación se detiene con otro `load`.
 
 Opciones de arranque para las pruebas: --cancel-no-aceptado (responde `accepted: false` y sigue
 trabajando, como el real con un pedido cuya respuesta ya viene en camino), --protocolo 1.0 (un
@@ -295,7 +302,15 @@ class Falso:
                         "mm_unidad": respuesta["units"]["millimeters_per_unit"],
                         "bloques": {b["ref"]: (b, s) for b, s in
                                     zip(respuesta["blocks"], spec.get("blocks", []))}}
+        prepara = self.menor() >= 2 and datos.get("prepare_preview", True) is not False
+        respuesta["preview_preparation"] = (
+            {"state": "running", "stage": "boxes", "percent": 0.0, "plot_style": None,
+             "print_transparency": True, "error": None} if prepara else None)
+        if self.menor() < 2:
+            del respuesta["preview_preparation"]  # un trabajador 1.0/1.1 no la conoce
         self.responder(id_, "load", respuesta)
+        if prepara:
+            self.preparar(f"s-{self.sesion}", spec, datos.get("prepare_preview"))
 
     def previar(self, id_, datos):
         c = self.cargado
@@ -414,6 +429,40 @@ class Falso:
             "groups": modelo.get("grupos", []) if zona is None and vista is None else [],
             "scale": escala, "paper": papel, "omitted": {"3DSOLID": 0, "REGION": 0},
             "include_hidden_layers": None, "cached": en_cache, "seconds": 0.01, **estilo})
+
+    def menor(self) -> int:
+        """La versión menor del protocolo que habla (2 en la 1.2)."""
+        partes = str(self.args.protocolo).split(".")
+        return int(partes[1]) if len(partes) > 1 and partes[1].isdigit() else 0
+
+    def preparar(self, sesion, spec, pedido):
+        """§4.2: prepara en otro hilo y avisa con eventos (sin pedido: id null)."""
+        config = pedido if isinstance(pedido, dict) else {}
+        ctb = config.get("plot_style")
+        estilo = ({"name": Path(ctb).name, "sha256": "ab" * 32} if isinstance(ctb, str) else None)
+        transparencia = config.get("print_transparency", True) is not False
+        duracion = float(spec.get("preparar_s", 0.3))
+
+        def evento(nombre, data):
+            self.enviar({"protocol": self.args.protocolo, "id": None, "type": "event",
+                         "event": nombre, "data": {"session": sesion, **data}})
+
+        def trabajar():
+            pasos = (("boxes", 20.0), ("draw", 50.0), ("draw", 80.0), ("index", 100.0))
+            for etapa, porcentaje in pasos:
+                time.sleep(duracion / len(pasos))
+                if f"s-{self.sesion}" != sesion:
+                    return  # otro load: se detiene sin aviso
+                evento("preview_progress", {"stage": etapa, "percent": porcentaje,
+                                            "message": f"Preparando la vista previa: {etapa}"})
+            if spec.get("preparar_falla"):
+                evento("preview_failed", {"message": spec["preparar_falla"]})
+                return
+            evento("preview_ready", {"items": 1234, "points": 5678, "memory_mb": 1.5,
+                                     "seconds": duracion, "plot_style": estilo,
+                                     "print_transparency": transparencia})
+
+        threading.Thread(target=trabajar, daemon=True).start()
 
     def _estilo(self, id_, datos) -> dict | None:
         """{plot_style: {name, sha256} | None, print_transparency} del pedido (None si no vale)."""
@@ -836,7 +885,7 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("orden", choices=["worker"])
     p.add_argument("--work-dir", required=True)
-    p.add_argument("--protocolo", default="1.1")
+    p.add_argument("--protocolo", default="1.2")
     p.add_argument("--sin-ready", action="store_true")
     p.add_argument("--basura", action="store_true")
     p.add_argument("--nieto")

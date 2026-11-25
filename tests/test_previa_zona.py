@@ -92,6 +92,9 @@ def test_lee_la_respuesta_del_contrato(respuesta):
     assert r["papel"] == {"contenido_mm": [67.0, 65.0], "pagina_mm": [77.0, 75.0],
                           "margen_mm": 5.0, "cabe_a1": True}
     assert r["grupos"] == [] and r["px"] == [1500, 1455] and r["png"].name.startswith("ms-")
+    assert r["preparada"] is False  # sin «prepared» (exportador 1.1)
+    datos["prepared"] = True
+    assert leer_previa_zona(datos, carpeta)["preparada"] is True
 
 
 def test_lee_los_grupos_y_sin_papel(respuesta):

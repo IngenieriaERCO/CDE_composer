@@ -24,6 +24,9 @@
  * opcional (vacío: Zona_01, Zona_02…) y «Exportar zona»: el detalle aparece en «Detalles
  * disponibles» (EditorUI.registrarDetalles).
  *
+ * Arriba, la línea de la vista previa preparada del exportador 1.2 (la del panel del DXF):
+ * «Preparando… 61 % · lleva 32 s» o «lista: el zoom ya va rápido» o por qué falló.
+ *
  * Lo largo (con PRGD, la primera vista de todo el Model Space pasa del minuto) muestra el
  * avance, el mensaje del trabajador, el tiempo transcurrido y «Cancelar». Nada bloquea: se
  * puede seguir acercando, moviendo y dibujando mientras llega la vista nítida.
@@ -102,6 +105,7 @@
     cabecera.append(titulo, cerrar);
 
     const izq = nodo("div", { class: "izq-zonas" });
+    const preparacion = nodo("div", { class: "preparacion-dxf", id: "preparacion-zonas", hidden: "" });
     const navegacion = nodo("div", { class: "navegacion-zonas" });
     const visor = nodo("div", { class: "visor-zonas" });
     const lamina = svg("svg", { class: "lamina-zonas", id: "lamina-zonas" });
@@ -110,7 +114,7 @@
     const ayuda = nodo("div", { class: "dato ayuda-zonas" }, "Rueda: acercar y alejar hacia el cursor · " +
       "rueda apretada y arrastrar: mover · doble clic con la rueda: ver todo · clic izquierdo y " +
       "arrastrar: dibujar la zona · clic en un grupo (G1, G2…): ir a él.");
-    izq.append(navegacion, visor, ayuda);
+    izq.append(preparacion, navegacion, visor, ayuda);
 
     const der = nodo("div", { class: "der-zonas" });
     // Zona
@@ -190,7 +194,7 @@
       clearInterval(reloj);
       reloj = null;
     });
-    partes = { titulo, navegacion, lamina, ocupado, textoZona, borrar, listaCapas, resumenCapas,
+    partes = { titulo, preparacion, navegacion, lamina, ocupado, textoZona, borrar, listaCapas, resumenCapas,
       casillaFiltro, casillaVacias, escala, tamano, nombre, exportar, estiloTexto, resultado, error };
     prepararRaton(lamina);
   }
@@ -207,7 +211,7 @@
     if (z.sesion !== sesion) reiniciar(sesion);
     partes.titulo.textContent = "Zonas del modelo — " + c.dxf.nombre;
     if (!dialogo.open) dialogo.showModal();
-    reloj = reloj || setInterval(pintarOcupado, 1000); // el tiempo transcurrido avanza solo
+    reloj = reloj || setInterval(() => { pintarOcupado(); pintarPreparacion(); }, 1000); // el tiempo avanza solo
     if (!c.sesion_activa) {
       z.error = "El trabajador ya no tiene este DXF: ciérrelo y use «Volver a cargar».";
     } else if (!z.vista && !z.pidiendo) {
@@ -595,6 +599,7 @@
     if (!dialogo) return;
     partes.error.hidden = !z.error;
     partes.error.textContent = z.error || "";
+    pintarPreparacion();
     pintarNavegacion();
     pintarLamina();
     pintarOcupado();
@@ -603,6 +608,26 @@
     pintarTamano();
     pintarBotonExportar();
     pintarResultado();
+  }
+
+  /** La línea de la vista previa preparada (la misma del panel del DXF; se consulta allí). */
+  function pintarPreparacion() {
+    const caja = partes.preparacion;
+    const prep = D.textoPreparacion(panelDxf() && panelDxf().preparacion ? panelDxf().preparacion() : null);
+    caja.hidden = !prep;
+    if (!prep) {
+      caja.replaceChildren();
+      return;
+    }
+    caja.className = "preparacion-dxf " + prep.clase;
+    const hijos = [];
+    if (prep.clase === "preparando") {
+      const barra = nodo("progress", { max: "100" });
+      if (prep.porcentaje !== null) barra.value = prep.porcentaje;
+      hijos.push(barra);
+    }
+    hijos.push(nodo("span", {}, prep.texto));
+    caja.replaceChildren(...hijos);
   }
 
   function pintarNavegacion() {

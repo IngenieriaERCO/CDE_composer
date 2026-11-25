@@ -173,10 +173,11 @@ En la carpeta `trabajo`:
 ## Cómo se habla con el trabajador
 
 El Componedor **no importa código del exportador**: lo lanza como comando externo y le habla JSON
-por líneas (protocolo 1.1 desde el 2026-11-24; contrato en `docs/protocolo_trabajador.md` del
+por líneas (protocolo 1.2 desde el 2026-11-25; contrato en `docs/protocolo_trabajador.md` del
 repositorio del exportador, aprobado el 2026-11-17 y comparado con esta implementación). Un
 trabajador 1.0 sigue sirviendo para bloques; la vista previa de zonas exige que su `ready` diga
-1.1 o más (`trabajador.admite_zonas`). `load` se pide con el
+1.1 o más (`trabajador.admite_zonas`); la vista previa preparada es de la 1.2 (un 1.0 o 1.1
+ignora `prepare_preview` y no manda eventos: no se muestra nada). `load` se pide con el
 margen de `componedor.json`, `units: null` e `include_layers: false`: la tabla de capas todavía
 no se usa y así la carga ahorra 1–2 s en bloques grandes.
 
@@ -291,6 +292,34 @@ Exportador Vectorial.»
 - Las carpetas `.cde-tmp-*` que el exportador usa (o deja) en la salida se ignoran al buscar
   paquetes (`localizar_paquetes`).
 
+### Vista previa preparada en segundo plano (exportador 1.2, §4.2 de su protocolo)
+
+Tras `load`, un exportador 1.2 dibuja una vez todo el Model Space en segundo plano; desde que
+termina, cada vista de «Zonas del modelo» sale en menos de medio segundo (con PRGD, antes 40–50
+s las lejanas).
+
+- **Desde la carga**: «Cargar DXF» y «Volver a cargar» mandan el estilo elegido en el editor
+  (`{ctb, transparencia}`) y `load` lleva `prepare_preview: {plot_style: <ruta de la CTB o
+  null>, print_transparency}`: la misma configuración que llevarán las vistas, para que lo
+  preparado sirva. Si después se cambia el estilo, el exportador prepara otra vez con el nuevo
+  al pedir la primera vista (y la línea vuelve a «Preparando…»).
+- **Eventos** (`type: "event"`, sin pedido): `trabajador.py` los entrega por `al_evento`;
+  `preparacion_previa.py` guarda por sesión el último estado (`preview_progress`,
+  `preview_ready`, `preview_failed`; los de otra sesión no se mezclan) y el tiempo transcurrido
+  desde la carga. `/api/estado` lo da en `dxf.preparacion`: `{estado: "preparando" | "lista" |
+  "fallida" | "detenida", porcentaje, etapa, mensaje, transcurrido_s, segundos, error, estilo}`,
+  o `null` con un exportador 1.0/1.1.
+- **En el editor**: una línea en la carpeta del DXF y arriba del cuadro «Zonas del modelo»:
+  - azul, con barra: «Preparando la vista previa del Model Space… 61 % · lleva 32 s. Mientras
+    tanto las vistas lejanas tardan; cuando esté lista, el zoom de «Zonas del modelo» irá
+    rápido.» (el editor pregunta el estado cada segundo mientras se prepara);
+  - verde: «Vista previa lista (se preparó en 49 s): el zoom de «Zonas del modelo» ya va
+    rápido.»;
+  - ámbar: «No se pudo preparar la vista previa: <mensaje>. Todo sigue funcionando; las vistas
+    lejanas tardan más.» (las vistas se siguen dibujando como en la 1.1).
+- La respuesta de una vista de zona trae `preparada` (`prepared` del exportador): si salió de lo
+  preparado.
+
 ### El cuadro «Zonas del modelo» (Fase 10d)
 
 - `editor_zonas.js` (lógica, probada en Node: px ↔ CAD con `cad_a_px`, el rectángulo arrastrado
@@ -373,9 +402,9 @@ bloque:
 | Método y ruta | Qué hace |
 |---|---|
 | `GET /?t=<token>` | El `editor.html` de `editor.salida`, tal cual está en el disco. |
-| `GET /api/estado` | Exportador disponible o por qué no, estado del trabajador, la carpeta del último DXF (`sesion_activa`) y la última tarea de carga. |
-| `POST /api/dxf/elegir` | Abre el cuadro nativo; si se elige un DXF, encola `load`. Responde `{elegido, tarea}`. 409 si ya hay un cuadro abierto o una carga en curso. |
-| `POST /api/dxf/recargar` | «Volver a cargar»: `load` otra vez con la ruta del último DXF elegido. 409 si no hay ninguno o ya se está cargando. |
+| `GET /api/estado` | Exportador disponible o por qué no, estado del trabajador, la carpeta del último DXF (`sesion_activa` y `preparacion`: la vista previa preparada del exportador 1.2, o `null`) y la última tarea de carga. |
+| `POST /api/dxf/elegir` | Cuerpo opcional `{"estilo": {"ctb", "transparencia"}}` (el del editor; sin él, el de `componedor.json`): con él se pide `prepare_preview` (exportador 1.2). Abre el cuadro nativo; si se elige un DXF, encola `load`. Responde `{elegido, tarea}`. 400 si el estilo no vale; 409 si ya hay un cuadro abierto o una carga en curso. |
+| `POST /api/dxf/recargar` | «Volver a cargar» (mismo `estilo` opcional): `load` otra vez con la ruta del último DXF elegido. 409 si no hay ninguno o ya se está cargando. |
 | `GET /api/estilos` | `{estilos: [{nombre, sha256, descripcion}], por_defecto: {ctb, transparencia}, aviso}`: las tablas `.ctb` de `carpeta_ctb` y los valores de `componedor.json`. Nunca rutas. |
 | `POST /api/previa` | Cuerpo `{"ref": "<ref de la carpeta>", "estilo"?: {"ctb": <nombre de /api/estilos> \| null, "transparencia": bool}}` (sin `estilo`, el de `componedor.json`; un nombre que no es de la lista o una ruta: 400): encola `preview` con `plot_style` (la ruta la pone el servidor) y `print_transparency`. Responde `{tarea}`. 409 sin DXF o con la sesión vencida; 404 si el `ref` no está en la carpeta. El resultado de la tarea trae `px`, `cad_a_px`, `caja_cad`, `omitidos`, `en_cache` y `url` (nunca la ruta del PNG). |
 | `POST /api/previa/zona` | Cuerpo `{"zona"?: [xmin, ymin, xmax, ymax] \| null, "vista"?: [...] \| null, "excluir"?: [capas] \| null, "capas"?: [capas] \| null, "escala"?: N \| null, "estilo"?}` (unidades del dibujo; N entero de 1 a 100 000; `capas` y `excluir` no van juntas): encola `preview` de una zona (protocolo 1.1, §4.1). Responde `{tarea}`; dos pedidos iguales mientras se hace son una sola tarea. 400 si algo no vale; 409 sin DXF, con la sesión vencida o si el trabajador habla la 1.0. El resultado trae `px`, `cad_a_px`, `caja_cad`, `zona`, `vista`, `capas`, `excluir`, `filas_capas`, `grupos`, `entidades`, `escala`, `papel`, `en_cache` y `url`. |

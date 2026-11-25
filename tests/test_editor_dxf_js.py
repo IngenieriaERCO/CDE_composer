@@ -270,3 +270,43 @@ def test_editor_html_trae_el_boton_y_los_js_del_dxf(tmp_path):
     # editor_bloques.js va antes que la lógica (que lo usa para el plano versión 3).
     assert html.index("function paginaMm") < html.index("function serializarPlano")
     assert not re.search(r"https?://", html)  # tampoco ahora hay URLs en el HTML
+
+
+# --- vista previa preparada (exportador 1.2) -------------------------------------------------
+
+def test_cargar_manda_el_estilo_del_editor():
+    r = js("""
+      const vistos = [];
+      const fetchFalso = async (ruta, op) => { vistos.push([ruta, op.body]); return {ok: true, json: async () => ({})}; };
+      const c = S.crearCliente({token: "TK"}, fetchFalso);
+      await c.elegirDxf({ctb: "CTB_ERCO.ctb", transparencia: false});
+      await c.recargarDxf({ctb: null, transparencia: true});
+      await c.elegirDxf();
+      return vistos;""")
+    assert r == [
+        ["/api/dxf/elegir", '{"estilo":{"ctb":"CTB_ERCO.ctb","transparencia":false}}'],
+        ["/api/dxf/recargar", '{"estilo":{"ctb":null,"transparencia":true}}'],
+        ["/api/dxf/elegir", "{}"]]
+
+
+def test_texto_de_la_preparacion():
+    r = js("""return [
+      D.textoPreparacion(null),
+      D.textoPreparacion({estado: "preparando", porcentaje: 61.4, transcurrido_s: 32.7}),
+      D.textoPreparacion({estado: "preparando", porcentaje: null, transcurrido_s: 75}),
+      D.textoPreparacion({estado: "lista", segundos: 49.9}),
+      D.textoPreparacion({estado: "fallida", error: "MemoryError"}),
+      D.textoPreparacion({estado: "detenida"}),
+      D.transcurrido(3725)];""")
+    nada, prep, sin_por, lista, falla, detenida, largo = r
+    assert nada is None and detenida is None
+    assert prep["clase"] == "preparando" and prep["porcentaje"] == 61.4
+    assert prep["texto"].startswith("Preparando la vista previa del Model Space… 61 % · lleva 32 s.")
+    assert "el zoom de «Zonas del modelo» irá rápido" in prep["texto"]
+    assert sin_por["porcentaje"] is None and "· lleva 1 min 15 s" in sin_por["texto"]
+    assert lista == {"clase": "lista", "porcentaje": 100, "texto": "Vista previa lista (se preparó "
+                     "en 49 s): el zoom de «Zonas del modelo» ya va rápido."}
+    assert falla["clase"] == "fallida"
+    assert falla["texto"] == ("No se pudo preparar la vista previa: MemoryError. Todo sigue "
+                              "funcionando; las vistas lejanas tardan más.")
+    assert largo == "62 min 05 s"

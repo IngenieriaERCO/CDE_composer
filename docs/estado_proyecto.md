@@ -2887,6 +2887,67 @@ OK** con el falso (3 de 3 corridas) y con PRGD real.
   - `interseccion` y la zona desde el arrastre en coordenadas del dibujo.
 - `test_canal_trabajador`: un «cancel no aceptado» ya no mata al trabajador.
 
+10d con el ajuste de la vista: commit 9027f35 en dev, con push (2026-11-25).
+
+#### Ajuste de la 10d: vista previa preparada del exportador 1.2 (2026-11-25, sin commit)
+
+Pedido: aprovechar el protocolo 1.2 del exportador (a95d9d5, §4.2), que prepara la vista previa
+del Model Space en segundo plano tras `load`: mandar la CTB y la transparencia al cargar, mostrar
+«Preparando… lleva N s» y «lista», mostrar `preview_failed` sin romper nada y seguir con 1.1/1.0.
+
+**Qué se hizo**
+- `trabajador.py`: protocolo 1.2. Los mensajes `event` (sin pedido) van a `al_evento(nombre,
+  data)`; si fallan, se anota y se sigue. `canal_trabajador.py`: `Canal(al_evento=…)` se lo pasa
+  a cada trabajador que lanza.
+- `preparacion_previa.py` (nuevo): el estado por sesión (preparando, lista, fallida, detenida;
+  porcentaje, etapa, transcurrido, segundos, error, estilo) a partir de `preview_preparation` de
+  `load` y de los eventos `preview_progress`, `preview_ready` y `preview_failed`. Los de otra
+  sesión no se mezclan; no hay estado con un trabajador 1.0/1.1. `pedido_preparar`.
+- `aplicacion_editor.py`:
+  - `elegir_y_cargar(estilo)` y `recargar(estilo)` mandan `prepare_preview` con la CTB y la
+    transparencia del editor; sin estilo, las de `componedor.json`;
+  - si la CTB por defecto no existe, se carga igual, sin preparar;
+  - `/api/estado` da `dxf.preparacion`.
+  `servidor.py`: el `estilo` de los dos pedidos. `previa_zona.py`: `preparada`.
+- Editor:
+  - `editor_dxf.textoPreparacion` y `transcurrido`;
+  - el cliente manda el estilo al cargar;
+  - en la carpeta del DXF, la línea azul con barra «Preparando la vista previa del Model Space…
+    N % · lleva N s…», la verde «Vista previa lista (se preparó en …): el zoom ya va rápido» o
+    la ámbar «No se pudo preparar…: <mensaje>. Todo sigue funcionando…»;
+  - mientras se prepara, el editor pregunta cada segundo;
+  - la misma línea arriba del cuadro «Zonas del modelo».
+- Trabajador falso: protocolo 1.2 por defecto, con preparación en segundo plano (`preparar_s`,
+  `preparar_falla`); con `--protocolo 1.1` o `1.0`, sin eventos.
+
+**Verificación en Edge** (`data/verificacion/verificar_preparacion.mjs`; capturas en
+`data/verificacion/preparacion_salida/`): **todo OK**, sin errores de JavaScript.
+- Falso 1.2, que prepara en 6 s:
+  - la línea en la carpeta y en el cuadro, con «lleva N s» y barra;
+  - el avance sube solo (0 → 50 %);
+  - «Vista previa lista (se preparó en 6 s)…» en verde.
+- Falso con falla: «No se pudo preparar la vista previa: MemoryError…», y «Zonas del modelo»
+  funciona igual.
+- Falso 1.1: sin línea, y todo funciona.
+- **PRGD con el exportador real** (estilo de `componedor.json`: CTB derivada, sin
+  transparencia):
+  - la carga tarda 83 s y la preparación empieza con ella;
+  - «Vista previa lista» llega 132 s después de la carga (el equipo estaba ocupado; el
+    exportador midió 50 s);
+  - después, las vistas de los grupos 1, 2 y 3 salen de lo preparado (`preparada: true`) en
+    0,55 / 0,12 / 0,15 s del exportador y 0,7 a 1,2 s en el editor (antes, 20 a 77 s).
+
+**Pruebas**: **1475 pasan** y 1 se salta (antes 1459). ruff: los mismos 173 hallazgos.
+- `test_preparacion_previa` (15):
+  - el estado: sin nada, avance, lista y tiempo, otra sesión, falla y otra preparación, `load`
+    que ya dice lista o fallida, `pedido_preparar`;
+  - con el falso: `load` con el estilo del editor hasta «lista», el de `componedor.json`,
+    «Volver a cargar», `preview_failed` sin romper nada, el exportador 1.1 y el 1.0, una CTB por
+    defecto que no existe no impide cargar, y un estilo que no vale da 400.
+- `test_editor_dxf_js`: el cliente manda el estilo al cargar y los textos de la preparación.
+- `test_previa_zona`: `preparada`.
+- `test_aplicacion_editor`: el `load` lleva `prepare_preview`.
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

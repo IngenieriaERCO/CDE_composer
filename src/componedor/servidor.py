@@ -222,9 +222,9 @@ def _manejador(servidor: ServidorEditor):
             if metodo == "GET" and (m := RUTA_TAREA.match(ruta)):
                 return app.tarea(m.group(1))
             if ruta == "/api/dxf/elegir":
-                return app.elegir_y_cargar()
+                return app.elegir_y_cargar(cuerpo.get("estilo"))
             if ruta == "/api/dxf/recargar":
-                return app.recargar()
+                return app.recargar(cuerpo.get("estilo"))
             if ruta == "/api/previa":
                 return app.pedir_previa(cuerpo.get("ref"), cuerpo.get("estilo"))
             if ruta == "/api/previa/zona":

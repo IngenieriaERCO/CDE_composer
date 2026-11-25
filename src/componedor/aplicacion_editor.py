@@ -22,6 +22,11 @@ Zonas del Model Space (protocolo 1.1, previa_zona.py): `pedir_previa_zona` encol
 o el rectángulo del usuario, con el filtro de capas y la escala para el tamaño en la hoja. El PNG
 se entrega igual que el de un bloque. Si el trabajador habla la 1.0, error 409 claro.
 
+Vista previa preparada (protocolo 1.2, preparacion_previa.py): `load` lleva `prepare_preview`
+con la CTB y la transparencia que eligió el editor (las que usará en las vistas), así el
+trabajador empieza a preparar desde la carga; sus eventos (avance, lista, falló) se guardan por
+sesión y `estado()` los da en `dxf.preparacion` (None con un trabajador 1.0/1.1).
+
 Estilo de impresión (estilos_impresion.py): `estilos()` da la lista de tablas .ctb de
 `exportador.carpeta_ctb` y los valores por defecto. El editor manda en cada vista previa y
 exportación `estilo: {"ctb": <nombre de la lista> | null, "transparencia": bool}` (sin él, los
@@ -79,6 +84,7 @@ from componedor.inventario import ESCALA_MAXIMA
 from componedor.localizacion_editor import LocalizacionEditor
 from componedor.mensajes_trabajador import para_el_usuario
 from componedor.ortofoto_editor import OrtofotoEditor
+from componedor.preparacion_previa import PreparacionPrevia, pedido_preparar
 from componedor.previa_dxf import (
     CARPETA_PREVIAS,
     leer_previa,
@@ -143,6 +149,7 @@ class AplicacionEditor:
             (lambda: Trabajador(config.comando, config.trabajo,
                                 opciones=config.opciones_trabajador())) if config else None)
         self.canal: Canal | None = None
+        self.preparacion = PreparacionPrevia()  # la vista previa preparada (protocolo 1.2)
         self.dxf: dict | None = None  # la carpeta del último DXF cargado
         self._generacion_dxf: int | None = None
         self._tarea_carga: str | None = None
@@ -175,7 +182,7 @@ class AplicacionEditor:
 
     def _asegurar_canal(self) -> Canal:
         if self.canal is None:
-            self.canal = Canal(self._fabrica)
+            self.canal = Canal(self._fabrica, al_evento=self.preparacion.al_evento)
         return self.canal
 
     # --- pedidos del editor --------------------------------------------------------------------
@@ -187,7 +194,8 @@ class AplicacionEditor:
         if self.dxf is not None:
             activa = (trabajador is not None
                       and trabajador["generacion"] == self._generacion_dxf)
-            dxf = {**self.dxf, "sesion_activa": activa}
+            dxf = {**self.dxf, "sesion_activa": activa,
+                   "preparacion": self.preparacion.estado(self.dxf.get("sesion")) if activa else None}
         tarea = self.canal.tarea(self._tarea_carga) if self.canal and self._tarea_carga else None
         return {"servidor": True,
                 "exportador": {"disponible": motivo is None, "mensaje": motivo,
@@ -195,11 +203,13 @@ class AplicacionEditor:
                 "dxf": dxf, "tarea": tarea.foto() if tarea else None,
                 "ortofoto": self.ortofoto.estado(), "localizacion": self.localizacion.estado()}
 
-    def elegir_y_cargar(self) -> dict:
-        """Abre el cuadro; si se elige un DXF, encola su carga. {"elegido", "tarea"}."""
+    def elegir_y_cargar(self, estilo=None) -> dict:
+        """Abre el cuadro; si se elige un DXF, encola su carga. {"elegido", "tarea"}.
+        `estilo`: el del editor ({ctb, transparencia}), para preparar la vista previa con él."""
         motivo = self.motivo_sin_exportador()
         if motivo is not None:
             raise ErrorAplicacion(409, motivo)
+        preparar = self._preparar(estilo)
         actual = self.canal.tarea(self._tarea_carga) if self.canal and self._tarea_carga else None
         if actual is not None and actual.estado in (EN_COLA, EN_CURSO):
             raise ErrorAplicacion(409, "Ya se está cargando un DXF: espere o cancélelo.")
@@ -216,13 +226,14 @@ class AplicacionEditor:
         if ruta is None:
             return {"elegido": None, "tarea": None}
         self.carpeta_inicial = ruta.parent
-        return {"elegido": ruta.name, "tarea": self._cargar(ruta)}
+        return {"elegido": ruta.name, "tarea": self._cargar(ruta, preparar)}
 
-    def recargar(self) -> dict:
+    def recargar(self, estilo=None) -> dict:
         """«Volver a cargar»: `load` otra vez con la ruta del último DXF elegido."""
         motivo = self.motivo_sin_exportador()
         if motivo is not None:
             raise ErrorAplicacion(409, motivo)
+        preparar = self._preparar(estilo)
         if self._ruta_dxf is None:
             raise ErrorAplicacion(409, "Todavía no se cargó ningún DXF: use «Cargar DXF».")
         actual = self.canal.tarea(self._tarea_carga) if self.canal and self._tarea_carga else None
@@ -232,9 +243,24 @@ class AplicacionEditor:
             ruta = validar_dxf(self._ruta_dxf)
         except DxfInvalido as e:
             raise ErrorAplicacion(400, str(e)) from None
-        return {"elegido": ruta.name, "tarea": self._cargar(ruta)}
+        return {"elegido": ruta.name, "tarea": self._cargar(ruta, preparar)}
 
-    def _cargar(self, ruta: Path) -> dict:
+    def _preparar(self, estilo) -> dict | None:
+        """`prepare_preview` de `load` con el estilo del editor (sin él, el de componedor.json).
+        Un trabajador 1.0/1.1 lo ignora (campos desconocidos, §2.1).
+
+        Preparar es una ayuda: si el estilo POR DEFECTO de componedor.json no sirve (la CTB no
+        está), se carga igual, sin `prepare_preview` (el aviso sale al pedir una vista o al
+        exportar, como antes). Un estilo mandado por el editor que no vale sí es un 400."""
+        try:
+            tabla, transparencia = self._estilo(estilo)
+        except ErrorAplicacion:
+            if estilo is not None:
+                raise
+            return None
+        return pedido_preparar(tabla.ruta if tabla else None, transparencia)
+
+    def _cargar(self, ruta: Path, preparar: dict | None = None) -> dict:
         """Encola `load` (las vistas previas que esperaban turno ya no sirven: se cancelan)."""
         canal = self._asegurar_canal()
         with self._candado:
@@ -251,7 +277,8 @@ class AplicacionEditor:
             # manda el Componedor; se configura en componedor.json).
             {"dxf": str(ruta), "units": None, "margin_mm": self.config.margen_mm,
              "include_layers": False,
-             "anonymous_min_entities": self.config.anonimos_min_entidades},
+             "anonymous_min_entities": self.config.anonimos_min_entidades,
+             **({"prepare_preview": preparar} if preparar is not None else {})},
             procesar=lambda data, t: self._al_cargar(data, t, ruta, firma))
         self._tarea_carga = tarea.id
         return tarea.foto()
@@ -262,6 +289,7 @@ class AplicacionEditor:
                                 anonimos_min=self.config.anonimos_min_entidades)
         catalogo["dxf"]["archivo_plano"] = self.archivo_para_plano(ruta)
         self.dxf, self._generacion_dxf = catalogo, tarea.generacion
+        self.preparacion.al_cargar(catalogo.get("sesion"), data.get("preview_preparation"))
         self._firma_dxf = firma
         return catalogo
 

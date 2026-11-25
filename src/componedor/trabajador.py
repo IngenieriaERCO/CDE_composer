@@ -1,4 +1,4 @@
-"""Cliente del trabajador del Exportador Vectorial (`cde-exporter worker`, protocolo 1.1).
+"""Cliente del trabajador del Exportador Vectorial (`cde-exporter worker`, protocolo 1.2).
 
 El Componedor no importa código del exportador: lo lanza como COMANDO EXTERNO y le habla
 JSON por líneas (contrato: `docs/protocolo_trabajador.md` del repositorio del exportador).
@@ -18,8 +18,10 @@ instalado, no tiene la orden `worker`, no responde, otra versión del protocolo)
 `TrabajadorCaido` (el proceso terminó sin `close`) y `ErrorTrabajador` (el pedido terminó con
 `error`: código estable, mensaje, consejo y detalles del trabajador).
 
-Versión: los pedidos dicen `"protocol": "1.1"`. Un trabajador 1.0 los atiende igual (la misma
-versión mayor), pero no sabe de zonas del Model Space: `admite_zonas` lo dice con su `ready`.
+Versión: los pedidos dicen `"protocol": "1.2"`. Un trabajador 1.0 o 1.1 los atiende igual (la
+misma versión mayor): el 1.0 no sabe de zonas del Model Space (`admite_zonas`) y ninguno de los
+dos manda eventos. Desde la 1.2 llegan mensajes `event` sin pedido (`id` null): la vista previa
+preparada en segundo plano (§4.2); van a `al_evento(nombre, data)`, si se asignó.
 """
 
 import itertools
@@ -35,7 +37,7 @@ from pathlib import Path
 
 from componedor.proceso_windows import ProcesoEnJob, cerrar_job, lanzar_en_job
 
-PROTOCOLO = "1.1"
+PROTOCOLO = "1.2"
 MAYOR = "1"
 MENOR_ZONAS = 1  # zonas del Model Space en preview y export (protocolo 1.1, §4.1 y §5.4)
 ESPERA_READY_S = 60.0  # arranque en frío del exportador real: >30 s la primera vez (compila .pyc)
@@ -115,6 +117,9 @@ class Trabajador:
         self.carpeta = Path(carpeta_trabajo).resolve()
         self.espera_ready_s = espera_ready_s
         self.listo: dict | None = None  # data del mensaje ready
+        # Eventos sin pedido (protocolo 1.2, §2.3 y §4.2): al_evento(nombre, data). Se llama
+        # desde el hilo lector: debe ser rápido y no lanzar (si lanza, se anota y se sigue).
+        self.al_evento: Callable[[str, dict], None] | None = None
         self._p: ProcesoEnJob | None = None
         self._registro = None
         self._lector: threading.Thread | None = None
@@ -306,6 +311,14 @@ class Trabajador:
             self.anotar(f"mensaje que no es un objeto (se ignora): {crudo[:200]!r}")
             return
         tipo = mensaje.get("type")
+        if tipo == "event":
+            nombre, data = mensaje.get("event"), mensaje.get("data")
+            if self.al_evento is not None and isinstance(nombre, str) and isinstance(data, dict):
+                try:
+                    self.al_evento(nombre, data)
+                except Exception as e:  # noqa: BLE001 - un fallo al mostrar no corta el canal
+                    self.anotar(f"error al procesar el evento {nombre!r}: {e!r}")
+            return
         if tipo == "ready":
             data = mensaje.get("data")
             self.listo = data if isinstance(data, dict) else {}

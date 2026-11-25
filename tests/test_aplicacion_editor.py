@@ -102,7 +102,9 @@ def test_cargar_un_dxf_hasta_la_carpeta(armar, tmp_path):
     # umbral de los anónimos (100 por defecto).
     assert app.canal.tarea(r["tarea"]["id"]).datos == {
         "dxf": str(ruta.resolve()), "units": None, "margin_mm": 5.0, "include_layers": False,
-        "anonymous_min_entities": 100}
+        "anonymous_min_entities": 100,
+        # Protocolo 1.2: preparar la vista previa con el estilo del editor (sin CTB aquí).
+        "prepare_preview": {"plot_style": None, "print_transparency": True}}
     foto = esperar_tarea(app, r["tarea"]["id"])
     assert foto["estado"] == "terminada", foto["error"]
     carpeta = foto["resultado"]

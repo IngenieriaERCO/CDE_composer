@@ -144,7 +144,8 @@ def _papel(papel) -> dict | None:
 
 def leer_previa_zona(datos: dict, carpeta_previas) -> dict:
     """Lo de `leer_previa` (png, px, caja_cad, cad_a_px, omitidos, en_cache, segundos) y
-    además {zona, vista, capas, excluir, filas_capas, grupos, entidades, escala, papel}.
+    además {zona, vista, capas, excluir, filas_capas, grupos, entidades, escala, papel,
+    preparada}.
     PreviaInvalida si algo no cumple el contrato."""
     if not isinstance(datos, dict):
         raise PreviaInvalida("la respuesta de «preview» no es un objeto")
@@ -173,4 +174,6 @@ def leer_previa_zona(datos: dict, carpeta_previas) -> dict:
                       "sin_caja": entidades["without_bounds"]},
         "escala": escala_txt if isinstance(escala_txt, str) else None,
         "papel": _papel(datos.get("paper")),
+        # Protocolo 1.2: salió de la vista previa preparada (rápida). Falso con 1.0/1.1.
+        "preparada": datos.get("prepared") is True,
     }

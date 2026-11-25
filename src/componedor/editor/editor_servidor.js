@@ -68,8 +68,10 @@
     const tarea = (id) => "/api/tareas/" + encodeURIComponent(id);
     return {
       estado: () => pedir("GET", "/api/estado"),
-      elegirDxf: () => pedir("POST", "/api/dxf/elegir"),
-      recargarDxf: () => pedir("POST", "/api/dxf/recargar"),
+      // estilo: el elegido en el editor ({ctb, transparencia}): el exportador 1.2 prepara la
+      // vista previa del Model Space con él desde la carga. Sin él, el de componedor.json.
+      elegirDxf: (estilo) => pedir("POST", "/api/dxf/elegir", estilo ? { estilo } : {}),
+      recargarDxf: (estilo) => pedir("POST", "/api/dxf/recargar", estilo ? { estilo } : {}),
       // estilo: {ctb: <nombre de la lista de /api/estilos> | null, transparencia}; sin él, el
       // de componedor.json. Nunca rutas: la de la tabla la pone el servidor.
       previa: (ref, estilo) => pedir("POST", "/api/previa", estilo ? { ref, estilo } : { ref }),

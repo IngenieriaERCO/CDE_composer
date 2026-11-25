@@ -383,7 +383,10 @@ cualquier zoom, se marcan las **capas** (todas al
 empezar; opción «solo las marcadas»), se elige la **escala** (con el tamaño en la hoja y aviso si
 no cabe en el A1) y un **nombre** opcional (vacío: `Zona_01`, `Zona_02`…). «Exportar zona» la
 publica en `data/input/dxf/<DXF>/` como un paquete más, que aparece en **«Detalles disponibles»**.
-Lo que cruza el borde de la zona se corta en el PDF (máscara de recorte, todo vector). Paso a paso
+Lo que cruza el borde de la zona se corta en el PDF (máscara de recorte, todo vector). Con un
+Exportador 1.2, la vista previa del Model Space se prepara en segundo plano desde la carga (el
+editor dice «Preparando la vista previa… · lleva N s» y luego «lista»); desde entonces cada vista
+sale en menos de medio segundo. Paso a paso
 en [docs/servidor_editor.md](docs/servidor_editor.md#zonas-del-modelo-paso-a-paso).
 
 ### Elementos fijos de la plantilla y datos del editor

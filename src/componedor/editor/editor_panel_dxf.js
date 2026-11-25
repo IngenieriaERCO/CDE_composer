@@ -21,6 +21,11 @@
  *   reintentar(bloque) → olvida un error para volver a pedirla.
  * Una vista previa es la de un DXF (sha256) y un handle: sirve a cualquier escala.
  *
+ * Vista previa preparada (exportador 1.2): «Cargar DXF» manda el estilo elegido para que la
+ * preparación empiece con la carga; una línea en la carpeta dice «Preparando la vista previa…
+ * 61 % · lleva 32 s», «Vista previa lista» o por qué falló. Mientras se prepara, el estado se
+ * consulta cada segundo. Con un exportador 1.0/1.1 no hay línea.
+ *
  * «Zonas del modelo…» (Fase 10d): botón de la carpeta que abre el diálogo de
  * editor_panel_zonas.js (window.EditorPanelZonas). La carga del DXF muestra cuánto lleva.
  *
@@ -199,6 +204,17 @@
     resumen.appendChild(nodo("span", { class: "dato" }, " · " + D.resumenDxf(catalogo)));
     c.appendChild(resumen);
     c.appendChild(nodo("div", { class: "dato" }, D.detalleDxf(catalogo)));
+    const prep = D.textoPreparacion(catalogo.preparacion);
+    if (prep) {
+      const linea = nodo("div", { class: "preparacion-dxf " + prep.clase, id: "preparacion-dxf" });
+      if (prep.clase === "preparando") {
+        const barra = nodo("progress", { max: "100" });
+        if (prep.porcentaje !== null) barra.value = prep.porcentaje;
+        linea.appendChild(barra);
+      }
+      linea.appendChild(nodo("span", {}, prep.texto));
+      c.appendChild(linea);
+    }
     if (window.EditorPanelZonas) {
       const zonas = nodo("button", { type: "button", id: "btn-zonas-modelo" }, "Zonas del modelo…");
       zonas.disabled = !catalogo.sesion_activa || !!vista.recargar;
@@ -307,6 +323,23 @@
       alCambiarCarpeta(ahora);
     }
     pintar();
+    seguirPreparacion();
+  }
+
+  // Mientras el exportador prepara la vista previa, preguntar cada segundo (avance y «lista»).
+  let preguntaPreparacion = null;
+  function seguirPreparacion() {
+    const p = vista.estado && vista.estado.dxf && vista.estado.dxf.preparacion;
+    if (!p || p.estado !== "preparando" || preguntaPreparacion) return;
+    preguntaPreparacion = setTimeout(async () => {
+      preguntaPreparacion = null;
+      const activo = document.activeElement; // no repintar debajo de un cuadro que se edita
+      if (activo && activo.id === "filtro-anonimos") {
+        seguirPreparacion();
+        return;
+      }
+      await refrescar();
+    }, 1000);
   }
 
   /** Carpeta nueva (o la misma con otra sesión): las vistas previas que fallaron o esperaban
@@ -495,7 +528,9 @@
     // La carpeta del DXF cargado (o null): el panel de la ortofoto toma de aquí dxf.crs.
     catalogo: () => (vista.estado && vista.estado.dxf) || null,
     // El estilo tal como lo pide el servidor ({ctb, transparencia}, sin sha256) o null.
-    estiloPedido: () => vista.estilo || null };
+    estiloPedido: () => vista.estilo || null,
+    // La vista previa preparada del DXF cargado (dxf.preparacion de /api/estado) o null.
+    preparacion: () => (vista.estado && vista.estado.dxf && vista.estado.dxf.preparacion) || null };
 
   // ---------------------------------------------------------------------------------------
   // Exportar (etapa 3).
@@ -652,7 +687,7 @@
   async function recargar() {
     vista.error = null;
     try {
-      const r = await cliente.recargarDxf();
+      const r = await cliente.recargarDxf(vista.estilo || undefined);
       vista.tarea = r.tarea;
       await seguir(r.tarea.id);
       return;
@@ -690,7 +725,7 @@
     boton.textContent = "Eligiendo el DXF…";
     pintar();
     try {
-      const r = await cliente.elegirDxf();
+      const r = await cliente.elegirDxf(vista.estilo || undefined);
       if (r.tarea) {
         vista.tarea = r.tarea;
         vista.ocupado = false;
