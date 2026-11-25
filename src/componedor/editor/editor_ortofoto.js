@@ -164,6 +164,36 @@
     return "la ortofoto cubre el " + Math.max(1, Math.round(cobertura * 100)) + " % del detalle";
   }
 
+  const RUMBOS = ["al este", "al noreste", "al norte", "al noroeste", "al oeste", "al suroeste", "al sur", "al sureste"];
+
+  /**
+   * El aviso de cobertura de un detalle con «Usar ortofoto», o null si la foto lo cubre entero.
+   * {nivel: "fuerte" (no lo cubre) | "aviso" (en parte), corto, largo}. cajaDetalle y foto:
+   * [x0, y0, x1, y1] en el sistema del dibujo (foto: `foto_en_dibujo` de la vista previa, o
+   * null); mmPorUnidad: para dar la distancia en m o km (1000 en un dibujo en metros).
+   */
+  function avisoCobertura(cobertura, cajaDetalle, foto, mmPorUnidad) {
+    if (!(cobertura >= 0) || cobertura >= 0.9995) return null;
+    if (cobertura > 0) {
+      const n = Math.min(99, Math.max(1, Math.round(cobertura * 100)));
+      const corto = "La ortofoto cubre solo el " + n + " % de este detalle";
+      return { nivel: "aviso", corto, largo: corto + ": el resto queda sin foto (en blanco)." };
+    }
+    const corto = "La ortofoto no cubre este detalle";
+    let donde = "";
+    if (foto && cajaDetalle) {
+      const cx = (foto[0] + foto[2]) / 2 - (cajaDetalle[0] + cajaDetalle[2]) / 2;
+      const cy = (foto[1] + foto[3]) / 2 - (cajaDetalle[1] + cajaDetalle[3]) / 2;
+      const metros = Math.hypot(cx, cy) * (mmPorUnidad || 1000) / 1000;
+      const sector = ((Math.round(Math.atan2(cy, cx) / (Math.PI / 4)) % 8) + 8) % 8;
+      const distancia = metros >= 1000 ? (metros / 1000).toFixed(1).replace(".", ",") + " km" : miles(metros) + " m";
+      donde = ": la foto queda a " + distancia + " " + RUMBOS[sector] + " (su centro, en el sistema del dibujo: X " +
+        miles((foto[0] + foto[2]) / 2) + ", Y " + miles((foto[1] + foto[3]) / 2) + "). Revise que sea la foto de " +
+        "esta obra y que el sistema del dibujo sea el correcto";
+    }
+    return { nivel: "fuerte", corto, largo: corto + donde + "." };
+  }
+
   const nombreDe = (r) => String(r).replace(/\\/g, "/").split("/").pop();
   const fechaTexto = (f) => f.replace("T", " ").replace("Z", " UTC");
 
@@ -353,7 +383,7 @@
     return (t) => [...t].reduce((s, c) => s + helv(c), 0) * em;
   }
 
-  return { LADO_PX, leerSistema, cajaCadDetalle, cajaCadBloque, clavePrevia, textoBytes, lineasFicha,
+  return { LADO_PX, avisoCobertura, leerSistema, cajaCadDetalle, cajaCadBloque, clavePrevia, textoBytes, lineasFicha,
     avisos, listaParaPrevias, textoCobertura, diferencias, esLaDelPlano, leerOrtofoto, ortofotoParaGuardar,
     CUADRICULA, textoCoordenada, valoresCuadricula, cuadricula, medidorCuadricula, alturaCuadricula };
 });

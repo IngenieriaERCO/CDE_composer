@@ -439,3 +439,28 @@ def test_extender_y_cuadricula_de_ida_y_vuelta(entorno_editor):
     ruta.write_text(json.dumps(r["con"]), encoding="utf-8")
     o = leer_plano(ruta).ortofoto
     assert (o.extender, o.cuadricula, o.intervalo_m) == (True, True, 25.0)
+
+
+def test_aviso_de_cobertura_dice_donde_esta_la_foto():
+    """El caso real: Zaino123 (zona de PRGD en CTM12) y foto_google_sat.tif, a 30,9 km."""
+    detalle = [4695233.975, 2230008.437, 4695491.117, 2230265.081]
+    foto = [4705494.13, 2200600.12, 4706596.69, 2201702.68]
+    r = js("""const [d, f] = entrada; return [
+      O.avisoCobertura(0, d, f, 1000), O.avisoCobertura(0, d, null, 1000),
+      O.avisoCobertura(0.374, d, f, 1000), O.avisoCobertura(0.004, d, f, 1000),
+      O.avisoCobertura(0.9996, d, f, 1000), O.avisoCobertura(1, d, f, 1000),
+      O.avisoCobertura(0, [0, 0, 10, 10], [800, 5, 810, 15], 1000),
+      O.avisoCobertura(0, [0, 0, 10, 10], [-5, 600, 5, 610], 1000)];""", [detalle, foto])
+    nada, sin_foto, parte, poquito, casi, toda, este, norte = r
+    assert nada == {"nivel": "fuerte", "corto": "La ortofoto no cubre este detalle",
+                    "largo": "La ortofoto no cubre este detalle: la foto queda a 30,9 km al sur (su "
+                             "centro, en el sistema del dibujo: X 4 706 045, Y 2 201 151). Revise "
+                             "que sea la foto de esta obra y que el sistema del dibujo sea el "
+                             "correcto."}
+    assert sin_foto["largo"] == "La ortofoto no cubre este detalle."
+    assert parte == {"nivel": "aviso", "corto": "La ortofoto cubre solo el 37 % de este detalle",
+                     "largo": "La ortofoto cubre solo el 37 % de este detalle: el resto queda sin "
+                              "foto (en blanco)."}
+    assert poquito["corto"] == "La ortofoto cubre solo el 1 % de este detalle"
+    assert casi is None and toda is None
+    assert "queda a 800 m al este" in este["largo"] and "queda a 600 m al norte" in norte["largo"]

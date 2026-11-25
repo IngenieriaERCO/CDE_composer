@@ -31,7 +31,13 @@ from componedor.ortofoto import (
     leer_sistema,
     validar_ruta,
 )
-from componedor.previa_ortofoto import LADO_PX, MAX_LADO_PX, hacer_previa, validar_caja
+from componedor.previa_ortofoto import (
+    LADO_PX,
+    MAX_LADO_PX,
+    caja_foto_en_dibujo,
+    hacer_previa,
+    validar_caja,
+)
 
 MAX_PREVIAS = 64
 CAMBIO = ("La ortofoto cambió en el disco desde que se cargó: vuelva a cargarla («Cargar "
@@ -179,7 +185,11 @@ class OrtofotoEditor:
             while len(self._previas) > MAX_PREVIAS:
                 self._previas.popitem(last=False)
             respuesta = {"id": ident, "url": f"/api/ortofoto/previas/{ident}", "px": list(p.px),
-                         "cobertura": round(p.cobertura, 4), "caja_cad": list(caja)}
+                         "cobertura": round(p.cobertura, 4), "caja_cad": list(caja),
+                         # Dónde está la foto (en el sistema del dibujo): con poca o ninguna
+                         # cobertura, el editor dice a qué distancia y hacia dónde queda.
+                         "foto_en_dibujo": (caja_foto_en_dibujo(self.ruta, crs_dibujo, crs_ortofoto)
+                                            if p.cobertura < 0.9995 else None)}
             self._por_clave[clave] = respuesta
             return respuesta
 

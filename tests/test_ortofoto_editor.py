@@ -166,3 +166,30 @@ def test_el_cuadro_abre_en_la_carpeta_del_plano(tmp_path):
     for malo in (None, 3, "", "x" * 2000):
         assert o.carpeta_del_plano(malo) is None
     assert o.carpeta_del_plano(str(ruta)) == ruta.parent  # absoluta (otro disco)
+
+
+def test_detalle_que_la_ortofoto_no_cubre_dice_donde_esta_la_foto(tmp_path):
+    """Un detalle lejos de la foto: cobertura 0 (no es un error ni lentitud) y la huella de la
+    foto en el sistema del dibujo, para que el editor diga a qué distancia y hacia dónde queda.
+    Con la foto entera dentro, no hace falta (None)."""
+    o, _, _ = armar(tmp_path)  # 400 × 300 px a 1 m (sintética, en EPSG:9377)
+    o.elegir()
+    assert o.previa(pedido())["foto_en_dibujo"] is None  # la cubre entera
+    lejos = [X0 + 30000, Y1 - 30000, X0 + 30100, Y1 - 29900]
+    r = o.previa(pedido(caja_cad=lejos))
+    assert r["cobertura"] == 0.0
+    assert r["foto_en_dibujo"] == pytest.approx([X0, Y1 - 300, X0 + 400, Y1], abs=0.01)
+    parte = o.previa(pedido(caja_cad=[X0 + 300, Y1 - 200, X0 + 500, Y1 - 100]))
+    assert 0.45 < parte["cobertura"] < 0.55 and parte["foto_en_dibujo"] is not None
+
+
+def test_huella_de_la_foto_en_otro_sistema(tmp_path):
+    from componedor.ortofoto import leer_sistema
+    from componedor.previa_ortofoto import caja_foto_en_dibujo
+
+    ruta = crear_geotiff(tmp_path / "a.tif")
+    misma = caja_foto_en_dibujo(ruta, leer_sistema("EPSG:9377"))
+    assert misma == pytest.approx([X0, Y1 - 300, X0 + 400, Y1], abs=0.01)
+    otra = caja_foto_en_dibujo(ruta, leer_sistema("EPSG:3116"))  # MAGNA Bogotá: otros números
+    assert otra is not None and abs(otra[0] - X0) > 1000
+    assert caja_foto_en_dibujo(tmp_path / "no_existe.tif", leer_sistema("EPSG:9377")) is None

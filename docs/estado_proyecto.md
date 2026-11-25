@@ -3029,6 +3029,49 @@ sin errores de JavaScript.
   mayúsculas, 400), sin DXF (409) y dos zonas de la hoja con su nombre y su centro (la misma
   zona a dos escalas, centrada donde estaba el borrador).
 
+### Ortofoto que no cubre un detalle: diagnóstico y aviso visible (2026-11-25, sin commit)
+
+**Reporte**: `foto_google_sat.tif` (EPSG:32618, 8993 × 8993 px, 1098 × 1098 m, sin pirámides) con
+«Usar ortofoto» en el detalle Zaino123 (zona de PRGD, 1:500, sistema del dibujo EPSG:9377 a
+mano): el editor decía que reproyectaba y no se veía nada.
+
+**Diagnóstico**:
+1. **La foto no cubre el detalle.**
+   - Zaino123 en CTM12: X 4 695 234–4 695 491, Y 2 230 008–2 230 265 (257 × 257 m); en 32618,
+     X 416 533–416 791, Y 671 510–671 768.
+   - La foto en 32618: X 426 894–427 992, Y 642 162–643 260; en CTM12, X 4 705 494–4 706 597,
+     Y 2 200 600–2 201 703.
+   - Solape 0 %: la foto queda a **30,9 km al sur** (y 11 km al este). Cae sobre el grupo 5 de
+     PRGD (las 91 entidades de X ≈ 4 705 875–4 706 117), no sobre Zaino123.
+2. **No es lentitud.** La vista previa de la caja de Zaino123 sale en 0,1 s (cobertura 0 %). La
+   de una caja dentro de la foto, en 1,1 s (cobertura 100 %), aun sin pirámides.
+3. **No hay error al reproyectar.** La imagen sale transparente porque no hay foto en esa caja.
+   El editor ya sabía la cobertura, pero solo la decía en una lista al final del panel de la
+   ortofoto.
+
+**Qué se hizo**:
+- `previa_ortofoto.caja_foto_en_dibujo` (lee solo la cabecera). `/api/ortofoto/previa` responde
+  además `foto_en_dibujo` cuando no cubre la caja entera.
+- `editor_ortofoto.avisoCobertura`:
+  - sin cobertura: «La ortofoto no cubre este detalle: la foto queda a 30,9 km al sur (su
+    centro, en el sistema del dibujo: X 4 706 045, Y 2 201 151). Revise que sea la foto de esta
+    obra y que el sistema del dibujo sea el correcto.»;
+  - en parte: «La ortofoto cubre solo el 37 % de este detalle: el resto queda sin foto».
+- El aviso se ve en tres lugares:
+  - **sobre el detalle en la hoja** (grande, en el centro, ámbar, con marco punteado; el texto
+    largo al pasar el ratón);
+  - en **Advertencias** (fuerte si no cubre, aviso si cubre en parte);
+  - en **Selección**, debajo de «Usar ortofoto».
+  Vale para detalles, bloques y zonas borrador.
+
+**Verificación en Edge** (`data/verificacion/verificar_ortofoto_cobertura.mjs`, el caso real):
+todo OK. Muestra el aviso en la hoja con su marco, en Advertencias («…30,9 km al sur…») y en
+Selección; no dibuja ninguna imagen de foto; sin errores de JavaScript.
+
+**Pruebas**: `test_ortofoto_editor` (+2: un detalle que la foto no cubre trae la huella; la huella
+en otro sistema) y `test_editor_ortofoto_js` (+1: los textos del aviso con el caso real, en parte,
+y el rumbo). **1485 pasan** y 1 se salta (antes 1482). ruff: los mismos 173 hallazgos.
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

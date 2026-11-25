@@ -56,6 +56,24 @@ def png_rgba(rgb: np.ndarray, alfa: np.ndarray) -> bytes:
     return pymupdf.Pixmap(pymupdf.csRGB, ancho, alto, muestras.tobytes(), True).tobytes("png")
 
 
+def caja_foto_en_dibujo(ruta, crs_dibujo: CRS, crs_ortofoto: CRS | None = None) -> list[float] | None:
+    """La huella de la ortofoto en coordenadas del dibujo [x0, y0, x1, y1] (para decir dónde
+    está la foto cuando no cubre un detalle), o None si no se puede calcular. Lee solo la
+    cabecera. `crs_ortofoto`: el elegido por el usuario si el archivo no trae el suyo."""
+    import rasterio
+    from rasterio.warp import transform_bounds
+
+    try:
+        with rasterio.open(ruta) as d:
+            crs = crs_ortofoto or d.crs
+            if crs is None:
+                return None
+            caja = transform_bounds(crs, crs_dibujo, *d.bounds, densify_pts=21)
+    except Exception:  # noqa: BLE001 - es un dato de ayuda: sin él, el aviso no dice dónde está
+        return None
+    return [float(v) for v in caja] if all(math.isfinite(v) for v in caja) else None
+
+
 def hacer_previa(ruta, caja_cad, crs_dibujo: CRS, crs_ortofoto: CRS | None = None,
                  mm_por_unidad: float = 1000.0, lado_px: int = LADO_PX) -> PreviaOrtofoto:
     """El PNG de la ortofoto en la caja (coordenadas del dibujo, en `crs_dibujo`).

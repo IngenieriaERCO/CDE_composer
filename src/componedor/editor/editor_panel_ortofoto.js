@@ -129,6 +129,7 @@
       if (previas.get(k) !== e) return; // se olvidó mientras tanto
       e.url = URL.createObjectURL(blob);
       e.cobertura = r.cobertura;
+      e.foto = Array.isArray(r.foto_en_dibujo) ? r.foto_en_dibujo : null; // dónde está la foto
       e.estado = "lista";
     } catch (err) {
       if (previas.get(k) !== e) return;

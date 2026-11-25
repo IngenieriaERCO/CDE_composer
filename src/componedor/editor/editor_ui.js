@@ -428,6 +428,46 @@
     }
   }
 
+  /**
+   * El aviso de cobertura de la ortofoto de un detalle con «Usar ortofoto» (null si la foto lo
+   * cubre entero, si no la usa o si su vista previa no llegó todavía).
+   */
+  function avisoOrtofoto(c) {
+    const panel = PO();
+    if (!estado.ortofoto || !panel || c.ortofoto !== true) return null;
+    const r = cajasOrtofoto().find((x) => x.id === c.id);
+    if (!r || !r.caja) return null;
+    const p = panel.previa(r.caja, r.mm_por_unidad, r.id);
+    if (p.estado !== "lista") return null;
+    return O.avisoCobertura(p.cobertura, r.caja, p.foto || null, r.mm_por_unidad);
+  }
+
+  /** Sobre la página del detalle, en el centro: el aviso corto, en ámbar (visible aunque no haya foto). */
+  function pintarAvisoOrtofoto(g, c, pagina) {
+    const a = avisoOrtofoto(c);
+    if (!a) return;
+    const r = L.rectPapelAPantalla(pagina, ESCALA);
+    const marco = nodoSvg("rect", { class: "aviso-ortofoto-marco " + a.nivel, x: r.x, y: r.y, width: r.ancho,
+      height: r.alto }, g);
+    nodoSvg("title", {}, marco).textContent = a.largo;
+    // Grande y en el centro de la página (proporcional al detalle): que se lea sin acercarse.
+    const letra = Math.max(9, Math.min(r.ancho / 20, r.alto / 6, 32));
+    const t = nodoSvg("text", { class: "aviso-ortofoto-hoja " + a.nivel, x: r.x + r.ancho / 2,
+      y: r.y + r.alto / 2, "text-anchor": "middle", "dominant-baseline": "middle", "font-size": letra }, g);
+    t.textContent = a.corto;
+    nodoSvg("title", {}, t).textContent = a.largo;
+  }
+
+  /** Advertencias: un detalle con «Usar ortofoto» que la foto no cubre (o cubre en parte). */
+  function advertenciasOrtofoto() {
+    const lista = [];
+    for (const c of estado.colocaciones) {
+      const a = avisoOrtofoto(c);
+      if (a) lista.push({ nivel: a.nivel, ids: [c.id], texto: "'" + c.id + "': " + a.largo });
+    }
+    return lista;
+  }
+
   function dibujarOrtofoto() {
     capaOrtofoto.replaceChildren();
     const panel = PO();
@@ -465,6 +505,7 @@
       rectSvg(nodoSvg("rect", { class: "dibujo" }, g), L.dibujoEnPapel(c.detalle, c.pos));
       const etiqueta = nodoSvg("text", { class: "etiqueta", x: r.x + 3, y: r.y + 11 }, g);
       etiqueta.textContent = c.id;
+      pintarAvisoOrtofoto(g, c, pagina);
       g.addEventListener("pointerdown", (ev) => empezarArrastre(ev, c));
     }
   }
@@ -501,6 +542,8 @@
           : previa.estado === "lista" ? "" : previa.mensaje || "";
     if (estadoTexto) {
       nodoSvg("text", { class: "estado-bloque", x: r.x + 3, y: r.y + r.alto - 4 }, g).textContent = estadoTexto;
+    } else {
+      pintarAvisoOrtofoto(g, c, pagina);
     }
     g.addEventListener("pointerdown", (ev) => empezarArrastre(ev, c));
     if (c.id === estado.seleccion) {
@@ -515,7 +558,7 @@
     // Mismos elementos que usa componer: la rosa en su posición actual (oculta: no cuenta).
     const elementos = L.elementosVisibles(DATOS.elementos_plantilla, rosaParaLogica());
     const lista = L.advertencias(colocadosParaAdvertencias(), elementos, DATOS.advertencias)
-      .concat(advertenciasBloques(), advertenciasEstilo());
+      .concat(advertenciasBloques(), advertenciasEstilo(), advertenciasOrtofoto());
     // Etiquetas «ESC: 1:N» (4.3f): las mismas que pondría componer, con sus avisos al final.
     etiquetasActuales = calcularEtiquetas(elementos);
     for (const aviso of etiquetasActuales.avisos) lista.push({ nivel: "aviso", texto: aviso, ids: [] });
@@ -739,7 +782,11 @@
       : "Primero cargue una ortofoto («Cargar ortofoto»).";
     casilla.addEventListener("change", () => usarOrtofoto(c, casilla.checked));
     fila.append(casilla, " Usar ortofoto");
-    return fila;
+    const a = avisoOrtofoto(c);
+    if (!a) return fila;
+    const caja = nodo("div");
+    caja.append(fila, nodo("div", { class: "aviso-ortofoto-seleccion " + a.nivel }, a.largo));
+    return caja;
   }
 
   function usarOrtofoto(c, si) {
