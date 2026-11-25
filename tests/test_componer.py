@@ -258,3 +258,42 @@ def test_cli_errores(entorno, capsys):
     assert "Use --sobrescribir" in capsys.readouterr().err
     assert main(["componer", str(plano), "--salida", str(entorno / "p.pdf"),
                  "--sobrescribir", "--guias"]) == 0
+
+
+# --- La verificación final compara con los trazos del PROPIO PDF del detalle ------------------
+
+def test_caja_declarada_algo_mayor_que_los_trazos_compone_bien(entorno):
+    """El exportador puede declarar page_bounds_mm algo mayor que lo dibujado (el recuadro de un
+    texto, el ancho de una línea…): la coherencia h lo admite hasta ±0,5 mm. Con la caja 0,2 mm
+    más abajo que los trazos, el detalle compone: la verificación final mide la colocación
+    contra los trazos de su PDF, no contra la caja (antes fallaba por 0,2 > 0,1 mm)."""
+    from conftest import LIMITES_RECT_PAGINA_MM, RECT_CAD
+
+    x0, y0, x1, y1 = LIMITES_RECT_PAGINA_MM
+    crear_paquete_real(entorno / "input", "caja", sin_fondo=True, cambiar={
+        "pdf.drawing.page_bounds_mm": {"x0": x0, "y0": y0, "x1": x1, "y1": y1 + 0.2},
+        # La caja CAD, coherente con la de la página (1:50 en m: 0,2 mm = 0,01 m).
+        "pdf.drawing.cad_bounds": {"min": [RECT_CAD[0], RECT_CAD[1] - 0.01], "max": [RECT_CAD[2], RECT_CAD[3]]}})
+    plano = leer_plano(_plano(entorno, [_d("d1", "caja", (30, 430))]))
+    resultado = componer_plano(plano, entorno / "p.pdf")
+    (colocado,) = resultado.detalles
+    assert colocado.dibujo[1] == pytest.approx(colocado.trazos[1] - 0.2, abs=1e-3)  # la caja, 0,2 más abajo
+    assert (entorno / "p.pdf").is_file()
+
+
+def test_detalle_realmente_corrido_medio_milimetro_falla(entorno, monkeypatch):
+    """Si el detalle queda de verdad 0,5 mm fuera de su sitio, la verificación lo detecta
+    (la tolerancia sigue siendo ±0,1 mm)."""
+    original = componer.insertar_pagina
+
+    def insertar_corrido(hoja, formato, doc, pagina, posicion):
+        return original(hoja, formato, doc, pagina, (posicion[0], posicion[1] + 0.5))
+
+    monkeypatch.setattr(componer, "insertar_pagina", insertar_corrido)
+    plano = leer_plano(_plano(entorno, [_d("d1", "a", (30, 430))]))
+    with pytest.raises(PlanoNoComponible) as e:
+        componer_plano(plano, entorno / "p.pdf")
+    texto = str(e.value)
+    assert "detalle 'd1': el dibujo quedó en" in texto and "según el plano, debía quedar en" in texto
+    assert "diferencia máx. 0.500 mm, tolerancia ±0.1 mm" in texto
+    assert not (entorno / "p.pdf").exists()

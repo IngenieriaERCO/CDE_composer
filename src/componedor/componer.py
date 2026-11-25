@@ -70,6 +70,7 @@ from componedor.composicion import MANTENER, hoja_base_con_rosa
 from componedor.comprobacion_dibujo import (
     es_fondo_blanco,
     limites_de_trazos,
+    medir_limites_trazos,
     recortar_a_zona,
     tiene_fondo_de_pagina,
 )
@@ -158,6 +159,11 @@ class DetalleColocado:
     # Zona de la máscara de recorte (manifiesto 1.5, pdf.drawing.mask) trasladada a mm de papel;
     # None sin máscara. get_drawings() no aplica la máscara: la verificación final recorta a esto.
     mascara: RectMM | None = None
+    # Los trazos medidos en el PROPIO PDF del detalle, trasladados a su posición (mm de papel):
+    # contra esto se verifica dónde quedó. No es la caja declarada (`dibujo`, page_bounds_mm),
+    # que el exportador puede dar hasta 0,5 mm más grande que los trazos (la coherencia h lo
+    # admite); así ±0,1 mm mide solo la colocación. None: el PDF no tiene trazos.
+    trazos: RectMM | None = None
 
 
 @dataclass
@@ -414,6 +420,7 @@ def _posiciones(plano: Plano, formato: Formato, aceptados: dict[Path, PaqueteAce
     zona = formato.zonas[ZONA]
     colocados, errores = [], []
     con_fondo: dict[Path, bool] = {}  # por PDF: se mira una sola vez
+    trazos_pdf: dict[Path, RectMM | None] = {}  # por PDF: sus trazos, en mm de su página
     for detalle in plano.detalles:
         aceptado = aceptados[detalle.manifiesto.resolve()]
         ruta_pdf = aceptado.paquete.ruta_pdf
@@ -437,12 +444,17 @@ def _posiciones(plano: Plano, formato: Formato, aceptados: dict[Path, PaqueteAce
         dibujo = limites_dibujo_en_papel(aceptado.manifiesto.pdf.dibujo.limites_pagina_mm,
                                          alto, (x, y))
         mascara = aceptado.manifiesto.pdf.dibujo.mascara_mm
+        if ruta_pdf not in trazos_pdf:  # medidos una vez por PDF (sin fondo; con su máscara)
+            trazos_pdf[ruta_pdf] = medir_limites_trazos(doc[0], mascara)
+        trazos = trazos_pdf[ruta_pdf]
         colocados.append((detalle, aceptado, doc,
                           DetalleColocado(detalle.id, aceptado.paquete.prefijo, ocupado, dibujo,
                                           con_fondo[ruta_pdf],
                                           aceptado.manifiesto.escala.denominador,
                                           limites_dibujo_en_papel(mascara, alto, (x, y))
-                                          if mascara is not None else None)))
+                                          if mascara is not None else None,
+                                          limites_dibujo_en_papel(trazos, alto, (x, y))
+                                          if trazos is not None else None)))
     if errores:
         raise PlanoNoComponible(
             f"No se compone el plano: {len(errores)} detalle(s) fuera de '{ZONA}' "
@@ -678,16 +690,19 @@ def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
                 dibujados = recortar_a_zona(dibujados, (mx0, formato.alto_mm - my1,
                                                         mx1, formato.alto_mm - my0))
             limites = limites_de_trazos(dibujados)
-            if limites is None:
+            if limites is None or colocado.trazos is None:
                 problemas.append(f"detalle '{colocado.id}': no tiene trazos que medir")
                 continue
+            # Contra los trazos del PROPIO PDF del detalle en su posición (no contra
+            # page_bounds_mm): lo que se comprueba es que el detalle quedó donde dice el plano.
             medido = limites_dibujo_en_papel(limites, formato.alto_mm, (0.0, 0.0))
-            diferencia = max(abs(a - b) for a, b in zip(medido, colocado.dibujo))
+            diferencia = max(abs(a - b) for a, b in zip(medido, colocado.trazos))
             if diferencia > TOL_VERIFICACION_MM:
                 problemas.append(
-                    f"detalle '{colocado.id}': el dibujo quedó en {_rect(medido)} y el plano "
-                    f"dice {_rect(colocado.dibujo)} (diferencia máx. {diferencia:.3f} mm, "
-                    f"tolerancia ±{TOL_VERIFICACION_MM} mm)")
+                    f"detalle '{colocado.id}': el dibujo quedó en {_rect(medido)} y, según el "
+                    f"plano, debía quedar en {_rect(colocado.trazos)} (los trazos de su PDF en "
+                    f"la posición del plano; diferencia máx. {diferencia:.3f} mm, tolerancia "
+                    f"±{TOL_VERIFICACION_MM} mm)")
 
         tolerancia = TOLERANCIA_MARCO_MM if informe is not None else TOL_VERIFICACION_MM
         marco = buscar_marco(page, formato)

@@ -687,7 +687,9 @@ otro PC sin la ortofoto original, que puede pesar varios GB.
    la ortofoto (si hay), inserta los detalles en orden (sin reescalar, como vector) y escribe
    los textos.
 8. Guarda en un archivo temporal y **verifica** el PDF: el dibujo de cada detalle está donde
-   dice el plano (±0,1 mm, medido con `get_drawings()` sin el fondo blanco), el marco del
+   dice el plano (±0,1 mm: los trazos de la hoja, medidos con `get_drawings()` sin el fondo
+   blanco, contra los trazos del PDF del propio detalle movidos a su posición; no contra la caja
+   declarada `page_bounds_mm`, que puede ser hasta 0,5 mm mayor), el marco del
    rótulo no se movió, no hay más imágenes que las de la plantilla, una por cada firma en
    imagen (cada firma en su celda, con su máscara y la del archivo) y una por cada mosaico de
    la ortofoto (JPEG, en su rectángulo ±0,1 mm), la rosa quedó donde se pidió (sus trazos son

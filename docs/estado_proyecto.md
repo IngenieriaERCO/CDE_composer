@@ -3072,6 +3072,36 @@ Selección; no dibuja ninguna imagen de foto; sin errores de JavaScript.
 en otro sistema) y `test_editor_ortofoto_js` (+1: los textos del aviso con el caso real, en parte,
 y el rumbo). **1485 pasan** y 1 se salta (antes 1482). ruff: los mismos 173 hallazgos.
 
+### Verificación final de componer: contra los trazos del PDF del detalle (2026-11-25)
+
+**Reporte**: `Pruebadecambio.json` no componía: «detalle 'Perfil_longitudinal_cercha': el dibujo
+quedó en Y 114.57 a 300.53 y el plano dice Y 114.47 a 300.53 (diferencia máx. 0.101 mm,
+tolerancia ±0.1 mm)», con el dibujo bien puesto.
+
+**Causa** (no es redondeo del plano ni del PDF): el paquete
+`Perfil_longitudinal_cercha_1-20_pb4a909_t` declara `page_bounds_mm.y1` = 196,276 mm y su trazo
+más bajo está en 196,175 mm. Son 0,101 mm de caja de más solo en ese lado (los otros tres
+coinciden en 0,000; a 1:20 son unos 2 mm reales: la caja de ezdxf incluye algo que no deja trazo).
+La coherencia h lo admite (±0,5 mm), pero la verificación final de `componer` comparaba la hoja
+con esa caja con ±0,1 mm. Pasaba con ese paquete en cualquier posición, y podía pasar con
+cualquiera cuya caja se aparte entre 0,1 y 0,5 mm.
+
+**Arreglo (opción b, elegida por el usuario; la tolerancia sigue en ±0,1 mm)**:
+- `componer.py`: al colocar cada detalle se miden los trazos de su PDF (una vez por PDF, sin el
+  fondo y con su máscara si la tiene), `DetalleColocado.trazos`, ya en su posición.
+- La verificación final compara los trazos de la hoja con eso, no con `page_bounds_mm`, que se
+  sigue usando para las advertencias de traslape.
+- El mensaje: «el dibujo quedó en … y, según el plano, debía quedar en … (los trazos de su PDF
+  en la posición del plano…)».
+
+**Comprobado**: `editor/Pruebadecambio.json` compone (`componer --config`): «el dibujo de cada
+detalle está donde dice el plano (±0,1 mm)».
+
+**Pruebas** (`test_componer`, +2):
+- un paquete con la caja declarada 0,2 mm más abajo que sus trazos compone bien (antes fallaba);
+- un detalle insertado de verdad 0,5 mm corrido falla con «diferencia máx. 0.500 mm, tolerancia
+  ±0.1 mm».
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

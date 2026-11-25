@@ -128,6 +128,14 @@ La integridad NO compara tamaño de página, escala ni matriz: eso es la coheren
 | h | Trazos del PDF (`comprobacion_dibujo`, sin el fondo blanco) = `page_bounds_mm`. Con máscara de recorte (`pdf.drawing.mask`, esquema 1.5) cada trazo se recorta antes, a mano, a `mask.zone_page_mm`: `get_drawings()` no aplica la máscara | ±0,5 mm | Los trazos no están donde dice el manifiesto (diferencia máxima); con máscara, también «sin trazos dentro de la zona de la máscara». |
 | i | **Regla de uso:** `scale.physical_scale_guaranteed` = true | exacto | «escala física no garantizada»; cita `scale.physical_scale_reason` si viene. |
 
+**La caja declarada no es la medida exacta del dibujo.** `page_bounds_mm` puede ser algo mayor
+que los trazos del PDF (la caja de ezdxf incluye cosas que no dejan trazo, como el recuadro de un
+texto): la comprobación h lo admite hasta ±0,5 mm. Por eso la verificación final de `componer`
+(«el dibujo quedó en…», ±0,1 mm) compara los trazos de la hoja con los trazos del **mismo PDF del
+detalle** movidos a su posición, y no con `page_bounds_mm`: así mide solo la colocación. Caso
+real: `Perfil_longitudinal_cercha_1-20…` declara su borde inferior 0,101 mm más abajo que su
+trazo más bajo (coherencia h: 0,101 mm, pasa) y antes no se podía componer.
+
 **Regla de uso de `physical_scale_guaranteed`.** El componedor solo compone a escala
 paquetes cuya escala física está garantizada por el exportador. Si es `false`, el paquete
 no es un manifiesto inválido (su estructura es correcta), pero **se rechaza** en la
