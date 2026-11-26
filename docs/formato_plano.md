@@ -696,6 +696,7 @@ plano guarda todas las zonas, exportadas o no, en la entrada de su DXF:
 | `escala` | «1:N». |
 | `centro_mm` | Centro de la PÁGINA en la hoja (mm de papel, Y hacia arriba). |
 | `tamano_m` | Tamaño real de la zona (para la caja en la hoja). |
+| `escala_dibujo` | Opcional: «1:N» a la que está dibujada la zona (la del texto «ESC 1:N» o la que eligió el usuario), o null. Sin el campo, no se sabe. Solo sirve para avisar si se exporta a otra escala. |
 
 - **Exportada**: un detalle normal (`manifiesto`, `posicion_mm`) con `"origen": {"zona":
   "<nombre>"}`. Su zona guarda la escala y el centro que tiene hoy el detalle (si se movió, el

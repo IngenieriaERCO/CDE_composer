@@ -381,7 +381,8 @@ rueda apretada y arrastrar: mover; doble clic con la rueda: ver todo) y la image
 pedir nítida al dejar de mover la rueda. Con el clic izquierdo se dibuja un **rectángulo**, a
 cualquier zoom, se marcan las **capas** (todas al
 empezar; opción «solo las marcadas»), se elige la **escala** (con el tamaño en la hoja y aviso si
-no cabe en el A1) y un **nombre** opcional (vacío: `Zona_01`, `Zona_02`…). **«Agregar a la
+no cabe en el A1; con un Exportador 1.3 lee el «ESC 1:N» escrito en la zona y la propone,
+o pide elegir si hay varias, y avisa en ámbar si se exporta a otra) y un **nombre** opcional (vacío: `Zona_01`, `Zona_02`…). **«Agregar a la
 hoja»** la pone en el A1 como **borrador**: con su tamaño real a esa escala y la
 vista previa encima, se mueve y cambia de escala como un bloque, y **«Exportar bloques y zonas»**
 la publica en `data/input/dxf/<DXF>/` y la deja como detalle real en el mismo sitio (y en

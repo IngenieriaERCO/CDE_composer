@@ -80,7 +80,7 @@ def test_solo_borradores_y_abrirlo_otra_vez(entorno_editor):  # noqa: F811
     assert r["c"] == [{"id": "Zona_01", "escala": 20, "centro": [342.55, 297.0], "nombre": "Zona_01",
                        "handle": None, "tamano": [0.67, 0.65], "dxf": SHA,
                        "zona": {"rect": RECT, "capas": None, "excluir": ["EDD_COTAS"], "modo": "excluir",
-                                "desmarcadas": ["EDD_COTAS"]}}]
+                                "desmarcadas": ["EDD_COTAS"], "escala_dibujo": None}}]
 
 
 def test_abrir_un_plano_con_una_zona_exportada_y_guardarlo_igual(entorno_editor):  # noqa: F811
@@ -151,3 +151,17 @@ def test_volver_a_exportar_incluye_las_zonas_exportadas(entorno_editor):  # noqa
     assert todas["pedidos"][0]["cuerpo"] == {
         "zona": RECT, "escala": round(detalle["escala"]), "nombre": "Zona_01",
         "centro_mm": [round(100 + t[0] / 2, 2), round(120 + t[1] / 2, 2)], "excluir": ["EDD_COTAS"]}
+
+
+def test_escala_del_dibujo_se_guarda_y_se_lee(entorno_editor):  # noqa: F811
+    carpeta, datos = entorno_editor
+    b = borrador("Zona_01", 10, (342.55, 297.0))
+    b["bloque"]["zona"]["escala_dibujo"] = 20
+    texto = guardar(datos, [b])
+    assert json.loads(texto)["dxf"][0]["zonas"][0]["escala_dibujo"] == "1:20"
+    ruta = carpeta / "editor" / "plano.json"
+    ruta.write_text(texto, encoding="utf-8")
+    assert leer_plano(ruta).zonas[0].escala_dibujo == 20.0
+    r = js("const l = L.leerPlano(entrada.texto, entrada.datos); return [l.errores, l.colocaciones[0].bloque.zona.escala_dibujo];",
+           {"texto": texto, "datos": datos})
+    assert r == [[], 20]

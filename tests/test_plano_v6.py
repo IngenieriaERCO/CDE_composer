@@ -123,3 +123,11 @@ def test_componer_compone_las_zonas_exportadas(tmp_path):
     resultado = componer_plano(leer_plano(plano), tmp_path / "plano.pdf")
     assert [c.id for c in resultado.detalles] == ["Zona_01"]
     assert (tmp_path / "plano.pdf").is_file()
+
+
+def test_escala_del_dibujo_en_las_zonas(tmp_path):
+    """«escala_dibujo» es opcional: la escala a la que está dibujada la zona (Fase 10, textos)."""
+    plano = leer_plano(escribir(tmp_path, plano_v6(zonas=[zona(escala_dibujo="1:10"), zona("Z2")])))
+    assert [z.escala_dibujo for z in plano.zonas] == [10.0, None]
+    assert "dxf[0].zonas[0].escala_dibujo: se esperaba «1:N» o null" in error(
+        tmp_path, plano_v6(zonas=[zona(escala_dibujo="diez")]))

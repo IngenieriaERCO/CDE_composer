@@ -287,6 +287,12 @@
         "se guarda como versión 6 y componer pedirá exportarlas primero («Exportar bloques y zonas»)." });
     }
     const ZE = window.EditorZonas;
+    // Una zona (borrador o exportada) a otra escala que la de su dibujo: los textos cambian de tamaño.
+    for (const c of estado.colocaciones) {
+      const dibujo = esZona(c) ? c.bloque.zona.escala_dibujo : c.zona ? c.zona.escala_dibujo : null;
+      const aviso = dibujo && ZE ? ZE.avisoEscala(esZona(c) ? c.escala : c.detalle.escala, dibujo) : null;
+      if (aviso) lista.push({ nivel: "aviso", ids: [c.id], texto: "'" + c.id + "': " + aviso });
+    }
     for (const [a, b] of (ZE ? ZE.zonasRepetidas(estado.colocaciones) : [])) {
       lista.push({ nivel: "muy_fuerte", ids: [a, b], texto: "'" + a + "' y '" + b + "' tienen el mismo nombre y la " +
         "misma escala: serían el MISMO paquete. Cambie el nombre de una." });
@@ -724,7 +730,8 @@
       campo("X (mm)", guardada[0], 0),
       campo("Y (mm)", guardada[1], 1),
       ...(c.zona ? [nodo("div", { class: "medida" }, "Exportado desde la zona «" + c.zona.nombre + "» del Model " +
-        "Space. Si cambia el DXF: «Volver a cargar» y «Volver a exportar zonas» (queda en este mismo lugar).")] : []),
+        "Space. Si cambia el DXF: «Volver a cargar» y «Volver a exportar zonas» (queda en este mismo lugar)."),
+      ...(c.zona.escala_dibujo ? lineasEscalaDibujo(c.zona.escala_dibujo, c.detalle.escala) : [])] : []),
       nodo("div", { class: "medida" }, "Esquina inferior izquierda de la PÁGINA (posicion_mm)."),
       nodo("div", { class: "medida" }, "Página: X " + mm(pagina[0]) + " a " + mm(pagina[2]) +
         ", Y " + mm(pagina[1]) + " a " + mm(pagina[3]) + " mm"),
@@ -888,7 +895,17 @@
       nodo("div", { class: "medida" }, b.dxf.nombre + " · zona X " + n(z.rect[0]) + " a " + n(z.rect[2]) +
         ", Y " + n(z.rect[1]) + " a " + n(z.rect[3])),
       nodo("div", { class: "medida" }, "Capas: " + capas + ". «Editar zona…» abre el Model Space para cambiar el " +
-        "rectángulo o las capas.")];
+        "rectángulo o las capas."),
+      ...lineasEscalaDibujo(z.escala_dibujo, c.escala)];
+  }
+
+  /** La escala a la que está dibujada una zona y, si va a otra, el aviso ámbar. */
+  function lineasEscalaDibujo(nDibujo, nZona) {
+    const ZE = window.EditorZonas;
+    if (!nDibujo) return [nodo("div", { class: "medida" }, "Escala del dibujo: no se sabe (sin «ESC 1:N» leído).")];
+    const aviso = ZE ? ZE.avisoEscala(nZona, nDibujo) : null;
+    return [nodo("div", { class: "medida" }, "Dibujada a " + B.textoEscala(nDibujo) + "."),
+      ...(aviso ? [nodo("div", { class: "medida aviso-escala" }, aviso)] : [])];
   }
 
   /** Cambia el nombre de una zona borrador (limpio como lo dejará el servidor; único en la hoja). */
@@ -947,7 +964,7 @@
       tamano_m: tam, caja_exacta: true, sugerida: B.escalaSugerida(tam, catalogo.margen_mm, ZONA),
       escalas: catalogo.escalas || B.ESCALAS,
       zona: { rect: z.rect.slice(), capas: z.capas || null, excluir: z.excluir || null, modo: z.modo || "excluir",
-        desmarcadas: (z.desmarcadas || []).slice() } };
+        desmarcadas: (z.desmarcadas || []).slice(), escala_dibujo: z.escala_dibujo || null } };
   }
 
   /** «Editar zona…» → «Guardar cambios en la hoja»: otro rectángulo, capas o escala; el centro y

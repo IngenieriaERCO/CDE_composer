@@ -33,7 +33,7 @@ def cargar(t, ruta, **kw):
 
 def test_arranca_y_presenta_sus_versiones(trabajador, tmp_path):
     assert trabajador.vivo
-    assert trabajador.listo["protocol_version"] == "1.2"
+    assert trabajador.listo["protocol_version"] == "1.3"
     assert trabajador.listo["manifest_schema_version"] == "1.3"
     assert trabajador.listo["work_dir"] == str((tmp_path / "trabajo").resolve())
 

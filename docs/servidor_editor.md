@@ -72,7 +72,18 @@ Para exportar como detalle un trozo del Model Space (no un bloque):
    entidades); las apagadas o congeladas en el CAD salen en gris (no se dibujan). **Ver la imagen
    con el filtro de capas** pide las vistas con ese filtro, para ver lo que se va a exportar.
 5. **Escala**: el tamaño del dibujo y de la página en la hoja; en rojo, si no cabe en el área de
-   dibujo del A1, con la escala que sí cabe.
+   dibujo del A1, con la escala que sí cabe. Debajo, la **escala del dibujo**: el programa lee los
+   textos de la zona y busca «ESC 1:N» (hace falta un Exportador 1.3):
+   - **una sola** escala: «Escala del dibujo: 1:10, de «SECCIÓN-PEDESTAL… · ESC-1:10» (capa …)» y
+     la pone en el campo Escala. **Ver en el dibujo** lleva la vista a ese texto y lo marca;
+   - **varias** (o un perfil con H y V): un botón por escala, «1:10 (11 textos)», para elegir;
+   - **ninguna**: «No encontré «ESC 1:N»…: revise a qué escala está dibujada»;
+   - si el texto está en una **capa excluida**: «Hay «ESC 1:10» en una capa excluida (…): no se
+     usa sola», con «Usar 1:10» por si sí;
+   - si la escala que va a exportar es otra, un **aviso ámbar**: «El dibujo está a 1:10 y se
+     exportará a 1:20: los textos saldrán a la mitad de su tamaño». Es un aviso, no un bloqueo.
+   La escala que **escribe a mano** se respeta; la que puso el programa cambia sola al cambiar la
+   zona.
 6. **Nombre** (opcional) y **Agregar a la hoja** (Fase 10e): la zona queda en el A1 como
    **borrador** (sin exportar), centrada en el área de dibujo, con el tamaño real que tendría a
    esa escala y su vista previa encima. Si el nombre va vacío, el servidor le da el primer
@@ -199,11 +210,12 @@ En la carpeta `trabajo`:
 ## Cómo se habla con el trabajador
 
 El Componedor **no importa código del exportador**: lo lanza como comando externo y le habla JSON
-por líneas (protocolo 1.2 desde el 2026-11-25; contrato en `docs/protocolo_trabajador.md` del
+por líneas (protocolo 1.3 desde el 2026-11-26; contrato en `docs/protocolo_trabajador.md` del
 repositorio del exportador, aprobado el 2026-11-17 y comparado con esta implementación). Un
 trabajador 1.0 sigue sirviendo para bloques; la vista previa de zonas exige que su `ready` diga
 1.1 o más (`trabajador.admite_zonas`); la vista previa preparada es de la 1.2 (un 1.0 o 1.1
-ignora `prepare_preview` y no manda eventos: no se muestra nada). `load` se pide con el
+ignora `prepare_preview` y no manda eventos: no se muestra nada), y leer la escala escrita en
+el dibujo (`texts`) es de la 1.3 (`trabajador.admite_textos`; con uno anterior, una nota). `load` se pide con el
 margen de `componedor.json`, `units: null` e `include_layers: false`: la tabla de capas todavía
 no se usa y así la carga ahorra 1–2 s en bloques grandes.
 
@@ -422,6 +434,23 @@ s las lejanas).
   en la hoja; los de una zona con máscara se recortan antes a la zona de la máscara trasladada a
   su lugar (`DetalleColocado.mascara`), porque `get_drawings()` no aplica la máscara.
 
+### La escala del dibujo (`texts`, exportador 1.3, §4.3 de su protocolo)
+
+- `POST /api/textos/zona` → `AplicacionEditor.pedir_textos_zona` → `textos_zona.pedido_textos`:
+  `texts` con `zone`, el filtro de capas de la zona (`layers` o `exclude_layers`) y `max_texts`
+  200. `textos_zona.leer_textos` lo pasa a `{propuesta, candidatos: [{escala, n, eje, veces,
+  fuentes (hasta 3: texto, x, y, capa)}], total, segundos}`. `propuesta` solo si hay una escala sin
+  eje (en perfiles H/V siempre se elige). Con PRGD tarda menos de medio segundo.
+- El cuadro (`EditorPanelZonas.pedirTextos`, medio segundo después de cambiar la zona o las capas)
+  pide con el filtro de la zona y, si hay filtro, también sin él: lo que solo aparece sin filtro es
+  «en una capa excluida» (`EditorZonas.analizarEscalas`). Un 409 (exportador < 1.3) muestra la
+  nota y nada más.
+- `escalaOrigen` dice quién puso la escala (`"programa"` o `"usuario"`): la del programa se
+  cambia sola; la del usuario no. Al editar una zona guardada, la escala cuenta como del usuario.
+- La escala del dibujo se guarda en la zona (`escala_dibujo`, opcional, en el plano.json) y el
+  panel Selección y Advertencias avisan si la zona se exporta a otra escala
+  (`EditorZonas.avisoEscala`).
+
 ### Errores para el usuario
 
 `mensajes_trabajador.py` convierte los errores del trabajador que traen texto técnico de Python
@@ -456,6 +485,7 @@ bloque:
 | `GET /api/estilos` | `{estilos: [{nombre, sha256, descripcion}], por_defecto: {ctb, transparencia}, aviso}`: las tablas `.ctb` de `carpeta_ctb` y los valores de `componedor.json`. Nunca rutas. |
 | `POST /api/previa` | Cuerpo `{"ref": "<ref de la carpeta>", "estilo"?: {"ctb": <nombre de /api/estilos> \| null, "transparencia": bool}}` (sin `estilo`, el de `componedor.json`; un nombre que no es de la lista o una ruta: 400): encola `preview` con `plot_style` (la ruta la pone el servidor) y `print_transparency`. Responde `{tarea}`. 409 sin DXF o con la sesión vencida; 404 si el `ref` no está en la carpeta. El resultado de la tarea trae `px`, `cad_a_px`, `caja_cad`, `omitidos`, `en_cache` y `url` (nunca la ruta del PNG). |
 | `POST /api/previa/zona` | Cuerpo `{"zona"?: [xmin, ymin, xmax, ymax] \| null, "vista"?: [...] \| null, "excluir"?: [capas] \| null, "capas"?: [capas] \| null, "escala"?: N \| null, "estilo"?}` (unidades del dibujo; N entero de 1 a 100 000; `capas` y `excluir` no van juntas): encola `preview` de una zona (protocolo 1.1, §4.1). Responde `{tarea}`; dos pedidos iguales mientras se hace son una sola tarea. 400 si algo no vale; 409 sin DXF, con la sesión vencida o si el trabajador habla la 1.0. El resultado trae `px`, `cad_a_px`, `caja_cad`, `zona`, `vista`, `capas`, `excluir`, `filas_capas`, `grupos`, `entidades`, `escala`, `papel`, `en_cache` y `url`. |
+| `POST /api/textos/zona` | Cuerpo `{"zona": [xmin, ymin, xmax, ymax], "capas"?: [...] \| null, "excluir"?: [...] \| null}`: encola `texts` (protocolo 1.3, §4.3). Responde `{tarea}`; su resultado trae `propuesta` (N o null), `candidatos`, `total` y `segundos`. 400 si la zona no vale; 409 sin DXF, con la sesión vencida o si el trabajador habla menos de la 1.3 («no lee la escala escrita en el dibujo»). |
 | `POST /api/zonas/nombre` | Cuerpo `{"ocupados": [nombres]}` (los de la hoja): el primer `Zona_NN` sin paquete en la carpeta del DXF, ni exportándose, ni ocupado. `{nombre}`. 409 sin DXF o con la sesión vencida; 400 si `ocupados` no es una lista de textos. |
 | `POST /api/exportar/zona` | Cuerpo `{"zona": [xmin, ymin, xmax, ymax], "escala": N, "capas"?: [...] \| null, "excluir"?: [...] \| null, "nombre"?: texto (vacío: Zona_NN), "centro_mm"?: [x, y], "estilo"?}`: un pedido `export` con un trabajo de zona (§5.4). Responde `{tarea}` (tipo `exportar`). El resultado trae lo mismo que el de un bloque (`paquete`, `manifiesto`, `estilo`, `posicion_mm`, `desde_centro_mm`, `detalle`, `en_cache`, `movidos`, `avisos`; `handle` null) y además `tipo: "zona"`, `nombre`, `nombre_generado`, `zona`, `capas` y `excluir`. 400 si algo no vale o no cabe; 409 sin DXF, con la sesión vencida, con el DXF cambiado, sin unidades verificadas o con el trabajador 1.0. |
 | `POST /api/exportar` | Cuerpo `{"bloques": [{"id", "handle", "sha256", "escala", "centro_mm"}], "estilo"?: {"ctb", "transparencia"}}` (hasta 200; `estilo` como en `/api/previa`): una tarea por bloque, `{tareas}` en el mismo orden. El paquete lleva la marca del estilo (`_p<sha6>`, `_t`) y se verifica que su manifiesto traiga ese estilo. El resultado de cada una trae `paquete`, `manifiesto` (relativo a la carpeta del editor), `estilo` (`{ctb, sha256, transparencia}` del manifiesto), `posicion_mm`, `desde_centro_mm`, `detalle` (la entrada del catálogo, con su miniatura y su `estilo`), `en_cache`, `movidos` y `avisos`. 409 sin DXF, con la sesión vencida, con el DXF cambiado o de otro DXF; 404 si el bloque no está; 400 si no cabe. |

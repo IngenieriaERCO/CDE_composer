@@ -1,4 +1,4 @@
-"""Trabajador FALSO del exportador (protocolo 1.2) para las pruebas del Componedor.
+"""Trabajador FALSO del exportador (protocolo 1.3) para las pruebas del Componedor.
 
 Se lanza como el de verdad: `python trabajador_falso.py worker --work-dir CARPETA`. Sigue el
 contrato final (`docs/protocolo_trabajador.md` del exportador, aprobado el 2026-11-17) en lo que
@@ -79,6 +79,11 @@ Vista previa preparada (protocolo 1.2, §4.2): tras responder a `load` (salvo co
 `prepare_preview`) o `preview_failed`. `load` responde `preview_preparation` (running). El
 «DXF» puede traer "preparar_s" (lo que tarda, 0,3 s por defecto) y "preparar_falla" (el
 mensaje de `preview_failed`). La preparación se detiene con otro `load`.
+
+`texts` (protocolo 1.3, §4.3): los textos de "modelo": {"textos": [{"text", "x", "y", "layer",
+"scales": ["1:25"], "axis": null | "H" | "V"}]} cuyo punto cae en la zona y cuya capa se ve con
+el filtro; `scale_candidates` agrupa por escala y eje (de la que más sale a la que menos) y
+`proposed_scale` solo con una sola escala sin eje. Con --protocolo 1.2 o menos: UNKNOWN_COMMAND.
 
 Opciones de arranque para las pruebas: --cancel-no-aceptado (responde `accepted: false` y sigue
 trabajando, como el real con un pedido cuya respuesta ya viene en camino), --protocolo 1.0 (un
@@ -221,7 +226,9 @@ class Falso:
                 self.cancelado.set()
                 self.responder(id_, comando, {})
                 return 0
-            elif comando in ("load", "preview", "export"):
+            elif comando == "texts" and self.menor() < 3:
+                self.error(id_, "UNKNOWN_COMMAND", f"Orden desconocida: {comando!r}.")
+            elif comando in ("load", "preview", "export", "texts"):
                 if self.en_curso is not None:
                     self.error(id_, "BUSY", f"Ya hay un pedido en curso ({self.en_curso}).")
                     continue
@@ -241,6 +248,8 @@ class Falso:
                 self.cargar(id_, datos)
             elif comando == "preview":
                 self.previar(id_, datos)
+            elif comando == "texts":
+                self.textos(id_, datos)
             else:
                 self.exportar(id_, datos)
         finally:
@@ -429,6 +438,41 @@ class Falso:
             "groups": modelo.get("grupos", []) if zona is None and vista is None else [],
             "scale": escala, "paper": papel, "omitted": {"3DSOLID": 0, "REGION": 0},
             "include_hidden_layers": None, "cached": en_cache, "seconds": 0.01, **estilo})
+
+    def textos(self, id_, datos):
+        """§4.3: los textos de la zona (por su punto) con el filtro de capas, y la escala."""
+        c = self._sesion_o_error(id_, datos)
+        if c is None:
+            return
+        zona = datos.get("zone")
+        if not (isinstance(zona, list) and len(zona) == 4):
+            self.error(id_, "BAD_REQUEST", "Falta «zone».")
+            return
+        solo, excluir = datos.get("layers") or [], datos.get("exclude_layers") or []
+        casa = lambda capa, patrones: any(
+            fnmatch.fnmatchcase(capa.lower(), p.lower()) for p in patrones)
+        vistos = [t for t in c["spec"].get("modelo", {}).get("textos", [])
+                  if zona[0] <= t["x"] <= zona[2] and zona[1] <= t["y"] <= zona[3]
+                  and (not solo or casa(t["layer"], solo)) and not casa(t["layer"], excluir)]
+        grupos = {}
+        for t in vistos:
+            for escala in t.get("scales", []):
+                k = (escala, t.get("axis"))
+                g = grupos.setdefault(k, {"scale": escala, "denominator": float(escala.split(":")[1]),
+                                          "axis": t.get("axis"), "count": 0, "sources": []})
+                g["count"] += 1
+                g["sources"].append({"text": t["text"], "x": t["x"], "y": t["y"],
+                                     "layer": t["layer"], "handle": "1A"})
+        candidatos = sorted(grupos.values(), key=lambda g: -g["count"])
+        propuesta = (candidatos[0]["scale"] if len(candidatos) == 1 and candidatos[0]["axis"] is None
+                     else None)
+        self.responder(id_, "texts", {
+            "zone": zona, "layers": solo, "exclude_layers": excluir, "include_hidden_layers": None,
+            "total": len(vistos), "truncated": False,
+            "texts": [{"text": t["text"], "kind": "TEXT", "x": t["x"], "y": t["y"], "height": 0.1,
+                       "rotation": 0.0, "layer": t["layer"], "handle": "1A", "modelspace_handle": "1A",
+                       "blocks": [], "scales": t.get("scales", [])} for t in vistos],
+            "scale_candidates": candidatos, "proposed_scale": propuesta, "seconds": 0.01})
 
     def menor(self) -> int:
         """La versión menor del protocolo que habla (2 en la 1.2)."""
@@ -885,7 +929,7 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("orden", choices=["worker"])
     p.add_argument("--work-dir", required=True)
-    p.add_argument("--protocolo", default="1.2")
+    p.add_argument("--protocolo", default="1.3")
     p.add_argument("--sin-ready", action="store_true")
     p.add_argument("--basura", action="store_true")
     p.add_argument("--nieto")

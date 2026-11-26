@@ -276,6 +276,48 @@
   const clavePrevia = (cuerpo) => JSON.stringify(cuerpo);
 
   // ---------------------------------------------------------------------------------------
+  // La escala del dibujo: los textos «ESC 1:N» de la zona (orden `texts`, protocolo 1.3)
+  // ---------------------------------------------------------------------------------------
+
+  const etiquetaEscala = (c) => (c.eje ? c.eje + " " : "") + B.textoEscala(c.n);
+
+  /**
+   * Qué dicen los textos de la zona sobre su escala. activo: la respuesta de /api/textos/zona
+   * con el filtro de capas que se exporta; todo: la misma sin filtro (o null si no hay filtro).
+   * {estado: "una" | "varias" | "ninguna", propuesta: {n, fuente} | null,
+   *  candidatos: [{etiqueta, n, eje, veces, fuente}], excluidas: [{etiqueta, n, capa, fuente}]}.
+   * "una": una sola escala sin eje (se pone sola). "varias": varias, o con ejes H/V (se elige).
+   * excluidas: escalas que solo están en capas que no se exportan (se avisan; no se usan solas).
+   */
+  function analizarEscalas(activo, todo) {
+    const candidatos = ((activo && activo.candidatos) || []).map((c) => ({
+      etiqueta: etiquetaEscala(c), n: c.n, eje: c.eje, veces: c.veces, fuente: (c.fuentes || [])[0] || null }));
+    const vistas = new Set(candidatos.map((c) => c.etiqueta));
+    const excluidas = ((todo && todo.candidatos) || []).filter((c) => !vistas.has(etiquetaEscala(c))).map((c) => {
+      const fuente = (c.fuentes || [])[0] || null;
+      return { etiqueta: etiquetaEscala(c), n: c.n, capa: fuente ? fuente.capa : null, fuente };
+    });
+    const propuesta = activo && activo.propuesta ? { n: activo.propuesta, fuente: candidatos[0] ? candidatos[0].fuente : null } : null;
+    return { estado: propuesta ? "una" : candidatos.length ? "varias" : "ninguna", propuesta, candidatos, excluidas };
+  }
+
+  /** Una línea del texto de origen, para mostrarlo («SECCIÓN-PEDESTAL 0.40 X 0.40 · ESC-1:10»). */
+  const textoFuente = (f) => (f && f.texto ? f.texto.replace(/\s*\n\s*/g, " · ").slice(0, 90) : "");
+
+  /**
+   * El aviso ámbar si la zona se exporta a otra escala que la de su dibujo, o null. Los textos
+   * salen escalados: dibujo 1:20 a 1:10 → «al doble de su tamaño».
+   */
+  function avisoEscala(nExporta, nDibujo) {
+    if (!(nExporta > 0) || !(nDibujo > 0) || Math.abs(nExporta - nDibujo) < 1e-9) return null;
+    const f = nDibujo / nExporta;
+    const tamano = Math.abs(f - 2) < 1e-9 ? "al doble de su tamaño" : Math.abs(f - 0.5) < 1e-9 ? "a la mitad de su tamaño"
+      : "a " + (Math.round(f * 100) / 100).toString().replace(".", ",") + " veces su tamaño";
+    return "El dibujo está a " + B.textoEscala(nDibujo) + " y se exportará a " + B.textoEscala(nExporta) +
+      ": los textos saldrán " + tamano + ".";
+  }
+
+  // ---------------------------------------------------------------------------------------
   // Zonas borrador en la hoja (Fase 10e)
   // ---------------------------------------------------------------------------------------
 
@@ -393,6 +435,6 @@
     encuadrar, zoomEnPunto, desplazar, factorRueda, cajaDeImagen, necesitaVistaNitida, interseccion,
     grupoEnPunto, paginaZona, tamanoM, escalaSugerida, tamanoEnHoja, ordenarCapas, textoEstadoCad,
     filtroCapas, textoFiltro, cuerpoPrevia, clavePrevia, limpiarNombre, esZona, esZonaExportada,
-    pedidosZonas, zonasRepetidas, textoGrupo, textoTranscurrido,
+    pedidosZonas, zonasRepetidas, analizarEscalas, avisoEscala, textoFuente, etiquetaEscala, textoGrupo, textoTranscurrido,
     textoZona };
 });

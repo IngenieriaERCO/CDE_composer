@@ -86,6 +86,8 @@
       exportarZona: (cuerpo) => pedir("POST", "/api/exportar/zona", cuerpo),
       // Fase 10e: el nombre Zona_NN de una zona que se agrega a la hoja (ocupados: los de la hoja).
       nombreZona: (ocupados) => pedir("POST", "/api/zonas/nombre", { ocupados: ocupados || [] }),
+      // La escala escrita en los textos de una zona (protocolo 1.3): {zona, capas?, excluir?}.
+      textosZona: (cuerpo) => pedir("POST", "/api/textos/zona", cuerpo),
       exportados: () => pedir("GET", "/api/exportados"),
       tarea: (id) => pedir("GET", tarea(id)),
       cancelar: (id) => pedir("POST", tarea(id) + "/cancelar"),

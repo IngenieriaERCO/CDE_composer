@@ -3074,7 +3074,7 @@ y el rumbo). **1485 pasan** y 1 se salta (antes 1482). ruff: los mismos 173 hall
 
 10e1 y 10e2: commit 33a5e6d; aviso de la ortofoto: commit 14c3a9a (dev, con push, 2026-11-25).
 
-### Zonas del Model Space — Fase 10e3 y 10e4: guardar las zonas y «Volver a exportar zonas» (2026-11-25, sin commit)
+### Zonas del Model Space — Fase 10e3 y 10e4: guardar las zonas y «Volver a exportar zonas» (2026-11-25, commit 3f8db14)
 
 **Qué se hizo**
 - **plano.json versión 6** (`plano_zonas.py`, nuevo; `plano.py`, `plano_dxf.py`):
@@ -3172,6 +3172,52 @@ detalle está donde dice el plano (±0,1 mm)».
 - un paquete con la caja declarada 0,2 mm más abajo que sus trazos compone bien (antes fallaba);
 - un detalle insertado de verdad 0,5 mm corrido falla con «diferencia máx. 0.500 mm, tolerancia
   ±0.1 mm».
+
+### Zonas del Model Space — la escala del dibujo (`texts`, protocolo 1.3) (2026-11-26)
+
+Decisiones aprobadas: A) un «ESC 1:N» en una capa excluida se avisa pero no se usa solo;
+B) la escala escrita a mano se respeta, la del programa se actualiza al cambiar la zona;
+C) `escala_dibujo` se guarda en cada zona (los planos viejos abren igual); D) en perfiles con
+ejes H/V siempre se elige.
+
+**Qué se hizo**
+- `trabajador.py`: protocolo 1.3 y `admite_textos`. `textos_zona.py` (nuevo): pedido y lectura
+  de `texts`. Ruta `POST /api/textos/zona` (`servidor.py`, `aplicacion_editor.pedir_textos_zona`;
+  409 con un exportador anterior).
+- `plano_zonas.py` y `editor_bloques.js`: `escala_dibujo` opcional («1:N» o null) en
+  `dxf[i].zonas[]`.
+- Cuadro «Zonas del modelo» (`editor_panel_zonas.js`, `editor_zonas.js`): una escala → se pone
+  sola, con su texto y **Ver en el dibujo**; varias o H/V → botones con cuántos textos; ninguna
+  → aviso suave; capa excluida → aviso con «Usar 1:N»; escala distinta → aviso ámbar (doble,
+  mitad, N veces); exportador 1.2 → nota.
+- Hoja (`editor_ui.js`): Selección dice «Dibujada a 1:N» (y el ámbar), y Advertencias avisa por
+  cada zona que se exporta a otra escala que la del dibujo.
+- Trabajador falso: `texts` (1.3; UNKNOWN_COMMAND con `--protocolo 1.2`).
+
+**Cómo probarlo**:
+1. `Abrir editor.bat` → «Cargar DXF» (PRGD) → «Zonas del modelo…».
+2. Dibujar la sección del pedestal: dice «Escala del dibujo: 1:10, de «SECCIÓN-PEDESTAL… ·
+   ESC-1:10»» y pone 1:10. «Ver en el dibujo» lleva la vista al texto.
+3. Escribir 20 en Escala: aviso ámbar «…a la mitad de su tamaño». Redibujar la zona: sigue en 20.
+4. Desmarcar la capa `_000_Textos_General`: «Hay «ESC 1:10» en una capa excluida…».
+5. Dibujar todo el grupo 1: botones «1:10 (11 textos)» y «1:20 (5 textos)».
+6. «Agregar a la hoja», cambiar la escala del borrador: Advertencias avisa; guardar el plano:
+   la zona lleva `"escala_dibujo"`.
+
+**Verificación en Edge** (`data/verificacion/verificar_escala_dibujo.mjs`; capturas en
+`data/verificacion/escala_dibujo_salida/`). **Todo OK**, sin errores de JavaScript.
+- Falso con protocolo 1.2: la nota «Este Exportador no lee la escala…» y la escala sugerida de
+  siempre.
+- PRGD con el exportador real (carga 53 s; textos en 0,4 s): los pasos 2 a 6 de arriba.
+
+**Pruebas**: **1525 pasan** y 1 se salta (antes 1504). ruff: los mismos 173 hallazgos.
+- `test_textos_zona` (nuevo): pedido, una/varias/ninguna/ejes, respuestas que no valen,
+  `admite_textos`, con el trabajador falso (capa excluida, 1.2 → 409).
+- `test_plano_v6`, `test_editor_plano_v6_js`: `escala_dibujo` se guarda, se lee y se valida.
+- `test_editor_zonas_js`: `analizarEscalas` y `avisoEscala`.
+
+**Para el Exportador**: el editor trabaja con 1.2 (sin la escala del dibujo, con una nota) y
+con 1.3 o más.
 
 ### Pendiente en la Fase 4 (al 2026-11-11)
 

@@ -96,10 +96,12 @@ from componedor.previa_zona import (
     leer_previa_zona,
     pedido_previa_zona,
 )
+from componedor.textos_zona import leer_textos, pedido_textos
 from componedor.trabajador import (
     ARCHIVO_REGISTRO,
     Trabajador,
     TrabajadorNoDisponible,
+    admite_textos,
     admite_zonas,
     resolver_comando,
 )
@@ -416,6 +418,23 @@ class AplicacionEditor:
             tarea = self.canal.encolar("previa_zona", "preview", datos,
                                        procesar=self._al_previar_zona)
             self._previa_por_ref[clave] = tarea.id
+        return {"tarea": tarea.foto()}
+
+    def pedir_textos_zona(self, zona=None, capas=None, excluir=None) -> dict:
+        """Encola `texts` (protocolo 1.3, §4.3): la escala escrita en los textos de la zona, con
+        ese filtro de capas. {"tarea": foto}; el resultado es el de `textos_zona.leer_textos`.
+        409 con un trabajador 1.2 o anterior (no la sabe leer)."""
+        dxf = self._dxf_activo()
+        if not admite_textos(self.canal.listo):
+            version = (self.canal.listo or {}).get("protocol_version")
+            raise ErrorAplicacion(409, f"Este Exportador (protocolo {version}) no lee la escala "
+                                       f"escrita en el dibujo: hace falta el protocolo 1.3.")
+        try:
+            datos = pedido_textos(dxf["sesion"], zona, capas, excluir)
+        except PedidoZonaInvalido as e:
+            raise ErrorAplicacion(400, str(e)) from None
+        tarea = self.canal.encolar("textos_zona", "texts", datos,
+                                   procesar=lambda data, t: leer_textos(data))
         return {"tarea": tarea.foto()}
 
     def _al_previar_zona(self, data: dict, tarea: Tarea) -> dict:

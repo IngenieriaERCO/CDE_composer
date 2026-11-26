@@ -1,4 +1,4 @@
-"""Cliente del trabajador del Exportador Vectorial (`cde-exporter worker`, protocolo 1.2).
+"""Cliente del trabajador del Exportador Vectorial (`cde-exporter worker`, protocolo 1.3).
 
 El Componedor no importa código del exportador: lo lanza como COMANDO EXTERNO y le habla
 JSON por líneas (contrato: `docs/protocolo_trabajador.md` del repositorio del exportador).
@@ -18,7 +18,8 @@ instalado, no tiene la orden `worker`, no responde, otra versión del protocolo)
 `TrabajadorCaido` (el proceso terminó sin `close`) y `ErrorTrabajador` (el pedido terminó con
 `error`: código estable, mensaje, consejo y detalles del trabajador).
 
-Versión: los pedidos dicen `"protocol": "1.2"`. Un trabajador 1.0 o 1.1 los atiende igual (la
+Versión: los pedidos dicen `"protocol": "1.3"` (la 1.3 trae `texts`: la escala escrita en una
+zona; `admite_textos`). Un trabajador 1.0 o 1.1 los atiende igual (la
 misma versión mayor): el 1.0 no sabe de zonas del Model Space (`admite_zonas`) y ninguno de los
 dos manda eventos. Desde la 1.2 llegan mensajes `event` sin pedido (`id` null): la vista previa
 preparada en segundo plano (§4.2); van a `al_evento(nombre, data)`, si se asignó.
@@ -37,9 +38,10 @@ from pathlib import Path
 
 from componedor.proceso_windows import ProcesoEnJob, cerrar_job, lanzar_en_job
 
-PROTOCOLO = "1.2"
+PROTOCOLO = "1.3"
 MAYOR = "1"
 MENOR_ZONAS = 1  # zonas del Model Space en preview y export (protocolo 1.1, §4.1 y §5.4)
+MENOR_TEXTOS = 3  # `texts`: los textos de una zona y su escala propuesta (protocolo 1.3, §4.3)
 ESPERA_READY_S = 60.0  # arranque en frío del exportador real: >30 s la primera vez (compila .pyc)
 ESPERA_CONTROL_S = 10.0  # cancel y status se responden enseguida (punto 4 del contrato)
 ESPERA_CIERRE_S = 5.0
@@ -94,13 +96,25 @@ def resolver_comando(comando: Sequence[str]) -> list[str]:
     return [resuelto, *comando[1:]]
 
 
-def admite_zonas(listo: dict | None) -> bool:
-    """True si el `ready` del trabajador dice protocolo 1.1 o más (zonas del Model Space)."""
+def _menor(listo: dict | None) -> int | None:
+    """La versión menor del protocolo del `ready` (None si no es la mayor 1 o no se entiende)."""
     version = (listo or {}).get("protocol_version")
     partes = str(version).split(".") if isinstance(version, str) else []
     if len(partes) < 2 or partes[0] != MAYOR or not partes[1].isdigit():
-        return False
-    return int(partes[1]) >= MENOR_ZONAS
+        return None
+    return int(partes[1])
+
+
+def admite_zonas(listo: dict | None) -> bool:
+    """True si el `ready` del trabajador dice protocolo 1.1 o más (zonas del Model Space)."""
+    menor = _menor(listo)
+    return menor is not None and menor >= MENOR_ZONAS
+
+
+def admite_textos(listo: dict | None) -> bool:
+    """True si el `ready` dice protocolo 1.3 o más (`texts`: la escala escrita en una zona)."""
+    menor = _menor(listo)
+    return menor is not None and menor >= MENOR_TEXTOS
 
 
 def _mayor(version) -> str | None:

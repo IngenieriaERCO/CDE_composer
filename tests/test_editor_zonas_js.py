@@ -250,3 +250,44 @@ def test_los_bloques_no_incluyen_las_zonas():
     r = subprocess.run([NODE, "-e", script], input=_json.dumps([_zona("Zona_01", 50, (300, 300))]),
                        capture_output=True, text=True, encoding="utf-8", check=False)
     assert _json.loads(r.stdout) == {"pedidos": [], "omitidos": []}
+
+
+# --- la escala del dibujo (textos «ESC 1:N», protocolo 1.3) -------------------------------
+
+def _resp(candidatos, propuesta=None):
+    return {"propuesta": propuesta, "candidatos": [
+        {"escala": f"1:{n:g}", "n": n, "eje": eje, "veces": veces,
+         "fuentes": [{"texto": f"TITULO\nESC 1:{n:g}", "x": 1, "y": 2, "capa": capa}]}
+        for n, eje, veces, capa in candidatos]}
+
+
+def test_analizar_escalas():
+    una = js("return E.analizarEscalas(entrada, null);", _resp([(10, None, 1, "TEXTOS")], 10))
+    assert una["estado"] == "una" and una["propuesta"]["n"] == 10 and una["excluidas"] == []
+    assert una["propuesta"]["fuente"]["capa"] == "TEXTOS"
+    varias = js("return E.analizarEscalas(entrada, null);", _resp([(10, None, 11, "T"), (20, None, 5, "T")]))
+    assert varias["estado"] == "varias" and [c["etiqueta"] for c in varias["candidatos"]] == ["1:10", "1:20"]
+    ejes = js("return E.analizarEscalas(entrada, null);", _resp([(1000, "H", 1, "P"), (100, "V", 1, "P")]))
+    assert ejes["estado"] == "varias" and [c["etiqueta"] for c in ejes["candidatos"]] == ["H 1:1000", "V 1:100"]
+    # Con la capa del texto excluida: ninguna en lo que se exporta, y el aviso de la excluida.
+    nada = js("return E.analizarEscalas(entrada[0], entrada[1]);",
+              [_resp([]), _resp([(10, None, 1, "_000_Textos_General")], 10)])
+    assert nada["estado"] == "ninguna" and nada["propuesta"] is None
+    assert nada["excluidas"] == [{"etiqueta": "1:10", "n": 10, "capa": "_000_Textos_General",
+                                  "fuente": {"texto": "TITULO\nESC 1:10", "x": 1, "y": 2,
+                                             "capa": "_000_Textos_General"}}]
+    # La que está en las dos no es «excluida».
+    ambas = js("return E.analizarEscalas(entrada, entrada);", _resp([(10, None, 1, "T")], 10))
+    assert ambas["excluidas"] == []
+    dos_lineas = "SECCIÓN-PEDESTAL 0.40 X 0.40" + chr(10) + "ESC-1:10"  # un MTEXT de dos líneas
+    assert js("return E.textoFuente({texto: entrada});", dos_lineas) == (
+        "SECCIÓN-PEDESTAL 0.40 X 0.40 · ESC-1:10")
+
+
+def test_aviso_de_escala_distinta():
+    r = js("return [E.avisoEscala(10, 20), E.avisoEscala(20, 10), E.avisoEscala(25, 10), E.avisoEscala(10, 10),"
+           " E.avisoEscala(10, null)];")
+    assert r == ["El dibujo está a 1:20 y se exportará a 1:10: los textos saldrán al doble de su tamaño.",
+                 "El dibujo está a 1:10 y se exportará a 1:20: los textos saldrán a la mitad de su tamaño.",
+                 "El dibujo está a 1:10 y se exportará a 1:25: los textos saldrán a 0,4 veces su tamaño.",
+                 None, None]

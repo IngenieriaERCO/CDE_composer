@@ -30,6 +30,13 @@
  * Arriba, la línea de la vista previa preparada del exportador 1.2 (la del panel del DXF):
  * «Preparando… 61 % · lleva 32 s» o «lista: el zoom ya va rápido» o por qué falló.
  *
+ * La escala del dibujo (orden `texts`, protocolo 1.3): al soltar el rectángulo (y al cambiar las
+ * capas) se piden los textos «ESC 1:N» de la zona con el filtro que se exporta (y sin él, para
+ * avisar si la escala está en una capa excluida). Una sola: la escala se pone sola (si el usuario
+ * no la escribió a mano) y se dice de dónde salió, con «Ver en el dibujo». Varias o con ejes
+ * H/V: botones para elegir. Ninguna: aviso suave. Si la escala de la zona no es la del dibujo:
+ * aviso ámbar (los textos saldrán de otro tamaño). Con un Exportador 1.2 o anterior, una nota.
+ *
  * Lo largo (con PRGD, la primera vista de todo el Model Space pasa del minuto) muestra el
  * avance, el mensaje del trabajador, el tiempo transcurrido y «Cancelar». Nada bloquea: se
  * puede seguir acercando, moviendo y dibujando mientras llega la vista nítida.
@@ -65,6 +72,10 @@
     zona: null, modo: "excluir", desmarcadas: new Set(), capas: [], filas: [], verVacias: false,
     conFiltro: false, escala: "", nombre: "", agregando: false, agregada: null, editando: null, error: null,
     nitidas: 0, // cuántas veces se pidió (o tomó de la caché) una vista nítida (para verificar)
+    // La escala del dibujo: z.textos = {estado: "pidiendo" | "listo" | "sin_soporte" | "error",
+    // analisis, mensaje, clave}; escalaOrigen: quién puso la escala ("programa" | "usuario" | null);
+    // escalaDibujo: el N a la que está dibujada (o null); marcaTexto: [x, y] de «Ver en el dibujo».
+    textos: null, escalaOrigen: null, escalaDibujo: null, fuenteDibujo: null, marcaTexto: null,
   };
   window.EditorPruebaZonas = z;
   let dialogo = null;
@@ -165,14 +176,21 @@
     filaEscala.appendChild(nodo("label", { for: "escala-zona" }, "Escala 1:"));
     const escala = nodo("input", { id: "escala-zona", list: "escalas-zona", inputmode: "numeric",
       autocomplete: "off", size: "8", placeholder: "N" });
-    escala.addEventListener("input", () => { z.escala = escala.value; pintarTamano(); pintarBotonExportar(); });
+    escala.addEventListener("input", () => {
+      z.escala = escala.value;
+      z.escalaOrigen = "usuario"; // escrita a mano: se respeta aunque cambie la zona
+      pintarTamano();
+      pintarEscalaDibujo();
+      pintarBotonExportar();
+    });
     const lista = nodo("datalist", { id: "escalas-zona" });
     for (const n of [5, 10, 20, 25, 50, 75, 100, 200, 250, 500, 750, 1000, 2000, 5000]) {
       lista.appendChild(nodo("option", { value: String(n) }));
     }
     filaEscala.append(escala, lista);
+    const escalaDibujo = nodo("div", { class: "escala-dibujo", id: "escala-dibujo" });
     const tamano = nodo("div", { class: "dato", id: "tamano-zona" });
-    sEscala.append(filaEscala, tamano);
+    sEscala.append(filaEscala, escalaDibujo, tamano);
     // Nombre y agregar a la hoja (Fase 10e)
     const sNombre = seccion("4. Nombre y agregar a la hoja");
     const filaNombre = nodo("div", { class: "fila" });
@@ -201,7 +219,7 @@
       clearInterval(reloj);
       reloj = null;
     });
-    partes = { titulo, preparacion, navegacion, lamina, ocupado, textoZona, borrar, listaCapas, resumenCapas,
+    partes = { escalaDibujo, titulo, preparacion, navegacion, lamina, ocupado, textoZona, borrar, listaCapas, resumenCapas,
       casillaFiltro, casillaVacias, escala, tamano, nombre, agregar, dejar, estiloTexto, resultado, error };
     prepararRaton(lamina);
   }
@@ -241,12 +259,17 @@
     z.modo = zb.modo || "excluir";
     z.desmarcadas = new Set(zb.desmarcadas || zb.excluir || []);
     z.escala = String(c.escala);
+    z.escalaOrigen = "usuario";
+    z.escalaDibujo = zb.escala_dibujo || null;
+    z.fuenteDibujo = null;
+    z.marcaTexto = null;
     z.nombre = b.nombre;
     partes.escala.value = z.escala;
     partes.nombre.value = b.nombre;
     for (const r of dialogo.querySelectorAll("input[name=modo-capas]")) r.checked = r.value === z.modo;
     z.camara = E.encuadrar(zb.rect, aspecto(), 0.3);
     if (z.vista) pedirNitida(false);
+    pedirTextos();
     pintar();
   }
 
@@ -256,7 +279,8 @@
     for (const v of z.cache.values()) URL.revokeObjectURL(v.url);
     Object.assign(z, { sesion, vista: null, todo: null, camara: null, pidiendo: null, cache: new Map(),
       zona: null, modo: "excluir", desmarcadas: new Set(), capas: [], filas: [], conFiltro: false,
-      escala: "", nombre: "", agregando: false, agregada: null, editando: null, error: null });
+      escala: "", nombre: "", agregando: false, agregada: null, editando: null, error: null,
+      textos: null, escalaOrigen: null, escalaDibujo: null, fuenteDibujo: null, marcaTexto: null });
     if (partes) {
       partes.escala.value = "";
       partes.nombre.value = "";
@@ -438,6 +462,7 @@
   function alCambiarCapas() {
     pintar();
     if (z.conFiltro) programarNitida();
+    programarTextos();
   }
 
   // ---------------------------------------------------------------------------------------
@@ -557,20 +582,170 @@
   function fijarZona(zona) {
     z.zona = zona;
     z.agregada = null;
+    z.escalaDibujo = null;
+    z.fuenteDibujo = null;
+    z.marcaTexto = null;
     const c = catalogo();
     const mmU = c && c.unidades ? c.unidades.mm_por_unidad : null;
-    if (mmU && area()) {
+    if (mmU && area() && z.escalaOrigen !== "usuario") {
       const n = B.leerEscalaEscrita(z.escala);
       const cabe = !n.error && E.tamanoEnHoja(zona, mmU, n.n, c.margen_mm, area()).cabe;
       if (!cabe) { // sin escala o con una que ya no sirve: la sugerida
         const sugerida = E.escalaSugerida(zona, mmU, c.margen_mm, area());
         if (sugerida) {
           z.escala = String(sugerida);
+          z.escalaOrigen = "programa";
           partes.escala.value = z.escala;
         }
       }
     }
+    pedirTextos();
     pintar();
+  }
+
+  // ---------------------------------------------------------------------------------------
+  // La escala del dibujo (orden `texts`, protocolo 1.3)
+  // ---------------------------------------------------------------------------------------
+
+  let esperaTextos = null;
+  function programarTextos() {
+    clearTimeout(esperaTextos);
+    esperaTextos = setTimeout(pedirTextos, 500);
+  }
+
+  async function seguirTextos(cuerpo) {
+    const r = await cliente.textosZona(cuerpo);
+    const fin = await S.seguirTarea(cliente, r.tarea.id, () => {}, 150);
+    if (fin.estado !== "terminada") throw new Error(D.textoError(fin));
+    return fin.resultado;
+  }
+
+  /** Los textos de la zona con el filtro que se exporta y, si hay filtro, sin él. */
+  async function pedirTextos() {
+    clearTimeout(esperaTextos);
+    if (!z.zona) {
+      z.textos = null;
+      pintarEscalaDibujo();
+      return;
+    }
+    const f = filtro();
+    const cuerpo = { zona: z.zona };
+    if (!f.error && f.capas) cuerpo.capas = f.capas;
+    if (!f.error && f.excluir) cuerpo.excluir = f.excluir;
+    const clave = JSON.stringify(cuerpo);
+    if (z.textos && z.textos.clave === clave && z.textos.estado !== "error") return;
+    const t = { estado: "pidiendo", clave, analisis: null, mensaje: null };
+    z.textos = t;
+    pintarEscalaDibujo();
+    try {
+      const activo = await seguirTextos(cuerpo);
+      const todo = cuerpo.capas || cuerpo.excluir ? await seguirTextos({ zona: z.zona }) : null;
+      if (z.textos !== t) return; // otra zona u otras capas mientras tanto
+      t.estado = "listo";
+      t.analisis = E.analizarEscalas(activo, todo);
+      const a = t.analisis;
+      if (a.estado === "una") {
+        z.escalaDibujo = a.propuesta.n;
+        z.fuenteDibujo = a.propuesta.fuente;
+        if (z.escalaOrigen !== "usuario") { // la puso el programa: se actualiza sola
+          z.escala = String(a.propuesta.n);
+          z.escalaOrigen = "programa";
+          partes.escala.value = z.escala;
+        }
+      } else if (!z.editando) {
+        z.escalaDibujo = null;
+        z.fuenteDibujo = null;
+      }
+    } catch (err) {
+      if (z.textos !== t) return;
+      t.estado = err.estadoHttp === 409 ? "sin_soporte" : "error";
+      t.mensaje = err.message;
+    }
+    pintar();
+  }
+
+  /** Elegir una escala de las del dibujo (botón): es la del dibujo y la de la zona. */
+  function elegirEscalaDibujo(c) {
+    z.escalaDibujo = c.n;
+    z.fuenteDibujo = c.fuente;
+    z.escala = String(c.n);
+    z.escalaOrigen = "usuario";
+    partes.escala.value = z.escala;
+    pintar();
+  }
+
+  /** «Ver en el dibujo»: la vista centrada en el texto de donde salió la escala, con una marca. */
+  function verTexto(fuente) {
+    if (!fuente || !z.vista) return;
+    z.marcaTexto = [fuente.x, fuente.y];
+    const lado = z.zona ? Math.max(z.zona[2] - z.zona[0], z.zona[3] - z.zona[1]) : 1;
+    fijarCamara(E.encuadrar([fuente.x - lado / 2, fuente.y - lado / 2, fuente.x + lado / 2, fuente.y + lado / 2],
+      aspecto(), 0));
+    pedirNitida(false);
+  }
+
+  function pintarEscalaDibujo() {
+    if (!partes) return;
+    const caja = partes.escalaDibujo;
+    const t = z.textos;
+    const hijos = [];
+    const linea = (clase, texto) => nodo("div", { class: "linea-escala " + clase }, texto);
+    const botonVer = (fuente) => {
+      const b = nodo("button", { type: "button", class: "ver-texto" }, "Ver en el dibujo");
+      b.title = "Centra la vista en el texto de donde salió la escala";
+      b.addEventListener("click", () => verTexto(fuente));
+      return b;
+    };
+    if (!t) {
+      // sin zona: nada
+    } else if (t.estado === "pidiendo") {
+      hijos.push(linea("suave", "Buscando la escala escrita en el dibujo («ESC 1:N»)…"));
+    } else if (t.estado === "sin_soporte") {
+      hijos.push(linea("nota", "Este Exportador no lee la escala escrita en el dibujo (hace falta el " +
+        "protocolo 1.3): revise usted a qué escala está dibujada la zona."));
+    } else if (t.estado === "error") {
+      hijos.push(linea("nota", "No se pudo leer la escala escrita en el dibujo: " + t.mensaje));
+    } else {
+      const a = t.analisis;
+      if (a.estado === "una") {
+        const l = linea("ok", "Escala del dibujo: " + B.textoEscala(a.propuesta.n) + ", de «" +
+          E.textoFuente(a.propuesta.fuente) + "»" + (a.propuesta.fuente && a.propuesta.fuente.capa
+          ? " (capa " + a.propuesta.fuente.capa + ")" : "") + ". ");
+        if (a.propuesta.fuente) l.appendChild(botonVer(a.propuesta.fuente));
+        hijos.push(l);
+      } else if (a.estado === "varias") {
+        hijos.push(linea("elegir", a.candidatos.some((c) => c.eje)
+          ? "El dibujo tiene escalas por eje (H/V): elija la de esta zona:"
+          : "El dibujo tiene varias escalas escritas: elija la de esta zona:"));
+        const botones = nodo("div", { class: "botones escalas-dibujo" });
+        for (const c of a.candidatos) {
+          const b = nodo("button", { type: "button", class: "escala-candidata" + (z.escalaDibujo === c.n ? " elegida" : ""),
+            "data-escala": c.etiqueta }, c.etiqueta + " (" + c.veces + (c.veces === 1 ? " texto)" : " textos)"));
+          b.title = c.fuente ? "De «" + E.textoFuente(c.fuente) + "»" + (c.fuente.capa ? " (capa " + c.fuente.capa + ")" : "") : "";
+          b.addEventListener("click", () => elegirEscalaDibujo(c));
+          botones.appendChild(b);
+        }
+        hijos.push(botones);
+        if (z.fuenteDibujo) hijos.push(linea("suave", "Elegida: de «" + E.textoFuente(z.fuenteDibujo) + "». "));
+        if (z.fuenteDibujo) hijos[hijos.length - 1].appendChild(botonVer(z.fuenteDibujo));
+      } else {
+        hijos.push(linea("suave", "No encontré «ESC 1:N» en los textos de la zona: revise a qué escala " +
+          "está dibujada."));
+      }
+      for (const x of a.excluidas) {
+        const l = linea("suave", "Hay «ESC " + x.etiqueta + "» en una capa excluida" + (x.capa ? " (" + x.capa + ")" : "") +
+          ": no se usa sola. ");
+        const usar = nodo("button", { type: "button", class: "usar-excluida" }, "Usar " + x.etiqueta);
+        usar.addEventListener("click", () => elegirEscalaDibujo(x));
+        l.appendChild(usar);
+        if (x.fuente) l.appendChild(botonVer(x.fuente));
+        hijos.push(l);
+      }
+    }
+    const n = B.leerEscalaEscrita(z.escala);
+    const aviso = !n.error && z.escalaDibujo ? E.avisoEscala(n.n, z.escalaDibujo) : null;
+    if (aviso) hijos.push(linea("ambar", aviso));
+    caja.replaceChildren(...hijos);
   }
 
   // ---------------------------------------------------------------------------------------
@@ -590,7 +765,7 @@
     const f = filtro();
     if (f.error) return { error: f.error };
     return { rect: z.zona.slice(), capas: f.capas, excluir: f.excluir, modo: z.modo, desmarcadas: [...z.desmarcadas],
-      escala: n.n, catalogo: c };
+      escala: n.n, catalogo: c, escala_dibujo: z.escalaDibujo || null };
   }
 
   async function agregarALaHoja() {
@@ -654,6 +829,7 @@
     pintarZona();
     pintarCapas();
     pintarTamano();
+    pintarEscalaDibujo();
     pintarBotonExportar();
     pintarResultado();
   }
@@ -722,6 +898,10 @@
       hijos.push(svg("rect", { class: "zona-lamina", x: c.x, y: c.y, width: Math.max(c.ancho, k),
         height: Math.max(c.alto, k) }));
     }
+    if (z.marcaTexto) { // «Ver en el dibujo»: dónde está el texto de la escala
+      const [px, py] = E.cadAPx(m, z.marcaTexto[0], z.marcaTexto[1]);
+      hijos.push(svg("circle", { class: "marca-texto", cx: px, cy: py, r: 12 * k }));
+    }
     l.replaceChildren(...hijos);
   }
 
@@ -782,6 +962,7 @@
         pintarResumenCapas();
         pintarBotonExportar();
         if (z.conFiltro) programarNitida();
+        programarTextos();
       });
       l.append(casilla, " " + f.nombre + " (" + f.entidades + ")");
       const estadoCad = E.textoEstadoCad(f);

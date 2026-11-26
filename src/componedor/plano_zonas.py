@@ -13,6 +13,9 @@ plano tiene zonas):
 - `escala` («1:N») y `centro_mm` (centro de la PÁGINA en la hoja, mm de papel, Y hacia arriba):
   dónde y a qué escala va. `tamano_m`: el tamaño real de la zona (para la caja en la hoja).
 - `nombre`: el del paquete (`<nombre>_1-N…`); único en el plano.
+- `escala_dibujo` (opcional, «1:N» o null): la escala a la que está DIBUJADA la zona (la que se
+  leyó en sus textos «ESC 1:N» o la que eligió el usuario). Si no coincide con `escala`, los
+  textos salen de otro tamaño: el editor lo avisa.
 
 Una zona exportada es un detalle normal ("manifiesto", "posicion_mm") que además lleva
 `"origen": {"zona": "<nombre>"}`. Una zona sin ningún detalle que la nombre es un BORRADOR
@@ -26,7 +29,8 @@ from dataclasses import dataclass
 
 from componedor.plano_dxf import leer_escala
 
-CLAVES_ZONA = {"nombre", "zona", "capas", "excluir", "escala", "centro_mm", "tamano_m"}
+CLAVES_ZONA = {"nombre", "zona", "capas", "excluir", "escala", "centro_mm", "tamano_m",
+               "escala_dibujo"}
 CLAVES_ORIGEN_ZONA = {"zona"}
 
 
@@ -40,6 +44,7 @@ class ZonaPlano:
     tamano_m: tuple[float, float]
     capas: tuple[str, ...] | None = None
     excluir: tuple[str, ...] | None = None
+    escala_dibujo: float | None = None  # N de 1:N a la que está dibujada (o None)
 
 
 def _numero(v) -> bool:
@@ -92,10 +97,15 @@ def leer_zonas(valor, dxf: str, donde: str, errores: list[str]) -> list[ZonaPlan
         if not (isinstance(tamano, list) and len(tamano) == 2
                 and all(_numero(v) and v > 0 for v in tamano)):
             errores.append(f"{aqui}.tamano_m: se esperaba [ancho, alto] en m (> 0)")
+        dibujo = z.get("escala_dibujo")
+        escala_dibujo = leer_escala(dibujo) if dibujo is not None else None
+        if dibujo is not None and escala_dibujo is None:
+            errores.append(f"{aqui}.escala_dibujo: se esperaba «1:N» o null")
         if len(errores) == n:
             zonas.append(ZonaPlano(dxf, nombre, tuple(float(v) for v in rect), escala,
                                    (float(centro[0]), float(centro[1])),
-                                   (float(tamano[0]), float(tamano[1])), capas, excluir))
+                                   (float(tamano[0]), float(tamano[1])), capas, excluir,
+                                   escala_dibujo))
     return zonas
 
 

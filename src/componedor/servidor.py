@@ -50,7 +50,7 @@ RUTA_PNG_ORTOFOTO = re.compile(r"^/api/ortofoto/previas/(o-\d+)$")
 RUTAS_GET = ("/", "/api/estado", "/api/exportados", "/api/ortofoto", "/api/localizacion",
               "/api/localizacion/imagen", "/api/estilos")
 RUTAS_POST = ("/api/dxf/elegir", "/api/dxf/recargar", "/api/previa", "/api/previa/zona",
-              "/api/exportar", "/api/exportar/zona", "/api/zonas/nombre",
+              "/api/exportar", "/api/exportar/zona", "/api/zonas/nombre", "/api/textos/zona",
               "/api/trabajador/reiniciar", "/api/trabajador/detener", "/api/latido",
               "/api/ortofoto/elegir", "/api/ortofoto/quitar", "/api/ortofoto/previa",
               "/api/localizacion/elegir", "/api/localizacion/quitar")
@@ -231,6 +231,9 @@ def _manejador(servidor: ServidorEditor):
                 return app.pedir_previa_zona(
                     cuerpo.get("zona"), cuerpo.get("vista"), cuerpo.get("capas"),
                     cuerpo.get("excluir"), cuerpo.get("escala"), cuerpo.get("estilo"))
+            if ruta == "/api/textos/zona":
+                return app.pedir_textos_zona(cuerpo.get("zona"), cuerpo.get("capas"),
+                                             cuerpo.get("excluir"))
             if ruta == "/api/zonas/nombre":
                 return app.nombre_zona(cuerpo.get("ocupados"))
             if ruta == "/api/exportar/zona":

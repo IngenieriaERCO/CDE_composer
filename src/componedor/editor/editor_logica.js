@@ -667,7 +667,7 @@
    */
   function zonaDeColocacion(z) {
     const datosZona = { rect: z.rect.slice(), capas: z.capas, excluir: z.excluir,
-      modo: z.capas ? "solo" : "excluir", desmarcadas: (z.excluir || []).slice() };
+      modo: z.capas ? "solo" : "excluir", desmarcadas: (z.excluir || []).slice(), escala_dibujo: z.escala_dibujo || null };
     return Object.assign({ nombre: z.nombre, tamano_m: z.tamano_m.slice(), dxf: z.dxf }, datosZona, {
       bloque: { dxf: z.dxf, nombre: z.nombre, etiqueta: z.nombre, handle: null, ocurrencia: 1, total_ocurrencias: 1,
         tamano_m: z.tamano_m.slice(), caja_exacta: true, sugerida: null, escalas: B.ESCALAS, zona: datosZona } });
