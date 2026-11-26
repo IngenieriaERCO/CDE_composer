@@ -119,6 +119,7 @@ from componedor.ortofoto_pdf import (
 from componedor.ortofoto_render import abrir_fuente
 from componedor.plano import Plano
 from componedor.plano_dxf import texto_pendientes
+from componedor.plano_zonas import texto_zonas_sin_exportar
 from componedor.plantilla import TOLERANCIA_MARCO_MM, InformePlantilla, buscar_marco
 from componedor.rosa import NOMBRE as ROSA
 from componedor.rosa import (
@@ -229,6 +230,8 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
     if plano.pendientes:  # plano versión 3 con bloques de DXF sin exportar
         raise PlanoNoComponible(texto_pendientes(plano.pendientes, plano.dxf,
                                                  formato.zonas[ZONA], ZONA))
+    if plano.borradores:  # plano versión 6 con zonas del Model Space sin exportar
+        raise PlanoNoComponible(texto_zonas_sin_exportar(plano.borradores))
     eleccion = None
     # Versión 5: solo los detalles marcados; versión 4: todos (plano.py ya lo migró así).
     usan_ortofoto = [d for d in plano.detalles if d.ortofoto]

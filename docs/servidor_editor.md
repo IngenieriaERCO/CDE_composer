@@ -94,9 +94,18 @@ Para exportar como detalle un trozo del Model Space (no un bloque):
    **centro de su borrador** y pasa a ser el detalle real **en ese mismo sitio** (y queda en
    «Detalles disponibles»).
 
-El estilo de impresión es el del panel del DXF. **Todavía no se guardan** los borradores en el
-plano.json (subfase 10e3): al guardar con zonas sin exportar, el plano sale sin ellas y lo avisa;
-expórtelas antes. Volver a exportar las zonas cuando cambie el DXF es la 10e4.
+9. **Guardar plano** guarda también las zonas (plano.json versión 6, Fase 10e3): los borradores
+   con su rectángulo, capas, escala, nombre y centro, y las exportadas como detalles que
+   recuerdan su zona (`"origen": {"zona"}`). Al **abrir** el plano reaparecen los borradores en la
+   hoja, con su vista previa (hace falta el DXF cargado).
+10. **Volver a exportar zonas (N)** (Fase 10e4, junto a «Exportar bloques y zonas»), para cuando
+    cambia el DXF: «Cargar DXF» otra vez (el mismo archivo: las zonas pasan al DXF nuevo, con
+    aviso) y el botón. Exporta otra vez **todas** las zonas del plano, cada una con su nombre,
+    capas y escala, **centrada donde está hoy** en la hoja (si movió un detalle, en su lugar
+    nuevo). Los paquetes viejos van a `_para_borrar/`. Si el DXF no cambió, salen de la caché.
+
+El estilo de impresión es el del panel del DXF. Formato de las zonas en el plano:
+[docs/formato_plano.md](formato_plano.md#zonas-del-model-space-versión-6).
 
 Si el servidor no arranca, `Abrir editor.bat` abre el editor sin servidor, como antes. Con doble
 clic en `editor.html` también se abre sin servidor: el botón «Cargar DXF» aparece desactivado y

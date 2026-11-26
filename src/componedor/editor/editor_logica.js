@@ -310,8 +310,13 @@
     const original = esObjeto(extra.original) ? extra.original : null;
     const zona = zonaEditable(datos);
     let v2 = false;
-    const pendientes = colocaciones.filter((c) => c.bloque);
-    B.asignarIdsDxf(pendientes.map((c) => c.bloque.dxf));
+    // Versión 6: las zonas (borradores y exportadas) van en la lista "dxf"; los borradores no
+    // son detalles todavía.
+    const conZona = colocaciones.filter((c) => (c.bloque && c.bloque.zona) || (c.zona && c.detalle));
+    const pendientes = colocaciones.filter((c) => c.bloque && !c.bloque.zona);
+    const dxfsZonas = conZona.map((c) => (c.bloque ? c.bloque.dxf : c.zona.dxf));
+    B.asignarIdsDxf(pendientes.map((c) => c.bloque.dxf).concat(dxfsZonas));
+    colocaciones = colocaciones.filter((c) => !(c.bloque && c.bloque.zona));
     const conOrtofoto = !!extra.ortofoto;
     // "ortofoto" del detalle tal como se escribirá (solo con la sección "ortofoto").
     const usaOrtofoto = (c) => conOrtofoto && c.ortofoto === true;
@@ -341,6 +346,7 @@
         v2 = true;
       }
       if (usaOrtofoto(c)) d.ortofoto = true;
+      if (c.zona) d.origen = { zona: c.zona.nombre }; // versión 6: exportado desde esa zona
       return d;
     });
     const nuevo = {
@@ -349,7 +355,14 @@
         normalizarRuta(original.formato) === normalizarRuta(datos.formato) ? original.formato : datos.formato,
       plantilla: original && "plantilla" in original ? original.plantilla : null,
     };
-    if (pendientes.length) nuevo.dxf = dxfParaGuardar(pendientes, original);
+    if (pendientes.length || conZona.length) {
+      nuevo.dxf = dxfParaGuardar(pendientes.map((c) => c.bloque.dxf).concat(dxfsZonas), original);
+      const zonas = zonasParaGuardar(conZona);
+      for (const d of nuevo.dxf) {
+        if (zonas.has(d.id)) d.zonas = zonas.get(d.id);
+        else delete d.zonas;
+      }
+    }
     nuevo.detalles = detalles;
     if (extra.ortofoto) {
       const o = O.ortofotoParaGuardar(extra.ortofoto);
@@ -370,8 +383,9 @@
     if (v2) nuevo.version = 2;
     if (pendientes.length) nuevo.version = 3;
     if (extra.ortofoto) nuevo.version = 5; // la 4 (ortofoto en todos) se migra a la 5 al guardar
+    if (conZona.length) nuevo.version = 6; // zonas del Model Space
     // No se baja de versión (un plano 3 sin bloques pendientes sigue siendo válido).
-    if (original && [2, 3, 4, 5].includes(original.version) &&
+    if (original && [2, 3, 4, 5, 6].includes(original.version) &&
         original.version > nuevo.version) nuevo.version = original.version;
     if (!original) return nuevo;
     // Mismo orden de claves que el original; lo que no estaba, al final.
@@ -388,9 +402,9 @@
   }
 
   /** La lista "dxf": las entradas del plano abierto que no cambiaron salen tal como vinieron. */
-  function dxfParaGuardar(pendientes, original) {
+  function dxfParaGuardar(entradas, original) {
     const previas = original && Array.isArray(original.dxf) ? original.dxf : [];
-    return B.listaDxf(pendientes.map((c) => c.bloque.dxf)).map((d) => {
+    return B.listaDxf(entradas).map((d) => {
       const previa = previas.find((x) => esObjeto(x) && x.id === d.id && x.sha256 === d.sha256);
       return previa ? JSON.parse(JSON.stringify(previa)) : d;
     });
@@ -486,11 +500,12 @@
     if (!esObjeto(plano)) {
       return vacio(["El plano debe ser un objeto JSON {...}."]);
     }
-    if (![1, 2, 3, 4, 5].includes(plano.version)) {
+    if (![1, 2, 3, 4, 5, 6].includes(plano.version)) {
       errores.push("version: versión " + JSON.stringify(plano.version) +
-        " no soportada; el editor entiende las versiones 1, 2, 3, 4 y 5.");
+        " no soportada; el editor entiende las versiones 1 a 6.");
     }
-    const v5 = plano.version === 5;
+    const v6 = plano.version === 6; // zonas del Model Space (Fase 10e3)
+    const v5 = plano.version === 5 || v6;
     const v4 = plano.version === 4 || v5;
     const v3 = plano.version === 3 || v4; // cada versión incluye todo lo de la anterior
     const v2 = plano.version === 2 || v3;
@@ -501,7 +516,8 @@
     if (!v3 && plano.dxf !== undefined) {
       errores.push("dxf: solo existe en la versión 3 del plano (use \"version\": 3).");
     }
-    const dxfs = v3 && plano.dxf !== undefined ? B.leerListaDxf(plano.dxf, errores) : new Map();
+    const dxfs = v3 && plano.dxf !== undefined ? B.leerListaDxf(plano.dxf, errores, { v6 }) : new Map();
+    const zonas = v6 ? B.leerZonas(plano.dxf, dxfs, errores) : [];
     for (const clave of ["rotulo", "rosa_vientos"]) {
       if (!v2 && plano[clave] !== undefined) {
         errores.push(clave + ": solo existe en la versión 2 del plano (use \"version\": 2).");
@@ -517,7 +533,8 @@
       avisos.push("El plano usa el formato '" + plano.formato + "' y el editor '" +
         datos.formato + "': se usará el del editor.");
     }
-    if (!Array.isArray(plano.detalles) || plano.detalles.length === 0) {
+    // Versión 6: un plano solo con zonas borrador no tiene detalles todavía.
+    if (!Array.isArray(plano.detalles) || (plano.detalles.length === 0 && !zonas.length)) {
       errores.push("detalles: se esperaba una lista con al menos un detalle.");
       return vacio(errores);
     }
@@ -541,7 +558,7 @@
         return;
       }
       ids.add(item.id);
-      if (v3 && "origen" in item) { // bloque de un DXF sin exportar
+      if (v3 && "origen" in item && !(v6 && "manifiesto" in item)) { // bloque de un DXF sin exportar
         const b = B.leerPendiente(item, donde + " ('" + item.id + "')", dxfs, errores);
         if (!b) return;
         const pagina = B.paginaMm(b.bloque.tamano_m, b.escala, b.bloque.dxf.margen_mm);
@@ -596,6 +613,14 @@
       // original / posOriginal: para guardar el detalle tal como vino si no se mueve (4.3a).
       const colocacion = { id: item.id, detalle: detalle, pos: ajustada, original: item,
         posOriginal: ajustada[0] === pos[0] && ajustada[1] === pos[1] ? ajustada.slice() : null };
+      if (item.origen !== undefined) { // versión 6: exportado desde una zona del Model Space
+        const z = v6 && esObjeto(item.origen) ? zonas.find((x) => x.nombre === item.origen.zona) : null;
+        if (!z) {
+          errores.push(donde + ".origen: se esperaba {\"zona\": <nombre de una zona de la lista \"dxf\">}.");
+          return;
+        }
+        colocacion.zona = zonaDeColocacion(z);
+      }
       if (item.etiqueta_escala === false) colocacion.etiqueta_escala = false;
       colocaciones.push(colocacion);
     });
@@ -615,11 +640,58 @@
       }
     }
     if (errores.length) return vacio(errores);
+    // Versión 6: las zonas que ningún detalle nombra son borradores (vuelven a la hoja).
+    const exportadas = new Set(colocaciones.filter((c) => c.zona).map((c) => c.zona.nombre));
+    for (const z of zonas) {
+      if (exportadas.has(z.nombre)) continue;
+      if (colocaciones.some((c) => c.id === z.nombre)) {
+        errores.push("zonas: '" + z.nombre + "' tiene el mismo nombre que un detalle del plano.");
+        continue;
+      }
+      const pagina = B.paginaMm(z.tamano_m, z.escala, z.dxf.margen_mm);
+      const centro = B.centroLimitado(z.centro, pagina, zona);
+      colocaciones.push({ id: z.nombre, escala: z.escala, centro, bloque: Object.assign(zonaDeColocacion(z).bloque,
+        { sugerida: B.escalaSugerida(z.tamano_m, z.dxf.margen_mm, zona) }) });
+    }
+    if (errores.length) return vacio(errores);
     if (ortofoto && plano.version === 4) {
       avisos.push("Plano versión 4: la ortofoto iba detrás de todos los detalles. Ahora se elige por " +
         "detalle («Usar ortofoto»): quedan todos marcados. Se guardará en versión 5.");
     }
     return { colocaciones, errores, avisos, rosa, rotulo, ortofoto, original: plano };
+  }
+
+  /**
+   * Lo que guarda una colocación de una zona leída del plano: {nombre, rect, capas, excluir,
+   * modo, desmarcadas, tamano_m, dxf} y, para un borrador, `bloque` (como agregarZona del editor).
+   */
+  function zonaDeColocacion(z) {
+    const datosZona = { rect: z.rect.slice(), capas: z.capas, excluir: z.excluir,
+      modo: z.capas ? "solo" : "excluir", desmarcadas: (z.excluir || []).slice() };
+    return Object.assign({ nombre: z.nombre, tamano_m: z.tamano_m.slice(), dxf: z.dxf }, datosZona, {
+      bloque: { dxf: z.dxf, nombre: z.nombre, etiqueta: z.nombre, handle: null, ocurrencia: 1, total_ocurrencias: 1,
+        tamano_m: z.tamano_m.slice(), caja_exacta: true, sugerida: null, escalas: B.ESCALAS, zona: datosZona } });
+  }
+
+  /** Las zonas del plano para guardar: por id de DXF, la lista "zonas" (versión 6). */
+  function zonasParaGuardar(colocaciones) {
+    const porDxf = new Map();
+    for (const c of colocaciones) {
+      let z;
+      if (c.bloque && c.bloque.zona) { // borrador: su escala y su centro
+        z = { dxf: c.bloque.dxf, guardar: B.zonaParaGuardar(Object.assign({ nombre: c.bloque.nombre,
+          tamano_m: c.bloque.tamano_m }, c.bloque.zona), c.escala, c.centro) };
+      } else if (c.zona && c.detalle) { // exportada: la escala y el centro del detalle de hoy
+        const t = c.detalle.tamano_pagina_mm;
+        z = { dxf: c.zona.dxf, guardar: B.zonaParaGuardar(c.zona, c.detalle.escala,
+          [c.pos[0] + t[0] / 2, c.pos[1] + t[1] / 2]) };
+      } else {
+        continue;
+      }
+      if (!porDxf.has(z.dxf.id)) porDxf.set(z.dxf.id, []);
+      porDxf.get(z.dxf.id).push(z.guardar);
+    }
+    return porDxf;
   }
 
   return {

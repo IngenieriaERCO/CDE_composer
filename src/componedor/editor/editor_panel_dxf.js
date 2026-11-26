@@ -577,7 +577,9 @@
     const pendientes = ui ? ui.colocaciones().filter((c) => c.bloque) : [];
     const bloques = pendientes.length;
     const zonas = pendientes.filter((c) => c.bloque.zona).length;
-    if (!bloques && !x.trabajos.length) return null;
+    // «Volver a exportar zonas» (Fase 10e4): todas las zonas del plano, borradores y exportadas.
+    const todasLasZonas = ui ? ui.colocaciones().filter((c) => (c.bloque && c.bloque.zona) || (!c.bloque && c.zona)).length : 0;
+    if (!bloques && !todasLasZonas && !x.trabajos.length) return null;
     const caja = nodo("div", { class: "exportar-dxf" });
     caja.appendChild(nodo("div", { class: "nombre" }, "Exportar"));
     const enCurso = x.trabajos.some(enMarcha);
@@ -586,8 +588,17 @@
     boton.disabled = !bloques || enCurso || x.pidiendo;
     boton.title = "Un paquete (PDF + manifiesto) por bloque y por zona, a su escala, en la carpeta de paquetes " +
       "del DXF; cada uno queda como detalle en el lugar de su borrador";
-    boton.addEventListener("click", exportar);
+    boton.addEventListener("click", () => exportar(false));
     caja.appendChild(boton);
+    if (todasLasZonas) {
+      const otra = nodo("button", { type: "button", id: "btn-reexportar-zonas" },
+        "Volver a exportar zonas (" + todasLasZonas + ")");
+      otra.disabled = enCurso || x.pidiendo;
+      otra.title = "Exporta otra vez TODAS las zonas del plano (para cuando cambió el DXF), cada una con su " +
+        "nombre, capas y escala, en el lugar donde está hoy en la hoja. Primero «Volver a cargar» el DXF.";
+      otra.addEventListener("click", () => exportar(true));
+      caja.appendChild(otra);
+    }
     if (vista.estilo) {
       caja.appendChild(nodo("div", { class: "dato estilo-exportar" }, "Con el estilo: " + D.textoEstilo(estiloElegido())));
     }
@@ -631,13 +642,15 @@
     return caja;
   }
 
-  async function exportar() {
+  /** «Exportar bloques y zonas» o (soloZonas) «Volver a exportar zonas»: todas las zonas del plano. */
+  async function exportar(soloZonas) {
     const ui = UI();
     if (!ui) return;
     const catalogo = vista.estado && vista.estado.dxf;
-    const { pedidos, omitidos } = B.pedidosExportar(ui.colocaciones(), catalogo, ui.zona());
+    const { pedidos, omitidos } = soloZonas ? { pedidos: [], omitidos: [] }
+      : B.pedidosExportar(ui.colocaciones(), catalogo, ui.zona());
     const zonas = window.EditorZonas
-      ? window.EditorZonas.pedidosZonas(ui.colocaciones(), catalogo, ui.zona(), vista.estilo || null)
+      ? window.EditorZonas.pedidosZonas(ui.colocaciones(), catalogo, ui.zona(), vista.estilo || null, !!soloZonas)
       : { pedidos: [], omitidos: [] };
     x.omitidos = omitidos.concat(zonas.omitidos);
     x.trabajos = x.trabajos.filter(enMarcha); // los terminados de antes ya no hacen falta

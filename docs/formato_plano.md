@@ -1,4 +1,4 @@
-# Formato de plano.json (versiones 1 a 5)
+# Formato de plano.json (versiones 1 a 6)
 
 Un `plano.json` dice **qué detalles van en una hoja y dónde** y, desde la versión 2, **qué
 se escribe en el rótulo** y **dónde va la rosa de los vientos**. Lo lee el comando
@@ -27,6 +27,9 @@ El editor HTML (`editor.html`) lo escribe arrastrando y soltando, pero el compon
   plano, detrás de **todos** los detalles. Ver [Ortofoto de fondo](#ortofoto-de-fondo-versión-4).
 - **Versión 5** (ortofoto por detalle): la versión 4 más `"ortofoto": true` en cada detalle que la
   lleva detrás. Ver [Ortofoto por detalle](#ortofoto-por-detalle-versión-5).
+- **Versión 6** (zonas del Model Space, Fase 10e3): la versión 5 más las **zonas** de cada DXF
+  (`dxf[i].zonas`) y, en un detalle exportado desde una zona, `"origen": {"zona": nombre}`. El
+  editor la escribe solo cuando el plano tiene zonas. Ver [Zonas del Model Space](#zonas-del-model-space-versión-6).
 
 ## Ejemplo (versión 2)
 
@@ -664,6 +667,46 @@ Cada vez que compone con el original, `componer` deja al lado del plano.json la 
 Si la copia ya está al día no se reescribe. Si cambió, la nueva se escribe aparte y reemplaza a
 la vieja (es un archivo generado, como el PDF). Con ella se puede volver a componer el plano en
 otro PC sin la ortofoto original, que puede pesar varios GB.
+
+## Zonas del Model Space (versión 6)
+
+Una **zona** es un rectángulo del Model Space de un DXF que se exporta como detalle (Fase 10). El
+plano guarda todas las zonas, exportadas o no, en la entrada de su DXF:
+
+```json
+"dxf": [{"id": "d1", "archivo": "../data/input/PRGD.dxf", "sha256": "97dc…", "unidades": "m",
+         "margen_mm": 5,
+         "zonas": [
+           {"nombre": "Zona_01", "zona": [4736058.98, 2234185.8, 4736059.65, 2234186.45],
+            "capas": null, "excluir": ["EDD_COTAS"], "escala": "1:20",
+            "centro_mm": [342.55, 297.0], "tamano_m": [0.67, 0.65]},
+           {"nombre": "Zona_02", "zona": [4736058.98, 2234185.8, 4736059.65, 2234186.45],
+            "capas": ["0", "_001_*"], "excluir": null, "escala": "1:10",
+            "centro_mm": [520.0, 180.0], "tamano_m": [0.67, 0.65]}]}],
+"detalles": [
+  {"id": "Zona_01", "manifiesto": "../data/input/dxf/PRGD/Zona_01_1-20_pb4a909_t.manifest.json",
+   "posicion_mm": [320.8, 275.75], "origen": {"zona": "Zona_01"}}]
+```
+
+| Campo | Qué es |
+|---|---|
+| `nombre` | El del paquete (`<nombre>_1-N…`). Único en el plano. |
+| `zona` | `[xmin, ymin, xmax, ymax]` en el Model Space, en unidades del dibujo. |
+| `capas` / `excluir` | El filtro de capas: «solo estas» o «todas menos estas» (null: todas). Nunca las dos. |
+| `escala` | «1:N». |
+| `centro_mm` | Centro de la PÁGINA en la hoja (mm de papel, Y hacia arriba). |
+| `tamano_m` | Tamaño real de la zona (para la caja en la hoja). |
+
+- **Exportada**: un detalle normal (`manifiesto`, `posicion_mm`) con `"origen": {"zona":
+  "<nombre>"}`. Su zona guarda la escala y el centro que tiene hoy el detalle (si se movió, el
+  centro nuevo).
+- **Borrador** (sin exportar): una zona que ningún detalle nombra. El editor la muestra en la
+  hoja al abrir el plano; `componer` **no compone** el plano hasta exportarla y dice cuáles
+  faltan. Un plano solo con borradores puede tener `"detalles": []`.
+- **Volver a exportar zonas** (editor): exporta otra vez todas las zonas (borradores y
+  exportadas) con su nombre, capas y escala, cada una centrada donde está hoy. Sirve para cuando
+  cambia el DXF: «Cargar DXF» otra vez (el mismo archivo) y el botón.
+- Una zona no puede estar en dos detalles; dos zonas no pueden tener el mismo nombre.
 
 ## Qué hace `componer` con el plano
 

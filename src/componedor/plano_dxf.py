@@ -76,8 +76,10 @@ def _desconocidas(valor: dict, validas: set[str], donde: str, errores: list[str]
                        f"{', '.join(sorted(validas))})")
 
 
-def leer_lista_dxf(valor, carpeta: Path, errores: list[str]) -> dict[str, DxfPlano]:
-    """"dxf": [...] → {id: DxfPlano}. Los problemas van a `errores`."""
+def leer_lista_dxf(valor, carpeta: Path, errores: list[str],
+                   v6: bool = False) -> dict[str, DxfPlano]:
+    """"dxf": [...] → {id: DxfPlano}. Los problemas van a `errores`. Desde la versión 6, cada
+    entrada puede traer "zonas" (las lee plano_zonas.py)."""
     if not isinstance(valor, list):
         errores.append("dxf: se esperaba una lista [{\"id\", \"archivo\", \"sha256\", ...}]")
         return {}
@@ -88,7 +90,10 @@ def leer_lista_dxf(valor, carpeta: Path, errores: list[str]) -> dict[str, DxfPla
             errores.append(f"{donde}: se esperaba un objeto {{...}}")
             continue
         n = len(errores)
-        _desconocidas(item, CLAVES_DXF, donde, errores)
+        if "zonas" in item and not v6:
+            errores.append(f"{donde}.zonas: solo existe en la versión 6 del plano (use "
+                           f"\"version\": 6)")
+        _desconocidas({k: v for k, v in item.items() if k != "zonas"}, CLAVES_DXF, donde, errores)
         ident = item.get("id")
         if not _texto(ident):
             errores.append(f"{donde}.id: se esperaba un texto no vacío")

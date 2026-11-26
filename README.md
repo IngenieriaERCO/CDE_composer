@@ -385,7 +385,9 @@ no cabe en el A1) y un **nombre** opcional (vacío: `Zona_01`, `Zona_02`…). **
 hoja»** la pone en el A1 como **borrador**: con su tamaño real a esa escala y la
 vista previa encima, se mueve y cambia de escala como un bloque, y **«Exportar bloques y zonas»**
 la publica en `data/input/dxf/<DXF>/` y la deja como detalle real en el mismo sitio (y en
-**«Detalles disponibles»**). Los borradores todavía no se guardan en el plano.json (subfase 10e3).
+**«Detalles disponibles»**). Las zonas se guardan en el plano.json (versión 6: los borradores
+reaparecen al abrirlo) y **«Volver a exportar zonas»** las exporta otra vez, cada una en su lugar,
+cuando cambia el DXF.
 Lo que cruza el borde de la zona se corta en el PDF (máscara de recorte, todo vector). Con un
 Exportador 1.2, la vista previa del Model Space se prepara en segundo plano desde la carga (el
 editor dice «Preparando la vista previa… · lleva N s» y luego «lista»); desde entonces cada vista

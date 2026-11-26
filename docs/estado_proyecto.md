@@ -3072,6 +3072,77 @@ Selección; no dibuja ninguna imagen de foto; sin errores de JavaScript.
 en otro sistema) y `test_editor_ortofoto_js` (+1: los textos del aviso con el caso real, en parte,
 y el rumbo). **1485 pasan** y 1 se salta (antes 1482). ruff: los mismos 173 hallazgos.
 
+10e1 y 10e2: commit 33a5e6d; aviso de la ortofoto: commit 14c3a9a (dev, con push, 2026-11-25).
+
+### Zonas del Model Space — Fase 10e3 y 10e4: guardar las zonas y «Volver a exportar zonas» (2026-11-25, sin commit)
+
+**Qué se hizo**
+- **plano.json versión 6** (`plano_zonas.py`, nuevo; `plano.py`, `plano_dxf.py`):
+  - `dxf[i].zonas[]` con `{nombre, zona, capas, excluir, escala, centro_mm, tamano_m}`;
+  - un detalle exportado lleva además `"origen": {"zona": nombre}`;
+  - una zona que ningún detalle nombra es un **borrador**: `Plano.borradores`, y `componer` no
+    compone y dice cuáles faltan (`texto_zonas_sin_exportar`);
+  - se valida: campos, capas o excluir (no las dos), escala, nombres únicos, una zona por
+    detalle y `origen` hacia una zona que existe;
+  - un plano v6 solo con borradores puede tener `"detalles": []`;
+  - los planos 1 a 5 no cambian: «zonas» u «origen» en un detalle exportado son de la 6.
+- Editor:
+  - `editor_bloques.leerZonas` y `zonaParaGuardar`;
+  - `editor_logica.leerPlano` lee la v6: los borradores vuelven a la hoja como zonas borrador
+    (centro dentro del área) y los detalles exportados recuerdan su zona (`c.zona`);
+  - `objetoPlano` escribe la v6 solo si hay zonas: los borradores con su escala y centro, y las
+    exportadas con la escala del detalle y el centro de su página de hoy; abrir y guardar sin
+    tocar nada da el mismo JSON;
+  - `editor_ui`: guardar incluye los borradores; un detalle exportado conserva su zona (y la
+    pasa al volver a exportar); «Cargar DXF» otra vez pasa también las zonas exportadas al DXF
+    nuevo; Selección dice de qué zona viene un detalle.
+- **«Volver a exportar zonas (N)»** (`editor_panel_dxf.js`; `editor_zonas.pedidosZonas(…,
+  todas)` y `datosParaExportar`): todas las zonas del plano (borradores y exportadas), con su
+  nombre, capas y escala, centradas donde están hoy. `aplicarExportado` cambia también un detalle
+  exportado por el nuevo, en su lugar.
+
+**Cómo probarlo**:
+1. `Abrir editor.bat` → «Cargar DXF» → «Zonas del modelo…» → dibujar y «Agregar a la hoja» (una
+   o varias).
+2. **Guardar plano** y cerrar el editor. Abrirlo de nuevo, «Cargar DXF» (el mismo) y **Abrir
+   plano.json**: los borradores vuelven a la hoja.
+3. «Exportar bloques y zonas» y guardar: el plano guarda los detalles con su zona.
+4. Si el DXF cambia: «Cargar DXF» (el mismo archivo) → **«Volver a exportar zonas (N)»**. Cada
+   zona sale otra vez en su lugar de hoy, y los paquetes viejos van a `_para_borrar/`.
+
+**Verificación en Edge** (`data/verificacion/verificar_zonas_plano.mjs`; capturas y los plano.json
+en `data/verificacion/zonas_plano_salida/`). **Todo OK**, sin errores de JavaScript.
+- Falso, con un DXF que cambia de verdad:
+  - guardar dos borradores da un plano v6 que Python lee con 2 borradores;
+  - al recargar la página y abrirlo vuelven las dos zonas borrador, con su vista previa, misma
+    escala y mismo centro;
+  - «Exportar bloques y zonas» las deja en su sitio; el plano guarda los 2 detalles con
+    `origen` y Python lee 0 borradores;
+  - se mueve Zona_02 y se vuelve a cargar el DXF cambiado (aviso de que las zonas pasan al DXF
+    nuevo);
+  - «Volver a exportar zonas (2)» da paquetes nuevos, mueve los viejos a `_para_borrar`, deja
+    Zona_01 en su lugar y Zona_02 en el lugar donde se movió, y el plano guarda el centro nuevo
+    y el SHA-256 nuevo.
+- PRGD (mismo DXF; no se toca el archivo del usuario): el mismo ciclo con la sección a 1:20 y
+  1:10 da todo OK. «Volver a exportar» sale de la caché («ya estaba publicado») con cada zona en
+  su lugar de hoy.
+
+**Pruebas**: **1504 pasan** y 1 se salta (antes 1485). ruff: los mismos 173 hallazgos.
+- `test_plano_v6` (14):
+  - leer zonas exportadas y borradores;
+  - los planos viejos siguen igual;
+  - 9 zonas que no valen;
+  - el `origen` (desconocido, campo raro, la misma zona en dos detalles);
+  - componer no compone con borradores y sí compone las exportadas.
+- `test_editor_plano_v6_js` (5):
+  - el editor escribe la v6 y Python la lee;
+  - solo borradores, y al abrirlo vuelven;
+  - abrir y guardar sin tocar nada da el mismo JSON;
+  - planos mal escritos y uno viejo v3;
+  - «Volver a exportar» incluye las exportadas, con la escala del detalle y el centro de hoy.
+- `test_plano`, `test_editor_js` y `test_editor_ortofoto_js`: el mensaje de versiones (1 a
+  6).
+
 ### Verificación final de componer: contra los trazos del PDF del detalle (2026-11-25)
 
 **Reporte**: `Pruebadecambio.json` no componía: «detalle 'Perfil_longitudinal_cercha': el dibujo

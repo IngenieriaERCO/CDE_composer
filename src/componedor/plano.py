@@ -20,6 +20,11 @@ ver plano_dxf.py. Se lee igual, pero `componer` no la compone hasta que estén e
 Versión 4 (ortofoto) = versión 3 más "ortofoto": la ortofoto de fondo (plano_ortofoto.py),
 detrás de TODOS los detalles.
 
+Versión 6 (zonas del Model Space, Fase 10e3) = versión 5 más "zonas" en las entradas de "dxf"
+y, en un detalle exportado desde una zona, "origen": {"zona": "<nombre>"}: ver plano_zonas.py.
+Una zona que ningún detalle nombra es un borrador: `componer` no compone el plano hasta
+exportarla.
+
 Versión 5 (ortofoto por detalle) = versión 4 más, en cada detalle (exportado o pendiente),
 "ortofoto": true para que lleve la ortofoto detrás (sin la clave: false). Un plano versión 4
 con ortofoto se lee como si todos los detalles la usaran (lo que hacía la versión 4): así se
@@ -43,13 +48,15 @@ from componedor.plano_dxf import (
     leer_pendiente,
 )
 from componedor.plano_ortofoto import OrtofotoPlano, leer_ortofoto
+from componedor.plano_zonas import ZonaPlano, leer_origen_zona, leer_zonas
 
-VERSIONES_SOPORTADAS = (1, 2, 3, 4, 5)
+VERSIONES_SOPORTADAS = (1, 2, 3, 4, 5, 6)
 CLAVES_PLANO = {"version", "formato", "plantilla", "detalles"}
 CLAVES_DETALLE = {"id", "manifiesto", "posicion_mm", "centrar"}
 CLAVES_PLANO_V2 = CLAVES_PLANO | {"rotulo", "rosa_vientos"}
 CLAVES_DETALLE_V2 = CLAVES_DETALLE | {"etiqueta_escala"}
 CLAVES_DETALLE_V5 = CLAVES_DETALLE_V2 | {"ortofoto"}
+CLAVES_DETALLE_V6 = CLAVES_DETALLE_V5 | {"origen"}  # exportado desde una zona: {"zona": nombre}
 CLAVES_PLANO_V3 = CLAVES_PLANO_V2 | {"dxf"}
 CLAVES_PLANO_V4 = CLAVES_PLANO_V3 | {"ortofoto"}
 CLAVES_ROSA = {"visible", "posicion_mm"}
@@ -67,6 +74,7 @@ class DetallePlano:
     centrar: bool  # True: centrado en el área de dibujo (posicion_mm es None)
     etiqueta_escala: bool = True  # versión 2: false = sin etiqueta "ESC: 1:N"
     ortofoto: bool = False  # versión 5: lleva la ortofoto detrás (versión 4: todos)
+    zona: str | None = None  # versión 6: exportado desde esa zona (su nombre)
 
 
 @dataclass(frozen=True)
@@ -87,10 +95,17 @@ class Plano:
     dxf: tuple[DxfPlano, ...] = ()  # versión 3: los DXF de los bloques pendientes
     pendientes: tuple[BloquePendiente, ...] = ()  # versión 3: bloques sin exportar
     ortofoto: OrtofotoPlano | None = None  # versión 4: la ortofoto de fondo
+    zonas: tuple[ZonaPlano, ...] = ()  # versión 6: las zonas del Model Space del plano
 
     @property
     def carpeta(self) -> Path:
         return self.ruta.parent
+
+    @property
+    def borradores(self) -> tuple[ZonaPlano, ...]:
+        """Las zonas que ningún detalle nombra: todavía sin exportar."""
+        exportadas = {d.zona for d in self.detalles if d.zona}
+        return tuple(z for z in self.zonas if z.nombre not in exportadas)
 
 
 def leer_plano(ruta: Path | str) -> Plano:
@@ -112,7 +127,8 @@ def leer_plano(ruta: Path | str) -> Plano:
 
     errores: list[str] = []
     carpeta = ruta.parent
-    v5 = datos.get("version") == 5
+    v6 = datos.get("version") == 6  # zonas del Model Space (plano_zonas.py)
+    v5 = datos.get("version") == 5 or v6
     v4 = datos.get("version") == 4 or v5
     v3 = datos.get("version") == 3 or v4  # cada versión incluye todo lo de la anterior
     v2 = datos.get("version") == 2 or v3
@@ -137,27 +153,31 @@ def leer_plano(ruta: Path | str) -> Plano:
         errores.append(f"version: se esperaba un número entero; tiene {_tipo(version)}")
     elif version not in VERSIONES_SOPORTADAS:
         errores.append(f"version: versión {version} no soportada; el componedor entiende las "
-                       f"versiones 1, 2, 3, 4 y 5")
+                       f"versiones 1 a 6")
 
     formato = _ruta(datos, "formato", carpeta, errores, obligatoria=True)
     plantilla = _ruta(datos, "plantilla", carpeta, errores, obligatoria=False)
 
-    dxfs = leer_lista_dxf(datos["dxf"], carpeta, errores) if v3 and "dxf" in datos else {}
+    dxfs = leer_lista_dxf(datos["dxf"], carpeta, errores, v6) if v3 and "dxf" in datos else {}
+    zonas = _zonas(datos.get("dxf"), dxfs, errores) if v6 else []
+    nombres_zonas = {z.nombre for z in zonas}
     detalles, pendientes = [], []
     lista = datos.get("detalles")
     if "detalles" not in datos:
         errores.append("detalles: falta el campo")
     elif not isinstance(lista, list):
         errores.append(f"detalles: se esperaba una lista; tiene {_tipo(lista)}")
-    elif not lista:
+    elif not lista and not (v6 and zonas):  # versión 6: solo zonas borrador, todavía sin detalles
         errores.append("detalles: la lista está vacía; el plano necesita al menos un detalle")
     else:
         vistos: dict[str, int] = {}
         for i, item in enumerate(lista):
-            if v3 and isinstance(item, dict) and "origen" in item:
+            exportada = isinstance(item, dict) and "manifiesto" in item
+            if v3 and isinstance(item, dict) and "origen" in item and not (v6 and exportada):
                 detalle = leer_pendiente(item, f"detalles[{i}]", dxfs, errores, v5)
             else:
-                detalle = _detalle(item, f"detalles[{i}]", carpeta, errores, v2, v5)
+                detalle = _detalle(item, f"detalles[{i}]", carpeta, errores, v2, v5,
+                                   nombres_zonas if v6 else None)
             # El id repetido se informa aunque el detalle tenga otros problemas.
             ident = item.get("id") if isinstance(item, dict) else None
             if isinstance(ident, str) and ident.strip():
@@ -189,6 +209,13 @@ def leer_plano(ruta: Path | str) -> Plano:
         detalles = [replace(d, ortofoto=True) for d in detalles]
         pendientes = [replace(d, ortofoto=True) for d in pendientes]
 
+    vistas: dict[str, str] = {}
+    for d in detalles:
+        if d.zona in vistas:
+            errores.append(f"detalle '{d.id}': la zona '{d.zona}' ya la usa el detalle "
+                           f"'{vistas[d.zona]}' (cada zona da un solo paquete)")
+        elif d.zona:
+            vistas[d.zona] = d.id
     if errores:
         n = len(errores)
         raise PlanoInvalido(
@@ -196,7 +223,23 @@ def leer_plano(ruta: Path | str) -> Plano:
             + "\n".join(f"- {e}" for e in errores)
         )
     return Plano(ruta, version, formato, plantilla, tuple(detalles), rotulo, rosa,
-                 tuple(dxfs.values()), tuple(pendientes), ortofoto)
+                 tuple(dxfs.values()), tuple(pendientes), ortofoto, tuple(zonas))
+
+
+def _zonas(lista, dxfs: dict, errores: list[str]) -> list[ZonaPlano]:
+    """Las "zonas" de las entradas de "dxf" (versión 6), con nombres únicos en el plano."""
+    zonas: list[ZonaPlano] = []
+    if not isinstance(lista, list):
+        return zonas
+    for i, item in enumerate(lista):
+        if isinstance(item, dict) and "zonas" in item and item.get("id") in dxfs:
+            zonas += leer_zonas(item["zonas"], item["id"], f"dxf[{i}].zonas", errores)
+    vistos: set[str] = set()
+    for z in zonas:
+        if z.nombre in vistos:
+            errores.append(f"zonas: el nombre '{z.nombre}' está repetido (cada zona es un paquete)")
+        vistos.add(z.nombre)
+    return zonas
 
 
 def _rosa(valor, errores: list[str]) -> RosaPlano | None:
@@ -224,12 +267,16 @@ def _rosa(valor, errores: list[str]) -> RosaPlano | None:
 
 
 def _detalle(item, donde: str, carpeta: Path, errores: list[str],
-             v2: bool = False, v5: bool = False) -> DetallePlano | None:
+             v2: bool = False, v5: bool = False,
+             zonas: set[str] | None = None) -> DetallePlano | None:
+    """Un detalle exportado. `zonas`: los nombres de las zonas del plano (versión 6; con ellas
+    se admite "origen": {"zona": nombre})."""
     if not isinstance(item, dict):
         errores.append(f"{donde}: se esperaba un objeto {{...}}; tiene {_tipo(item)}")
         return None
     n_errores = len(errores)
-    validas = CLAVES_DETALLE_V5 if v5 else CLAVES_DETALLE_V2 if v2 else CLAVES_DETALLE
+    validas = (CLAVES_DETALLE_V6 if zonas is not None else CLAVES_DETALLE_V5 if v5
+               else CLAVES_DETALLE_V2 if v2 else CLAVES_DETALLE)
     for clave in sorted(set(item) - validas):
         if clave == "ortofoto":
             errores.append(f"{donde}.ortofoto: solo existe en la versión 5 del plano "
@@ -277,9 +324,13 @@ def _detalle(item, donde: str, carpeta: Path, errores: list[str],
     if not isinstance(usa, bool):
         errores.append(f"{donde}.ortofoto: se esperaba true o false; tiene {_tipo(usa)}")
 
+    zona = None
+    if zonas is not None and "origen" in item:
+        zona = leer_origen_zona(item["origen"], f"{donde}.origen", zonas, errores)
+
     if len(errores) > n_errores:
         return None
-    return DetallePlano(ident, manifiesto, posicion, bool(centrar), etiqueta, usa)
+    return DetallePlano(ident, manifiesto, posicion, bool(centrar), etiqueta, usa, zona)
 
 
 def _ruta(datos: dict, clave: str, carpeta: Path, errores: list[str], obligatoria: bool,

@@ -295,21 +295,38 @@
   }
 
   const esZona = (c) => !!(c && c.bloque && c.bloque.zona);
+  const esZonaExportada = (c) => !!(c && !c.bloque && c.zona && c.detalle);
+
+  /**
+   * Lo que hace falta para exportar una zona del plano: {dxf, tamano_m, nombre, zona: {rect, capas,
+   * excluir}, escala, centro}. Un borrador: su escala y su centro. Una zona ya exportada (Fase
+   * 10e4, «Volver a exportar zonas»): la escala de su detalle y el centro de su página de hoy.
+   */
+  function datosParaExportar(c) {
+    if (esZona(c)) {
+      return { dxf: c.bloque.dxf, tamano_m: c.bloque.tamano_m, nombre: c.bloque.nombre, zona: c.bloque.zona,
+        escala: c.escala, centro: c.centro };
+    }
+    const t = c.detalle.tamano_pagina_mm;
+    return { dxf: c.zona.dxf, tamano_m: c.zona.tamano_m, nombre: c.zona.nombre, zona: c.zona,
+      escala: c.detalle.escala, centro: [c.pos[0] + t[0] / 2, c.pos[1] + t[1] / 2] };
+  }
 
   /**
    * Los pedidos de /api/exportar/zona de las zonas borrador del plano: {pedidos: [{id, cuerpo}],
-   * omitidos: [{id, motivo}]}. Las mismas reglas que los bloques (editor_bloques.pedidosExportar):
+   * omitidos: [{id, motivo}]}. `todas`: también las zonas ya exportadas («Volver a exportar
+   * zonas», Fase 10e4). Las mismas reglas que los bloques (editor_bloques.pedidosExportar):
    * el DXF cargado y su sesión, que quepa y no se salga del área de dibujo. El cuerpo lleva el
    * centro del borrador (centro_mm): el detalle exportado queda donde estaba.
    */
-  function pedidosZonas(colocaciones, catalogo, areaDibujo, estilo) {
+  function pedidosZonas(colocaciones, catalogo, areaDibujo, estilo, todas) {
     const pedidos = [];
     const omitidos = [];
     for (const c of colocaciones) {
-      if (!esZona(c)) continue;
-      const b = c.bloque;
-      const pagina = B.paginaMm(b.tamano_m, c.escala, b.dxf.margen_mm);
-      const e = B.estadoCaja(c.centro, pagina, areaDibujo);
+      if (!esZona(c) && !(todas && esZonaExportada(c))) continue;
+      const b = datosParaExportar(c);
+      const pagina = B.paginaMm(b.tamano_m, b.escala, b.dxf.margen_mm);
+      const e = B.estadoCaja(b.centro, pagina, areaDibujo);
       let motivo = null;
       if (!catalogo) motivo = "cargue «" + b.dxf.nombre + "» con «Cargar DXF»";
       else if (catalogo.dxf.sha256 !== b.dxf.sha256) {
@@ -317,15 +334,15 @@
           ? "el DXF cambió desde que se dibujó la zona: «Volver a cargar» primero"
           : "es de «" + b.dxf.nombre + "» y el cargado es «" + catalogo.dxf.nombre + "»";
       } else if (!catalogo.sesion_activa) motivo = "vuelva a cargar el DXF («Volver a cargar»)";
-      else if (!e.cabe) motivo = "no cabe a " + B.textoEscala(c.escala) + ": cambie la escala";
+      else if (!e.cabe) motivo = "no cabe a " + B.textoEscala(b.escala) + ": cambie la escala";
       else if (!e.dentro) motivo = "se sale del área de dibujo: muévala";
       if (motivo) {
         omitidos.push({ id: c.id, motivo });
         continue;
       }
       const z = b.zona;
-      const cuerpo = { zona: z.rect.slice(), escala: c.escala, nombre: b.nombre,
-        centro_mm: [Math.round(c.centro[0] * 100) / 100, Math.round(c.centro[1] * 100) / 100] };
+      const cuerpo = { zona: z.rect.slice(), escala: Math.round(b.escala), nombre: b.nombre,
+        centro_mm: [Math.round(b.centro[0] * 100) / 100, Math.round(b.centro[1] * 100) / 100] };
       if (z.capas) cuerpo.capas = z.capas.slice();
       if (z.excluir) cuerpo.excluir = z.excluir.slice();
       if (estilo) cuerpo.estilo = estilo;
@@ -375,7 +392,7 @@
   return { MIN_PX, RESOLUCION_MIN, MODOS, pxACad, cadAPx, cajaAPx, zonaDesdeArrastre, redondear,
     encuadrar, zoomEnPunto, desplazar, factorRueda, cajaDeImagen, necesitaVistaNitida, interseccion,
     grupoEnPunto, paginaZona, tamanoM, escalaSugerida, tamanoEnHoja, ordenarCapas, textoEstadoCad,
-    filtroCapas, textoFiltro, cuerpoPrevia, clavePrevia, limpiarNombre, esZona,
+    filtroCapas, textoFiltro, cuerpoPrevia, clavePrevia, limpiarNombre, esZona, esZonaExportada,
     pedidosZonas, zonasRepetidas, textoGrupo, textoTranscurrido,
     textoZona };
 });

@@ -223,7 +223,8 @@
   const r2 = (v) => Math.round(v * 100) / 100;
   const esObjeto = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
   const esNumero = (v) => typeof v === "number" && isFinite(v);
-  const CLAVES_DXF = ["archivo", "bytes", "id", "margen_mm", "sha256", "unidades"];
+  const CLAVES_DXF = ["archivo", "bytes", "id", "margen_mm", "sha256", "unidades", "zonas"];
+  const CLAVES_ZONA = ["capas", "centro_mm", "escala", "excluir", "nombre", "tamano_m", "zona"];
   const CLAVES_PENDIENTE = ["centro_mm", "etiqueta_escala", "id", "origen", "ortofoto"];
   const CLAVES_ORIGEN = ["bloque", "caja_exacta", "dxf", "escala", "handle", "ocurrencia", "tamano_m"];
 
@@ -247,8 +248,9 @@
   /** Nombre del archivo de una ruta del plano (con / o \). */
   const nombreArchivo = (ruta) => String(ruta).split(/[\\/]/).pop();
 
-  /** "dxf": [...] de un plano → Map(id → entrada). Problemas en `errores`. */
-  function leerListaDxf(lista, errores) {
+  /** "dxf": [...] de un plano → Map(id → entrada). Problemas en `errores`. opciones.v6: admite "zonas". */
+  function leerListaDxf(lista, errores, opciones) {
+    opciones = opciones || {};
     const dxfs = new Map();
     if (!Array.isArray(lista)) {
       errores.push("dxf: se esperaba una lista [{\"id\", \"archivo\", \"sha256\", ...}].");
@@ -266,6 +268,9 @@
         return errores.push(donde + ".sha256: se esperaba el SHA-256 del DXF (64 caracteres hexadecimales).");
       }
       if (!esNumero(d.margen_mm) || d.margen_mm < 0) return errores.push(donde + ".margen_mm: se esperaba un número ≥ 0.");
+      if (d.zonas !== undefined && !opciones.v6) {
+        return errores.push(donde + ".zonas: solo existe en la versión 6 del plano (use \"version\": 6).");
+      }
       dxfs.set(d.id, { id: d.id, archivo: d.archivo, sha256: d.sha256,
         bytes: typeof d.bytes === "number" ? d.bytes : null,
         unidades: typeof d.unidades === "string" ? d.unidades : null,
@@ -321,6 +326,57 @@
       etiqueta_escala: item.etiqueta_escala,
       ortofoto: item.ortofoto === true,
     };
+  }
+
+  /**
+   * Las "zonas" de las entradas "dxf" de un plano versión 6 (Fase 10e3) → [{nombre, rect, capas,
+   * excluir, escala, centro, tamano_m, dxf}] (dxf: la entrada de `dxfs`). Problemas en `errores`.
+   * Igual que plano_zonas.leer_zonas en Python.
+   */
+  function leerZonas(lista, dxfs, errores) {
+    const zonas = [];
+    if (!Array.isArray(lista)) return zonas;
+    lista.forEach((d, i) => {
+      if (!esObjeto(d) || d.zonas === undefined || !dxfs.has(d.id)) return;
+      if (!Array.isArray(d.zonas)) return errores.push("dxf[" + i + "].zonas: se esperaba una lista de zonas.");
+      d.zonas.forEach((z, j) => {
+        const donde = "dxf[" + i + "].zonas[" + j + "]";
+        if (!esObjeto(z)) return errores.push(donde + ": se esperaba un objeto {...}.");
+        const otra = desconocida(z, CLAVES_ZONA);
+        if (otra) return errores.push(donde + "." + otra + ": campo no reconocido.");
+        if (typeof z.nombre !== "string" || !z.nombre.trim()) return errores.push(donde + ".nombre: se esperaba un texto no vacío.");
+        const r = z.zona;
+        if (!Array.isArray(r) || r.length !== 4 || !r.every(esNumero) || !(r[2] > r[0] && r[3] > r[1])) {
+          return errores.push(donde + ".zona: se esperaba [xmin, ymin, xmax, ymax].");
+        }
+        const capas = (v) => v === null || v === undefined ? null
+          : Array.isArray(v) && v.every((c) => typeof c === "string" && c.trim()) ? v.slice() : undefined;
+        const solo = capas(z.capas);
+        const excluir = capas(z.excluir);
+        if (solo === undefined || excluir === undefined) return errores.push(donde + ": «capas» y «excluir» son listas de nombres o null.");
+        if (solo && excluir) return errores.push(donde + ": lleva «capas» y «excluir» a la vez.");
+        const n = leerEscala(z.escala);
+        if (!n) return errores.push(donde + ".escala: se esperaba «1:N».");
+        const c = z.centro_mm;
+        if (!Array.isArray(c) || c.length !== 2 || !c.every(esNumero)) return errores.push(donde + ".centro_mm: se esperaba [x, y] en mm.");
+        const t = z.tamano_m;
+        if (!Array.isArray(t) || t.length !== 2 || !t.every((v) => esNumero(v) && v > 0)) {
+          return errores.push(donde + ".tamano_m: se esperaba [ancho, alto] en m.");
+        }
+        if (zonas.some((x) => x.nombre === z.nombre)) return errores.push(donde + ".nombre: '" + z.nombre + "' está repetido.");
+        zonas.push({ nombre: z.nombre, rect: r.slice(), capas: solo, excluir, escala: n, centro: c.slice(),
+          tamano_m: t.slice(), dxf: dxfs.get(d.id) });
+      });
+    });
+    return zonas;
+  }
+
+  /** Una zona para la lista "zonas" del plano (versión 6). z: {nombre, rect, capas, excluir,
+   *  tamano_m}; escala: N; centro: [x, y] mm (centro de la página en la hoja). */
+  function zonaParaGuardar(z, escala, centro) {
+    return { nombre: z.nombre, zona: z.rect.slice(), capas: z.capas ? z.capas.slice() : null,
+      excluir: z.excluir ? z.excluir.slice() : null, escala: textoEscala(escala),
+      centro_mm: [r2(centro[0]), r2(centro[1])], tamano_m: z.tamano_m.slice() };
   }
 
   /**
@@ -414,5 +470,5 @@
   return { EPS_MM, ESCALAS, ESCALA_MAXIMA, esNormalizada, leerEscalaEscrita, escalaAjustada, pedidosExportar, posicionExportada, paginaMm, excesoDeTamano, escalaSugerida, escalaVecina, textoEscala,
     leerEscala, rectCentrado, rectDibujo, centroLimitado, centroZona, estadoCaja, escalaPorTirador,
     mmPorUnidadCad, centroCaja, cadAPapel, pxACad, imagenEnPapel, entradaDxf, nombreArchivo,
-    leerListaDxf, leerPendiente, asignarIdsDxf, listaDxf, pendienteParaGuardar };
+    leerListaDxf, leerPendiente, asignarIdsDxf, listaDxf, pendienteParaGuardar, leerZonas, zonaParaGuardar };
 });

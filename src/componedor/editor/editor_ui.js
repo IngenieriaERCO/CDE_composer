@@ -283,9 +283,8 @@
         "se guarda como versión 3 y componer pedirá exportarlos primero." });
     }
     if (zonas.length) {
-      lista.push({ nivel: "aviso", ids: zonas.map((c) => c.id), texto: zonas.length + " zona(s) borrador sin " +
-        "exportar: todavía NO se guardan en el plano.json (llega con la subfase 10e3). Expórtelas con " +
-        "«Exportar bloques y zonas» antes de guardar." });
+      lista.push({ nivel: "aviso", ids: [], texto: zonas.length + " zona(s) borrador sin exportar: el plano " +
+        "se guarda como versión 6 y componer pedirá exportarlas primero («Exportar bloques y zonas»)." });
     }
     const ZE = window.EditorZonas;
     for (const [a, b] of (ZE ? ZE.zonasRepetidas(estado.colocaciones) : [])) {
@@ -724,6 +723,8 @@
       nodo("div", { class: "fila" }, ""),
       campo("X (mm)", guardada[0], 0),
       campo("Y (mm)", guardada[1], 1),
+      ...(c.zona ? [nodo("div", { class: "medida" }, "Exportado desde la zona «" + c.zona.nombre + "» del Model " +
+        "Space. Si cambia el DXF: «Volver a cargar» y «Volver a exportar zonas» (queda en este mismo lugar).")] : []),
       nodo("div", { class: "medida" }, "Esquina inferior izquierda de la PÁGINA (posicion_mm)."),
       nodo("div", { class: "medida" }, "Página: X " + mm(pagina[0]) + " a " + mm(pagina[2]) +
         ", Y " + mm(pagina[1]) + " a " + mm(pagina[3]) + " mm"),
@@ -1518,11 +1519,6 @@
       mensaje("El plano está vacío: agregue al menos un detalle antes de guardar.", "error");
       return;
     }
-    if (estado.colocaciones.every(esZona)) {
-      mensaje("En el plano solo hay zonas borrador, que todavía no se guardan (llega con la subfase 10e3): " +
-        "expórtelas con «Exportar bloques y zonas» y guarde después.", "error");
-      return;
-    }
     const texto = textoPlano();
     if (window.showSaveFilePicker) {
       try {
@@ -1547,14 +1543,14 @@
   /** plano.json con los detalles, la rosa y (si se abrió un plano que lo traía) el rótulo.
    *  Sin los campos retirados del rótulo (disenador, revisor): R.paraGuardar los quita. */
   function textoPlano() {
-    // Las zonas borrador todavía no se guardan (subfase 10e3): el plano sale sin ellas (con aviso).
-    return L.serializarPlano(estado.colocaciones.filter((c) => !esZona(c)), DATOS, {
+    // Versión 6: las zonas (borradores y exportadas) van en la lista "dxf" del plano.
+    return L.serializarPlano(estado.colocaciones, DATOS, {
       rosa: estado.rosa, rotulo: R.paraGuardar(estado.rotulo), original: estado.original,
       ortofoto: estado.ortofoto });
   }
 
   function guardado(nombre, descargado) {
-    estado.cambios = estado.colocaciones.some(esZona); // los borradores no quedaron guardados
+    estado.cambios = false;
     mostrarComando(nombre);
     // Bloques sin exportar: se guarda igual (versión 3), con aviso; componer los pedirá.
     const avisos = advertenciasBloques().map((a) => a.texto);
@@ -1576,9 +1572,11 @@
     }
     estado.colocaciones = resultado.colocaciones;
     for (const c of estado.colocaciones) { // un DXF = una entrada (por sha256), como al agregar
-      if (!esBloque(c)) continue;
-      if (!dxfsPorSha.has(c.bloque.dxf.sha256)) dxfsPorSha.set(c.bloque.dxf.sha256, c.bloque.dxf);
-      c.bloque.dxf = dxfsPorSha.get(c.bloque.dxf.sha256);
+      const dueño = esBloque(c) ? c.bloque : c.zona || null; // c.zona: exportado desde una zona
+      if (!dueño) continue;
+      if (!dxfsPorSha.has(dueño.dxf.sha256)) dxfsPorSha.set(dueño.dxf.sha256, dueño.dxf);
+      dueño.dxf = dxfsPorSha.get(dueño.dxf.sha256);
+      if (esBloque(c) && c.bloque.zona) c.bloque.dxf = dueño.dxf;
     }
     estado.seleccion = null;
     estado.rosaSeleccionada = false;
@@ -1654,6 +1652,15 @@
     ultimoCatalogo = catalogo;
     let cambiados = 0;
     for (const c of estado.colocaciones) {
+      if (!esBloque(c) && c.zona) { // exportada desde una zona: para «Volver a exportar zonas»
+        const dz = c.zona.dxf;
+        if (dz && dz !== nuevo && dz.archivo === nuevo.archivo && dz.sha256 !== nuevo.sha256) {
+          if (nuevo.id === null) nuevo.id = dz.id;
+          c.zona.dxf = nuevo;
+          cambiados++;
+        }
+        continue;
+      }
       const d = esBloque(c) ? c.bloque.dxf : null;
       if (!d || d === nuevo || d.archivo !== nuevo.archivo || d.sha256 === nuevo.sha256) continue;
       const b = catalogo.bloques.find((x) => x.handle === c.bloque.handle);
@@ -1666,7 +1673,8 @@
     }
     if (cambiados) {
       marcarCambios();
-      mensaje(cambiados + " bloque(s) del plano pasan al DXF que se volvió a cargar (cambió desde que se colocaron).", "aviso");
+      mensaje(cambiados + " bloque(s) o zona(s) del plano pasan al DXF que se volvió a cargar (cambió desde que " +
+        "se colocaron). Las zonas ya exportadas se actualizan con «Volver a exportar zonas».", "aviso");
     }
     actualizar();
   }
@@ -1697,17 +1705,27 @@
    * Devuelve true si cambió algo.
    */
   function aplicarExportado(idPlano, resultado) {
-    const i = estado.colocaciones.findIndex((c) => c.id === idPlano && esBloque(c) &&
-      (esZona(c) ? resultado.tipo === "zona" : c.bloque.handle === resultado.handle) &&
-      c.escala === resultado.escala);
+    const i = estado.colocaciones.findIndex((c) => c.id === idPlano && (esBloque(c)
+      ? (esZona(c) ? resultado.tipo === "zona" : c.bloque.handle === resultado.handle) && c.escala === resultado.escala
+      : !!c.zona && resultado.tipo === "zona" && c.detalle.escala === resultado.escala)); // volver a exportar
     if (i < 0) return false; // se quitó o se cambió mientras se exportaba
     const c = estado.colocaciones[i];
     const [detalle] = registrarDetalles([resultado.detalle]);
-    const pos = B.posicionExportada(c.centro, resultado.desde_centro_mm);
+    // El centro: el del borrador, o (volver a exportar) el de la página del detalle de hoy.
+    const centroDe = esBloque(c) ? c.centro
+      : [c.pos[0] + c.detalle.tamano_pagina_mm[0] / 2, c.pos[1] + c.detalle.tamano_pagina_mm[1] / 2];
+    const pos = B.posicionExportada(centroDe, resultado.desde_centro_mm);
     const limitada = L.clampAZona(pos, detalle.tamano_pagina_mm, ZONA) || pos;
     const nueva = { id: c.id, detalle, pos: limitada };
     if (c.etiqueta_escala === false) nueva.etiqueta_escala = false;
     if (c.ortofoto === true) nueva.ortofoto = true; // exportado: sigue con su ortofoto
+    // Una zona exportada recuerda su zona (se guarda en el plano y se puede volver a exportar).
+    if (esZona(c)) {
+      nueva.zona = Object.assign({ nombre: c.bloque.nombre, tamano_m: c.bloque.tamano_m.slice(), dxf: c.bloque.dxf },
+        c.bloque.zona);
+    } else if (c.zona) {
+      nueva.zona = c.zona;
+    }
     estado.colocaciones[i] = nueva;
     marcarCambios();
     actualizar();
