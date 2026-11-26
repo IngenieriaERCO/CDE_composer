@@ -165,3 +165,26 @@ def test_escala_del_dibujo_se_guarda_y_se_lee(entorno_editor):  # noqa: F811
     r = js("const l = L.leerPlano(entrada.texto, entrada.datos); return [l.errores, l.colocaciones[0].bloque.zona.escala_dibujo];",
            {"texto": texto, "datos": datos})
     assert r == [[], 20]
+
+
+def test_mostrar_escala_de_un_borrador(entorno_editor):  # noqa: F811
+    """«Mostrar escala» desmarcado en una zona borrador: se guarda (etiqueta_escala: false),
+    Python lo lee y al abrir vuelve desmarcado; marcado no escribe nada."""
+    carpeta, datos = entorno_editor
+    oculta = borrador("Zona_01", 10, (342.55, 297.0))
+    oculta["etiqueta_escala"] = False
+    texto = guardar(datos, [oculta, borrador("Zona_02", 20, (520, 180))])
+    zonas = json.loads(texto)["dxf"][0]["zonas"]
+    assert zonas[0]["etiqueta_escala"] is False and "etiqueta_escala" not in zonas[1]
+    ruta = carpeta / "editor" / "plano.json"
+    ruta.write_text(texto, encoding="utf-8")
+    assert [z.etiqueta_escala for z in leer_plano(ruta).zonas] == [False, True]
+    r = js("const l = L.leerPlano(entrada.texto, entrada.datos); return [l.errores, l.colocaciones.map((c) => c.etiqueta_escala === false)];",
+           {"texto": texto, "datos": datos})
+    assert r == [[], [True, False]]
+
+
+def test_valor_inicial_de_mostrar_escala():
+    """Desmarcado solo si el dibujo trae su escala y es la misma con que se exporta."""
+    r = js("return [L.etiquetaInicial(10, 10), L.etiquetaInicial(10, 20), L.etiquetaInicial(null, 10), L.etiquetaInicial(undefined, 50)];")
+    assert r == [False, True, True, True]

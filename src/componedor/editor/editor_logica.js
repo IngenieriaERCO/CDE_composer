@@ -141,6 +141,12 @@
     const [t] = geometriaVisible(detalle, margen, zona);
     return t[0] <= zona[2] - zona[0] + EPS_MM && t[1] <= zona[3] - zona[1] + EPS_MM;
   }
+  /** «Mostrar escala» al agregar una zona: false (desmarcado) si su dibujo ya trae la misma
+   *  escala con que se exporta; true si no la trae o si trae otra (diría una escala falsa). */
+  function etiquetaInicial(escalaDibujo, escala) {
+    return !(escalaDibujo && escala && Math.abs(escalaDibujo - escala) < 1e-9);
+  }
+
   const margenValido = (v) => typeof v === "number" && isFinite(v) && v >= 0 && v <= MARGEN_MAXIMO_MM;
 
   /** Igual que colocar.posicion_centrada (mismas operaciones, mismo resultado). */
@@ -709,8 +715,10 @@
       }
       const pagina = B.paginaMm(z.tamano_m, z.escala, margenDe(null, datos));
       const centro = B.centroLimitado(z.centro, pagina, zona);
-      colocaciones.push({ id: z.nombre, escala: z.escala, centro, bloque: Object.assign(zonaDeColocacion(z).bloque,
-        { sugerida: B.escalaSugerida(z.tamano_m, margenDe(null, datos), zona) }) });
+      const borrador = { id: z.nombre, escala: z.escala, centro, bloque: Object.assign(zonaDeColocacion(z).bloque,
+        { sugerida: B.escalaSugerida(z.tamano_m, margenDe(null, datos), zona) }) };
+      if (z.etiqueta_escala === false) borrador.etiqueta_escala = false; // «Mostrar escala» desmarcado
+      colocaciones.push(borrador);
     }
     if (errores.length) return vacio(errores);
     if (ortofoto && plano.version === 4) {
@@ -739,7 +747,7 @@
       let z;
       if (c.bloque && c.bloque.zona) { // borrador: su escala y su centro
         z = { dxf: c.bloque.dxf, guardar: B.zonaParaGuardar(Object.assign({ nombre: c.bloque.nombre,
-          tamano_m: c.bloque.tamano_m }, c.bloque.zona), c.escala, c.centro) };
+          tamano_m: c.bloque.tamano_m }, c.bloque.zona), c.escala, c.centro, c.etiqueta_escala) };
       } else if (c.zona && c.detalle) { // exportada: la escala y el centro del detalle de hoy
         const t = c.detalle.tamano_pagina_mm;
         z = { dxf: c.zona.dxf, guardar: B.zonaParaGuardar(c.zona, c.detalle.escala,
@@ -770,6 +778,7 @@
     MARGEN_MAXIMO_MM,
     margenDe,
     margenValido,
+    etiquetaInicial,
     recorteDetalle,
     visibleEnPapel,
     clampDetalle,

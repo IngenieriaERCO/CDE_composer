@@ -714,6 +714,14 @@ Dependen de si el detalle de **encima** (o el que toca un elemento fijo) tiene f
 La rosa cuenta **en su posición actual**; oculta, no cuenta. `componer` usa la misma regla
 con la posición guardada en el plano.json.
 
+**«Mostrar escala».** En el panel Selección, debajo de «Usar ortofoto», cada detalle, bloque o zona
+borrador tiene el casillero **«Mostrar escala («ESC: 1:N»)»**. Desmarcado, su etiqueta no se
+dibuja en la hoja ni sale en el PDF, y su aviso de etiqueta desaparece (se guarda
+`"etiqueta_escala": false`). Una zona agregada con su «ESC 1:N» leído del dibujo, a esa misma
+escala, empieza desmarcada (el dibujo ya la trae; Selección dice «El dibujo ya trae «ESC 1:10»
+escrito.»); a otra escala, o sin escala leída, empieza marcada. Después manda lo que elija el
+usuario.
+
 **Etiquetas «ESC: 1:N» (4.3f).** Al final de la lista sale, también en amarillo, el aviso de
 `componer` cuando la etiqueta de un detalle no cabe ni debajo ni encima de su dibujo (se
 saldría del área de dibujo o se montaría sobre otro dibujo, la rosa u otra etiqueta), por

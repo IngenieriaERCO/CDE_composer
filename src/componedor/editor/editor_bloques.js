@@ -234,7 +234,7 @@
   const esObjeto = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
   const esNumero = (v) => typeof v === "number" && isFinite(v);
   const CLAVES_DXF = ["archivo", "bytes", "id", "margen_mm", "sha256", "unidades", "zonas"];
-  const CLAVES_ZONA = ["capas", "centro_mm", "escala", "escala_dibujo", "excluir", "nombre", "tamano_m", "zona"];
+  const CLAVES_ZONA = ["capas", "centro_mm", "escala", "escala_dibujo", "etiqueta_escala", "excluir", "nombre", "tamano_m", "zona"];
   const CLAVES_PENDIENTE = ["centro_mm", "etiqueta_escala", "id", "origen", "ortofoto"];
   const CLAVES_ORIGEN = ["bloque", "caja_exacta", "dxf", "escala", "handle", "ocurrencia", "tamano_m"];
 
@@ -378,20 +378,25 @@
         if (z.escala_dibujo !== undefined && z.escala_dibujo !== null && !dibujo) {
           return errores.push(donde + ".escala_dibujo: se esperaba «1:N» o null.");
         }
+        if (z.etiqueta_escala !== undefined && typeof z.etiqueta_escala !== "boolean") {
+          return errores.push(donde + ".etiqueta_escala: se esperaba true o false.");
+        }
         zonas.push({ nombre: z.nombre, rect: r.slice(), capas: solo, excluir, escala: n, centro: c.slice(),
-          tamano_m: t.slice(), dxf: dxfs.get(d.id), escala_dibujo: dibujo });
+          tamano_m: t.slice(), dxf: dxfs.get(d.id), escala_dibujo: dibujo, etiqueta_escala: z.etiqueta_escala !== false });
       });
     });
     return zonas;
   }
 
   /** Una zona para la lista "zonas" del plano (versión 6). z: {nombre, rect, capas, excluir,
-   *  tamano_m}; escala: N; centro: [x, y] mm (centro de la página en la hoja). */
-  function zonaParaGuardar(z, escala, centro) {
+   *  tamano_m}; escala: N; centro: [x, y] mm (centro de la página en la hoja). etiqueta:
+   *  false = un borrador sin la etiqueta «ESC: 1:N» (en una exportada la guarda su detalle). */
+  function zonaParaGuardar(z, escala, centro, etiqueta) {
     const g = { nombre: z.nombre, zona: z.rect.slice(), capas: z.capas ? z.capas.slice() : null,
       excluir: z.excluir ? z.excluir.slice() : null, escala: textoEscala(escala),
       centro_mm: [r2(centro[0]), r2(centro[1])], tamano_m: z.tamano_m.slice() };
     if (z.escala_dibujo) g.escala_dibujo = textoEscala(z.escala_dibujo); // la escala a la que está dibujada
+    if (etiqueta === false) g.etiqueta_escala = false; // «Mostrar escala» desmarcado
     return g;
   }
 

@@ -3219,7 +3219,7 @@ ejes H/V siempre se elige.
 **Para el Exportador**: el editor trabaja con 1.2 (sin la escala del dibujo, con una nota) y
 con 1.3 o más.
 
-### Recorte de los detalles: el dibujo y un margen, no la página entera (2026-11-26)
+### Recorte de los detalles: el dibujo y un margen, no la página entera (2026-11-26, commit 76906f6)
 
 Problema: cada paquete trae 5 mm de borde blanco (el margen de la exportación) que ocupaba el
 A1 y hacía salir en rojo («no cabe») detalles cuyo dibujo sí cabía (via_tunez con ortofoto).
@@ -3270,6 +3270,34 @@ que se ve»). Ningún archivo de `resultados/` ni de `editor/` (salvo `editor.ht
   con 0, 1 y 4,5 mm.
 - Ajustadas al recorte: inventario, datos del editor, sugeridas, CLI. Las de traslapes, elementos
   y ortofoto escritas con la página entera siguen igual con `margen_mm=None`.
+
+### «Mostrar escala» por detalle (2026-11-26)
+
+Decisiones aprobadas: A) si la escala leída del dibujo no es la de exportación, empieza marcado;
+B) las zonas agregadas antes siguen con la escala visible; C) solo casillero por detalle.
+
+**Qué se hizo**
+- Panel Selección: casillero «Mostrar escala («ESC: 1:N»)» en detalles, bloques y zonas
+  borrador (y «El dibujo ya trae «ESC 1:N» escrito» cuando se sabe). Usa el campo que ya existía,
+  `"etiqueta_escala": false` (v2); `componer` ya lo respetaba.
+- Zonas borrador: `etiqueta_escala` opcional en `dxf[i].zonas[]` (`plano_zonas.py`,
+  `editor_bloques.leerZonas/zonaParaGuardar`); al exportar, el detalle lo hereda.
+- Valor inicial al agregar una zona (`EditorLogica.etiquetaInicial`): desmarcado solo si
+  `escala_dibujo` = escala de exportación. No cambia «no cabe».
+
+**Cómo probarlo**: abrir `Pruebadecambio.json`, seleccionar via_tunez, desmarcar «Mostrar escala»,
+guardar, abrir de nuevo (sigue desmarcado) y `Componer.bat`: el PDF no trae «ESC: 1:500» y sí las
+otras dos. Con PRGD: una zona de la sección a 1:10 empieza desmarcada; a 1:20, marcada.
+
+**Verificación en Edge** (`data/verificacion/verificar_mostrar_escala.mjs`; capturas y PDF en
+`data/verificacion/mostrar_escala_salida/`). **Todo OK**, sin errores de JavaScript:
+Pruebadecambio (desmarcar, guardar, abrir, componer sin «ESC: 1:500»; marcar otra vez y vuelve) y
+PRGD con el exportador real (Zona_01 a 1:10 desmarcada, Zona_02 a 1:20 marcada; guardar, abrir,
+exportar y componer: en el PDF solo «ESC: 1:20»).
+
+**Pruebas**: **1541 pasan** y 1 se salta (antes 1538). ruff: los mismos 173 hallazgos.
+`test_plano_v6` (etiqueta en las zonas) y `test_editor_plano_v6_js` (borrador desmarcado se guarda
+y se lee; valor inicial).
 
 ### Pendiente en la Fase 4 (al 2026-11-11)
 

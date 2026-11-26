@@ -384,6 +384,8 @@ Cada paquete se verifica (`importar_paquete` y que sea el pedido) y el bloque pa
 detalle normal, puesto por el centro CAD. Lo ya publicado se reutiliza; los paquetes viejos que
 se reemplazan se mueven a `_para_borrar/`.
 
+**Mostrar escala**: en el panel Selección, cada detalle tiene el casillero «Mostrar escala»; desmarcado, no se escribe su «ESC: 1:N» (ni en el editor ni en el PDF), para los dibujos que ya traen su escala escrita. Una zona con su «ESC 1:N» leído, exportada a esa escala, empieza desmarcada.
+
 **Zonas del modelo** (Fase 10, con `Abrir editor.bat` y un DXF cargado): el botón «Zonas del
 modelo…» de la carpeta del DXF abre un cuadro con la vista previa de todo el **Model Space** y sus
 grupos de dibujo. La vista se maneja **como en AutoCAD** (rueda: acercar y alejar hacia el cursor;

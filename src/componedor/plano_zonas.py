@@ -16,6 +16,8 @@ plano tiene zonas):
 - `escala_dibujo` (opcional, «1:N» o null): la escala a la que está DIBUJADA la zona (la que se
   leyó en sus textos «ESC 1:N» o la que eligió el usuario). Si no coincide con `escala`, los
   textos salen de otro tamaño: el editor lo avisa.
+- `etiqueta_escala` (opcional, solo `false`): el borrador no lleva la etiqueta «ESC: 1:N» en la
+  hoja (casillero «Mostrar escala»); al exportarlo, su detalle lleva `"etiqueta_escala": false`.
 
 Una zona exportada es un detalle normal ("manifiesto", "posicion_mm") que además lleva
 `"origen": {"zona": "<nombre>"}`. Una zona sin ningún detalle que la nombre es un BORRADOR
@@ -30,7 +32,7 @@ from dataclasses import dataclass
 from componedor.plano_dxf import leer_escala
 
 CLAVES_ZONA = {"nombre", "zona", "capas", "excluir", "escala", "centro_mm", "tamano_m",
-               "escala_dibujo"}
+               "escala_dibujo", "etiqueta_escala"}
 CLAVES_ORIGEN_ZONA = {"zona"}
 
 
@@ -45,6 +47,7 @@ class ZonaPlano:
     capas: tuple[str, ...] | None = None
     excluir: tuple[str, ...] | None = None
     escala_dibujo: float | None = None  # N de 1:N a la que está dibujada (o None)
+    etiqueta_escala: bool = True  # False: sin la etiqueta «ESC: 1:N» en la hoja
 
 
 def _numero(v) -> bool:
@@ -101,11 +104,14 @@ def leer_zonas(valor, dxf: str, donde: str, errores: list[str]) -> list[ZonaPlan
         escala_dibujo = leer_escala(dibujo) if dibujo is not None else None
         if dibujo is not None and escala_dibujo is None:
             errores.append(f"{aqui}.escala_dibujo: se esperaba «1:N» o null")
+        etiqueta = z.get("etiqueta_escala", True)
+        if not isinstance(etiqueta, bool):
+            errores.append(f"{aqui}.etiqueta_escala: se esperaba true o false")
         if len(errores) == n:
             zonas.append(ZonaPlano(dxf, nombre, tuple(float(v) for v in rect), escala,
                                    (float(centro[0]), float(centro[1])),
                                    (float(tamano[0]), float(tamano[1])), capas, excluir,
-                                   escala_dibujo))
+                                   escala_dibujo, etiqueta))
     return zonas
 
 

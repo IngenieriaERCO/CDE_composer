@@ -503,6 +503,14 @@ queda dentro de `area_dibujo` y no se monta sobre el dibujo de otro detalle, la 
 (visible) ni otra etiqueta. Si no sirve ninguno, **no se dibuja** y se
 avisa con una advertencia (mueva el detalle o ponga `"etiqueta_escala": false`).
 
+**«Mostrar escala»** (casillero del panel Selección del editor) es ese mismo campo: desmarcado,
+se guarda `"etiqueta_escala": false` y la etiqueta no sale ni en el editor ni en el PDF (para los
+dibujos que ya traen su escala escrita). Marcado no escribe nada (los planos viejos siguen con
+la etiqueta). En una zona borrador va en su entrada de `dxf[i].zonas[]` y pasa a su detalle al
+exportarla. Una zona que se agrega con la escala de su dibujo leída (`escala_dibujo`) y que se
+exporta **a esa misma escala** empieza desmarcada; si se exporta a otra, o si no se leyó,
+marcada. No cambia «no cabe»: la etiqueta nunca contó para caber.
+
 Las etiquetas y los campos calculados se escriben siempre que el formato tenga la sección
 `"rotulo"`, también en un plano versión 1.
 
@@ -712,6 +720,7 @@ plano guarda todas las zonas, exportadas o no, en la entrada de su DXF:
 | `escala` | «1:N». |
 | `centro_mm` | Centro de la PÁGINA en la hoja (mm de papel, Y hacia arriba). |
 | `tamano_m` | Tamaño real de la zona (para la caja en la hoja). |
+| `etiqueta_escala` | Opcional, solo `false`: el borrador no lleva «ESC: 1:N» («Mostrar escala» desmarcado); al exportarla, su detalle lo hereda. |
 | `escala_dibujo` | Opcional: «1:N» a la que está dibujada la zona (la del texto «ESC 1:N» o la que eligió el usuario), o null. Sin el campo, no se sabe. Solo sirve para avisar si se exporta a otra escala. |
 
 - **Exportada**: un detalle normal (`manifiesto`, `posicion_mm`) con `"origen": {"zona":

@@ -769,7 +769,7 @@
       b.addEventListener("click", accion);
       botones.appendChild(b);
     }
-    panel.replaceChildren(...filas, casillaOrtofoto(c), botones);
+    panel.replaceChildren(...filas, casillaOrtofoto(c), casillaEscala(c), botones);
   }
 
   // Estilo de impresión con que se exportó cada detalle (de su manifiesto) frente al elegido en
@@ -811,6 +811,29 @@
     const caja = nodo("div");
     caja.append(fila, nodo("div", { class: "aviso-ortofoto-seleccion " + a.nivel }, a.largo));
     return caja;
+  }
+
+  /** «Mostrar escala»: la etiqueta «ESC: 1:N» debajo del detalle (en la hoja y en el PDF). */
+  function casillaEscala(c) {
+    const fila = nodo("label", { class: "casilla-ortofoto casilla-escala" });
+    const casilla = nodo("input", { type: "checkbox", id: "mostrar-escala" });
+    casilla.checked = c.etiqueta_escala !== false;
+    fila.title = "Escribe «ESC: 1:N» debajo del detalle. Desmárquelo si el dibujo ya trae su escala escrita.";
+    casilla.addEventListener("change", () => mostrarEscala(c, casilla.checked));
+    fila.append(casilla, " Mostrar escala («ESC: 1:N»)");
+    const dibujo = esZona(c) ? c.bloque.zona.escala_dibujo : c.zona ? c.zona.escala_dibujo : null;
+    if (!dibujo) return fila;
+    const caja = nodo("div");
+    caja.append(fila, nodo("div", { class: "medida" }, "El dibujo ya trae «ESC " + B.textoEscala(dibujo) + "» escrito."));
+    return caja;
+  }
+
+  function mostrarEscala(c, si) {
+    if ((c.etiqueta_escala !== false) === !!si) return;
+    if (si) delete c.etiqueta_escala;
+    else c.etiqueta_escala = false;
+    marcarCambios();
+    actualizar();
   }
 
   function usarOrtofoto(c, si) {
@@ -890,7 +913,7 @@
       if (texto === "Escala sugerida") boton.disabled = !sugerida || sugerida === c.escala;
       botones.appendChild(boton);
     }
-    panel.replaceChildren(...filas, casillaOrtofoto(c), botones);
+    panel.replaceChildren(...filas, casillaOrtofoto(c), casillaEscala(c), botones);
   }
 
   /** Lo propio de una zona borrador en el panel Selección: nombre (editable), DXF, zona y capas. */
@@ -966,6 +989,9 @@
     const ocupado = (p) => estado.colocaciones.some((x) => esBloque(x) && x.centro[0] === p[0] && x.centro[1] === p[1]);
     for (let i = 0; i < 20 && ocupado(centro); i++) centro = [centro[0] + 10, centro[1] - 10];
     c.centro = B.centroLimitado(centro, paginaBloque(c), ZONA);
+    // «Mostrar escala» empieza desmarcado si el dibujo ya trae su «ESC 1:N» y es la misma escala
+    // con que se exporta (si no, la del dibujo diría otra: se deja marcado). Solo al agregar.
+    if (L.etiquetaInicial(z.escala_dibujo, z.escala) === false) c.etiqueta_escala = false;
     estado.colocaciones.push(c);
     estado.seleccion = c.id;
     marcarCambios();
@@ -1829,6 +1855,7 @@
     ajustarALaHoja: (id) => ajustarALaHoja(estado.colocaciones.find((c) => c.id === id)),
     moverCentro: (id, centro) => moverCentro(estado.colocaciones.find((c) => c.id === id), centro),
     usarOrtofoto: (id, si) => usarOrtofoto(estado.colocaciones.find((c) => c.id === id), si),
+    mostrarEscala: (id, si) => mostrarEscala(estado.colocaciones.find((c) => c.id === id), si),
     seleccionar, caja: (id) => paginaDe(estado.colocaciones.find((c) => c.id === id)),
     previa: (id) => previaDe(estado.colocaciones.find((c) => c.id === id)),
     mover: (id, pos) => mover(estado.colocaciones.find((c) => c.id === id), pos),

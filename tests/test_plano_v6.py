@@ -131,3 +131,12 @@ def test_escala_del_dibujo_en_las_zonas(tmp_path):
     assert [z.escala_dibujo for z in plano.zonas] == [10.0, None]
     assert "dxf[0].zonas[0].escala_dibujo: se esperaba «1:N» o null" in error(
         tmp_path, plano_v6(zonas=[zona(escala_dibujo="diez")]))
+
+
+def test_mostrar_escala_en_las_zonas(tmp_path):
+    """«etiqueta_escala» (opcional): false = el borrador sin «ESC: 1:N»; sin la clave, visible
+    (las zonas de antes siguen igual)."""
+    plano = leer_plano(escribir(tmp_path, plano_v6(zonas=[zona(), zona("Z2", etiqueta_escala=False)])))
+    assert [z.etiqueta_escala for z in plano.zonas] == [True, False]
+    assert "dxf[0].zonas[0].etiqueta_escala: se esperaba true o false" in error(
+        tmp_path, plano_v6(zonas=[zona(etiqueta_escala="no")]))
