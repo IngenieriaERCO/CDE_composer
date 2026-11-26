@@ -10,7 +10,9 @@ Versión 2 (subfase 4.1) = versión 1 más, todo opcional:
     sus claves las define el formato y las valida `componer` (rotulo.py).
   - "rosa_vientos": {"visible": true|false, "posicion_mm": [x, y]} (esquina inferior
     izquierda del rectángulo de la rosa). Por defecto visible y en su lugar.
-  - en cada detalle, "etiqueta_escala": false para no poner su etiqueta "ESC: 1:N".
+  - en cada detalle, "etiqueta_escala": false para no poner su etiqueta "ESC: 1:N";
+  - en cada detalle, "margen_mm": N (0 a 50) para recortar su página a su dibujo más N mm
+    (sin la clave: el margen de componedor.json, 1 mm; ver recorte_detalle.py).
 La versión 1 sigue siendo válida (sin esas claves).
 
 Versión 3 (etapa 2 de la integración con el exportador) = versión 2 más la lista "dxf" y, en
@@ -49,12 +51,13 @@ from componedor.plano_dxf import (
 )
 from componedor.plano_ortofoto import OrtofotoPlano, leer_ortofoto
 from componedor.plano_zonas import ZonaPlano, leer_origen_zona, leer_zonas
+from componedor.recorte_detalle import MARGEN_MAXIMO_MM, margen_valido
 
 VERSIONES_SOPORTADAS = (1, 2, 3, 4, 5, 6)
 CLAVES_PLANO = {"version", "formato", "plantilla", "detalles"}
 CLAVES_DETALLE = {"id", "manifiesto", "posicion_mm", "centrar"}
 CLAVES_PLANO_V2 = CLAVES_PLANO | {"rotulo", "rosa_vientos"}
-CLAVES_DETALLE_V2 = CLAVES_DETALLE | {"etiqueta_escala"}
+CLAVES_DETALLE_V2 = CLAVES_DETALLE | {"etiqueta_escala", "margen_mm"}
 CLAVES_DETALLE_V5 = CLAVES_DETALLE_V2 | {"ortofoto"}
 CLAVES_DETALLE_V6 = CLAVES_DETALLE_V5 | {"origen"}  # exportado desde una zona: {"zona": nombre}
 CLAVES_PLANO_V3 = CLAVES_PLANO_V2 | {"dxf"}
@@ -75,6 +78,7 @@ class DetallePlano:
     etiqueta_escala: bool = True  # versión 2: false = sin etiqueta "ESC: 1:N"
     ortofoto: bool = False  # versión 5: lleva la ortofoto detrás (versión 4: todos)
     zona: str | None = None  # versión 6: exportado desde esa zona (su nombre)
+    margen_mm: float | None = None  # versión 2: margen del recorte; None: el de componedor.json
 
 
 @dataclass(frozen=True)
@@ -324,13 +328,19 @@ def _detalle(item, donde: str, carpeta: Path, errores: list[str],
     if not isinstance(usa, bool):
         errores.append(f"{donde}.ortofoto: se esperaba true o false; tiene {_tipo(usa)}")
 
+    margen = item.get("margen_mm")
+    if margen is not None and not margen_valido(margen):
+        errores.append(f"{donde}.margen_mm: se esperaba un número de 0 a {MARGEN_MAXIMO_MM:g} mm "
+                       f"(el borde blanco alrededor del dibujo); tiene {margen!r}")
+
     zona = None
     if zonas is not None and "origen" in item:
         zona = leer_origen_zona(item["origen"], f"{donde}.origen", zonas, errores)
 
     if len(errores) > n_errores:
         return None
-    return DetallePlano(ident, manifiesto, posicion, bool(centrar), etiqueta, usa, zona)
+    return DetallePlano(ident, manifiesto, posicion, bool(centrar), etiqueta, usa, zona,
+                        float(margen) if margen is not None else None)
 
 
 def _ruta(datos: dict, clave: str, carpeta: Path, errores: list[str], obligatoria: bool,

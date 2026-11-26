@@ -364,3 +364,12 @@ def dxf_falso(ruta: Path, **spec) -> Path:
     ruta.parent.mkdir(parents=True, exist_ok=True)
     ruta.write_text(json.dumps(spec, ensure_ascii=False), encoding="utf-8")
     return ruta
+
+
+def componer_pagina_entera(*args, **kw):
+    """componer_plano sin recorte (margen_mm=None: la página entera del paquete, como antes de
+    la Fase 11). Para las pruebas de traslapes, elementos y ortofoto escritas con la página."""
+    from componedor.componer import componer_plano
+
+    kw.setdefault("margen_mm", None)
+    return componer_plano(*args, **kw)

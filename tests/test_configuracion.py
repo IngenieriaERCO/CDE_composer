@@ -333,10 +333,12 @@ def test_cli_componer_usa_el_formato_de_la_config(entorno, capsys):
 
 
 def test_cli_componer_codigo_de_avisos(entorno, capsys):
-    """Con advertencias (páginas que se traslapan): 0 sin la opción, 3 con --codigo-avisos."""
+    """Con advertencias (páginas que se traslapan): 0 sin la opción, 3 con --codigo-avisos.
+    margen_detalle_mm 50: se ve la página entera (con 1 mm solo se ven los dibujos, que no se
+    tocan)."""
     detalles = [_d("d1", "a", (30, 300)), _d("d2", "b", (280, 300))]
     plano = _plano(entorno / "planos", "traslape.json", detalles, formato="../formato.json")
-    ruta = _config(entorno, componer=COMPONER)
+    ruta = _config(entorno, componer=COMPONER, margen_detalle_mm=50)
     assert main(["componer", str(plano), "--config", str(ruta)]) == 0
     assert "Advertencias (1)" in capsys.readouterr().out
     assert main(["componer", str(plano), "--config", str(ruta), "--sobrescribir",
@@ -394,3 +396,14 @@ def test_acceso_directo_componer():
     i_avisos, i_abrir = lineas.index(":avisos"), lineas.index(":abrir")
     assert "pause" in lineas[i_avisos:i_abrir]
     assert lineas[lineas.index('if "%CODIGO%"=="3" goto :avisos') + 1:i_avisos].count("pause") == 1
+
+
+def test_margen_detalle(entorno):
+    """margen_detalle_mm (Fase 11): opcional, 1 mm sin la clave, de 0 a 50; para los dos."""
+    assert leer_config_componer(_config(entorno, componer=COMPONER)).margen_detalle_mm == 1.0
+    ruta = _config(entorno, editor=EDITOR, componer=COMPONER, margen_detalle_mm=0)
+    assert leer_config_componer(ruta).margen_detalle_mm == 0.0
+    assert leer_config_editor(ruta).margen_detalle_mm == 0.0
+    for malo in (-1, 51, "1", True):
+        with pytest.raises(ConfigInvalida, match="margen_detalle_mm: se esperaba un número de 0 a 50"):
+            leer_config_componer(_config(entorno, componer=COMPONER, margen_detalle_mm=malo))

@@ -139,14 +139,16 @@ def test_ajustar_a_paso_e_id_unico():
 
 # --- advertencias: mismos criterios, orden y textos que componer -----------------------------
 
-def _paridad(carpeta, datos, detalles):
+def _paridad(carpeta, datos, detalles, margen=None):
     """Compone con Python y calcula las advertencias en JS para el mismo plano. El dato
-    `tiene_fondo` del JS sale del catálogo del editor (editor_datos.json), no de Python."""
+    `tiene_fondo` del JS sale del catálogo del editor (editor_datos.json), no de Python.
+    `margen`: el del recorte (Fase 11); None, la página entera (así se ven los seis casos)."""
     plano = carpeta / "plano.json"
     plano.write_text(json.dumps({"version": 1, "formato": "formato.json", "detalles": [
         {"id": i, "manifiesto": f"input/{p}.manifest.json", "posicion_mm": pos}
         for i, p, pos in detalles]}), encoding="utf-8")
-    resultado = componer_plano(leer_plano(plano), carpeta / "p.pdf", sobrescribir=True)
+    resultado = componer_plano(leer_plano(plano), carpeta / "p.pdf", sobrescribir=True,
+                               margen_mm=margen)
     catalogo = {d["id"]: d for d in datos["detalles"]}
     colocados = [{"id": c.id, "pagina": list(c.ocupado), "dibujo": list(c.dibujo),
                   "tiene_fondo": catalogo[c.prefijo]["tiene_fondo"]} for c in resultado.detalles]
@@ -172,6 +174,25 @@ def test_advertencias_iguales_que_componer(entorno):
     assert [a["texto"] for a in r] == python
     assert {a["clave"] for a in r} == set(PLANTILLAS)  # los seis tipos aparecen
     assert {a["nivel"] for a in r} == {"aviso", "fuerte", "muy_fuerte"}
+
+
+def test_con_el_recorte_lo_visible_es_igual_que_en_componer(entorno):
+    """Fase 11: lo que se ve (dibujo + margen) lo calculan igual el editor y componer, con el
+    margen general y con uno propio; con 1 mm la página que tocaba la rosa (d5) ya no avisa."""
+    carpeta, datos = entorno
+    detalles = [("d1", "a", [30, 300]), ("d5", "a", [360, 40]), ("s1", "s", [130, 160])]
+    for margen in (1.0, 0.0, 4.5):
+        r, python = _paridad(carpeta, datos, detalles, margen=margen)
+        assert [a["texto"] for a in r] == python
+        resultado = componer_plano(leer_plano(carpeta / "plano.json"), carpeta / "p.pdf",
+                                   sobrescribir=True, margen_mm=margen)
+        catalogo = {d["id"]: d for d in datos["detalles"]}
+        vistos = js("return entrada.d.map(([id, p, pos]) => L.visibleEnPapel(entrada.cat[p], pos, entrada.m));",
+                    {"d": detalles, "cat": catalogo, "m": margen})
+        for v, c in zip(vistos, resultado.detalles):
+            assert v == pytest.approx(list(c.ocupado), abs=1e-4)  # PDF en pt: 1e-5 mm
+    r, python = _paridad(carpeta, datos, [("d5", "a", [360, 40])], margen=1.0)
+    assert r == [] and python == []
 
 
 @pytest.mark.parametrize("detalles", [
@@ -240,15 +261,17 @@ def test_leer_plano(entorno):
         return res;
     """, {"planos": planos, "datos": datos})
     assert r["ok"]["errores"] == [] and r["ok"]["avisos"] == []
+    # «centrar»: lo que se ve (dibujo + 1 mm) centrado, igual que componer (Fase 11).
     assert [c["pos"] for c in r["ok"]["colocaciones"]] == [
-        [30, 40], list(posicion_centrada((260.0, 120.0), tuple(AREA)))]
+        [30, 40], [205.25, 235.7]]  # página 260 × 120; dibujo +37,3..+237,3 × +21,3..+101,3
     assert r["version"]["errores"] == [
         "version: versión 9 no soportada; el editor entiende las versiones 1 a 6."]
     assert "no está en el catálogo del editor" in r["desconocido"]["errores"][0]
     assert "el paquete 'malo' está rechazado" in r["rechazado"]["errores"][0]
     assert "'x' está repetido" in r["repetido"]["errores"][0]
     assert r["fuera"]["errores"] == []
-    assert r["fuera"]["colocaciones"][0]["pos"] == pytest.approx([662.4 - 260, 40])
+    # Se acomoda lo que se ve (dibujo + 1 mm: +36,3..+238,3), no la página.
+    assert r["fuera"]["colocaciones"][0]["pos"] == pytest.approx([662.4 - 238.3, 40])
     assert "se salía del área de dibujo" in r["fuera"]["avisos"][0]
     assert r["roto"]["errores"][0].startswith("El archivo no es un JSON válido")
     for clave in ("version", "desconocido", "rechazado", "repetido", "roto"):
@@ -384,3 +407,46 @@ def test_leer_plano_version_2(entorno):
     assert r["v1_con_rosa"]["errores"] == [
         "rosa_vientos: solo existe en la versión 2 del plano (use \"version\": 2)."]
     assert r["etiqueta_mala"]["errores"] == ["detalles[0].etiqueta_escala: se esperaba true o false."]
+
+
+def test_margen_del_detalle_se_lee_y_se_guarda(entorno):
+    """Fase 11: «margen_mm» de un detalle (versión 2). Sin la clave, el general (1 mm); el
+    plano que se abrió sin tocar sale igual; cambiar el margen lo escribe y pasa a versión 2."""
+    _, datos = entorno
+    d = {"id": "x", "manifiesto": "../input/a.manifest.json", "posicion_mm": [30, 40]}
+    planos = {"v2": {"version": 2, "detalles": [dict(d, margen_mm=0)]},
+              "v1": {"version": 1, "detalles": [dict(d, margen_mm=0)]},
+              "malo": {"version": 2, "detalles": [dict(d, margen_mm=60)]}}
+    r = js("""
+      const res = {};
+      for (const [k, p] of Object.entries(entrada.planos)) res[k] = L.leerPlano(JSON.stringify(p), entrada.datos);
+      const c = res.v2.colocaciones[0];
+      const igual = L.serializarPlano(res.v2.colocaciones, entrada.datos, {original: res.v2.original});
+      const nuevo = JSON.parse(L.serializarPlano([{id: "y", detalle: c.detalle, pos: [30, 40], margen: 2.5},
+                                                  {id: "z", detalle: c.detalle, pos: [330, 40]}], entrada.datos));
+      return {margen: c.margen, igual: JSON.stringify(JSON.parse(igual).detalles) === JSON.stringify(entrada.planos.v2.detalles),
+              nuevo, v1: res.v1.errores, malo: res.malo.errores,
+              visible: [L.visibleEnPapel(c.detalle, [30, 40], 0), L.visibleEnPapel(c.detalle, [30, 40], L.margenDe(null, entrada.datos))]};
+    """, {"planos": planos, "datos": datos})
+    assert r["margen"] == 0 and r["igual"] is True
+    assert r["nuevo"]["version"] == 2
+    assert r["nuevo"]["detalles"] == [
+        {"id": "y", "manifiesto": "../input/a.manifest.json", "posicion_mm": [30, 40], "margen_mm": 2.5},
+        {"id": "z", "manifiesto": "../input/a.manifest.json", "posicion_mm": [330, 40]}]
+    assert "detalles[0].margen_mm: solo existe en la versión 2" in r["v1"][0]
+    assert "detalles[0].margen_mm: se esperaba un número de 0 a 50 mm." in r["malo"][0]
+    assert r["visible"][0] == pytest.approx([67.3, 61.3, 267.3, 141.3])
+    assert r["visible"][1] == pytest.approx([66.3, 60.3, 268.3, 142.3])  # el general: 1 mm
+
+
+def test_se_acomoda_lo_que_se_ve(entorno):
+    """El área de dibujo limita lo que se ve (dibujo + margen), no la página del paquete."""
+    _, datos = entorno
+    r = js("""
+      const d = entrada.datos.detalles.find((x) => x.id === "a");
+      return {izq: L.clampDetalle([-500, 300], d, 1, entrada.area), der: L.clampDetalle([9999, 300], d, 1, entrada.area),
+              cabe: [L.cabeDetalle(d, 1, entrada.area), L.cabeDetalle(d, 50, [0, 0, 250, 300])]};
+    """, {"datos": datos, "area": AREA})
+    assert r["izq"] == pytest.approx([22.7 - 36.3, 300])  # x de la página < 22,7: se ve desde 22,7
+    assert r["der"] == pytest.approx([662.4 - 238.3, 300])
+    assert r["cabe"] == [True, False]

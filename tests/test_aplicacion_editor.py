@@ -109,8 +109,9 @@ def test_cargar_un_dxf_hasta_la_carpeta(armar, tmp_path):
     assert foto["estado"] == "terminada", foto["error"]
     carpeta = foto["resultado"]
     assert carpeta["dxf"]["nombre"] == "GUAMO.dxf"
+    # La sugerida mide el dibujo y 1 mm de margen en la hoja (Fase 11), no la página con 5 mm.
     assert [(b["nombre"], b["escala_sugerida"]) for b in carpeta["bloques"]] == [
-        ("BLOQUE1", 3000), ("Detalle", 20)]
+        ("BLOQUE1", 2500), ("Detalle", 20)]
     e = app.estado()
     assert e["dxf"]["bloques"] == carpeta["bloques"] and e["dxf"]["sesion_activa"] is True
     assert e["tarea"]["id"] == r["tarea"]["id"]
@@ -129,7 +130,11 @@ def test_el_margen_de_componedor_json_va_en_load(armar, tmp_path):
     app.config = ConfigExportador(comando_falso(), tmp_path / "trabajo", margen_mm=20.0)
     foto = esperar_tarea(app, app.elegir_y_cargar()["tarea"]["id"])
     assert foto["resultado"]["margen_mm"] == 20.0
-    # 31 m a 1:50 = 620 mm + 2 × 20 = 660 mm > 639,7: ya no cabe a 1:50; a 1:75 sí.
+    # La sugerida usa el margen de la HOJA (1 mm): 31 m a 1:50 = 620 + 2 = 622 mm ≤ 639,7.
+    assert foto["resultado"]["bloques"][0]["escala_sugerida"] == 50
+    # Con 20 mm en la hoja: 620 + 40 = 660 mm > 639,7: ya no cabe a 1:50; a 1:75 sí.
+    app.margen_hoja_mm = 20.0
+    foto = esperar_tarea(app, app.elegir_y_cargar()["tarea"]["id"])
     assert foto["resultado"]["bloques"][0]["escala_sugerida"] == 75
 
 

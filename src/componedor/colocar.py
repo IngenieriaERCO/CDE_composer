@@ -25,7 +25,7 @@ import pymupdf
 
 from componedor.formato import EPS_MM, Formato, RectMM
 from componedor.transformaciones import rect_papel_a_pdf
-from componedor.unidades import pt_a_mm
+from componedor.unidades import mm_a_pt, pt_a_mm
 
 
 class DetalleInvalido(ValueError):
@@ -93,11 +93,15 @@ def _colocar(hoja: pymupdf.Page, formato: Formato, doc_origen: pymupdf.Document,
 
 
 def insertar_pagina(hoja: pymupdf.Page, formato: Formato, doc_origen: pymupdf.Document,
-                    pagina: int, posicion_mm: tuple[float, float]) -> RectMM:
+                    pagina: int, posicion_mm: tuple[float, float],
+                    recorte_mm: RectMM | None = None) -> RectMM:
     """Inserta la página tal como se ve (corrige /Rotate, ver arriba), sin escalar.
 
-    `posicion_mm` es su esquina inferior izquierda en mm de papel. No valida que quepa.
-    Devuelve el rectángulo ocupado en mm de papel.
+    `posicion_mm` es la esquina inferior izquierda de la PÁGINA en mm de papel. No valida que
+    quepa. `recorte_mm`: solo esa parte de la página (mm de la página, Y abajo; ver
+    recorte_detalle.py), con `clip`: sigue siendo vector y el dibujo no se mueve. Solo en
+    páginas sin /Rotate (las del Exportador); en una girada se ignora.
+    Devuelve el rectángulo que se ve en mm de papel.
     """
     pagina_origen = doc_origen[pagina]
     ancho, alto = tamano_visible_mm(pagina_origen)
@@ -108,8 +112,13 @@ def insertar_pagina(hoja: pymupdf.Page, formato: Formato, doc_origen: pymupdf.Do
     temporal = pymupdf.open()
     temporal.insert_pdf(doc_origen, from_page=pagina, to_page=pagina)
     temporal[0].set_rotation(0)
+    clip = None
+    if recorte_mm is not None and rotacion == 0:
+        rx0, ry0, rx1, ry1 = recorte_mm
+        ocupado = (x + rx0, y + alto - ry1, x + rx1, y + alto - ry0)
+        clip = pymupdf.Rect(*(mm_a_pt(v) for v in recorte_mm))
     destino = rect_papel_a_pdf(ocupado, formato.alto_mm)
-    hoja.show_pdf_page(destino, temporal, 0, rotate=-rotacion)
+    hoja.show_pdf_page(destino, temporal, 0, rotate=-rotacion, clip=clip)
     temporal.close()
     return ocupado
 

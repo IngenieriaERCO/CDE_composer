@@ -96,6 +96,7 @@ from componedor.previa_zona import (
     leer_previa_zona,
     pedido_previa_zona,
 )
+from componedor.recorte_detalle import MARGEN_POR_DEFECTO_MM
 from componedor.textos_zona import leer_textos, pedido_textos
 from componedor.trabajador import (
     ARCHIVO_REGISTRO,
@@ -134,8 +135,12 @@ class AplicacionEditor:
                  fabrica: Callable[[], Trabajador] | None = None,
                  elegir_ortofoto: Callable[[Path | None], Path | None] | None = None,
                  intervalo_cuadricula_m: float = 50.0,
-                 elegir_localizacion: Callable[[Path | None], Path | None] | None = None):
+                 elegir_localizacion: Callable[[Path | None], Path | None] | None = None,
+                 margen_hoja_mm: float = MARGEN_POR_DEFECTO_MM):
         self.ruta_html = Path(ruta_html)
+        # El borde que se deja en la hoja alrededor del dibujo de cada detalle (el paquete trae
+        # el de la exportación, más ancho, y componer recorta): con él se mide si «cabe».
+        self.margen_hoja_mm = margen_hoja_mm
         # «Cargar imagen de localización» (rótulo): tampoco usa el trabajador.
         self.localizacion = (LocalizacionEditor(self.ruta_html.parent, elegir_localizacion)
                              if elegir_localizacion else LocalizacionEditor(self.ruta_html.parent))
@@ -288,7 +293,8 @@ class AplicacionEditor:
     def _al_cargar(self, data: dict, tarea: Tarea, ruta: Path,
                    firma: tuple[int, int] | None = None) -> dict:
         catalogo = catalogo_dxf(data, self.zona,  # RespuestaInvalida es ValueError
-                                anonimos_min=self.config.anonimos_min_entidades)
+                                anonimos_min=self.config.anonimos_min_entidades,
+                                margen_hoja_mm=self.margen_hoja_mm)
         catalogo["dxf"]["archivo_plano"] = self.archivo_para_plano(ruta)
         self.dxf, self._generacion_dxf = catalogo, tarea.generacion
         self.preparacion.al_cargar(catalogo.get("sesion"), data.get("preview_preparation"))
@@ -514,7 +520,7 @@ class AplicacionEditor:
             raise ErrorAplicacion(409, f"'{ident}': sin unidades verificadas o sin caja: no se "
                                        f"puede exportar.")
         pagina = pagina_mm(bloque["tamano_m"], n, dxf["margen_mm"])
-        dx, dy = exceso_de_tamano(pagina, self.zona)
+        dx, dy = exceso_de_tamano(pagina_mm(bloque["tamano_m"], n, self.margen_hoja_mm), self.zona)
         if dx or dy:
             raise ErrorAplicacion(400, f"'{ident}' no cabe en el área de dibujo a 1:{n:g} "
                                        f"(sobran {dx:.1f} × {dy:.1f} mm): cambie la escala.")
@@ -606,7 +612,8 @@ class AplicacionEditor:
         carpeta_editor = self.ruta_html.parent
         prefijo = aceptado.paquete.prefijo
         posicion = posicion_por_centro(manifiesto, centro_cad, p["centro"])
-        detalle = detalle_para_editor(aceptado, prefijo, carpeta_editor, self.zona)
+        detalle = detalle_para_editor(aceptado, prefijo, carpeta_editor, self.zona,
+                                      margen_hoja_mm=self.margen_hoja_mm)
         self._exportados[detalle["manifiesto"]] = detalle
         return {
             **p.get("extra", {}),
@@ -657,7 +664,7 @@ class AplicacionEditor:
                                        "el tamaño de la zona en la hoja.")
         n = z["n"]
         pagina = pagina_de_zona(z["zona"], mm, n, dxf["margen_mm"])
-        dx, dy = exceso_de_tamano(pagina, self.zona)
+        dx, dy = exceso_de_tamano(pagina_de_zona(z["zona"], mm, n, self.margen_hoja_mm), self.zona)
         if dx or dy:
             raise ErrorAplicacion(400, f"La zona no cabe en el área de dibujo a 1:{n} (sobran "
                                        f"{dx:.1f} × {dy:.1f} mm): cambie la escala o achíquela.")

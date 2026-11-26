@@ -67,6 +67,7 @@ from componedor.plantilla_v3 import DESTINO as PLANTILLA_V3
 from componedor.plantilla_v3 import ORIGEN as PLANTILLA_V2
 from componedor.plantilla_v3 import crear_plantilla_v3
 from componedor.plantilla_v3 import texto_informe as texto_informe_v3
+from componedor.recorte_detalle import MARGEN_POR_DEFECTO_MM
 from componedor.rotulo_formato import CampoConvenciones
 from componedor.servidor import ServidorEditor
 from componedor.simbolos import InformeExtraccion, extraer_simbolos
@@ -421,8 +422,8 @@ def texto_ortofoto(r: ResultadoComposicion) -> list[str]:
                    f"{o.bytes_jpeg / 1024 / 1024:.1f} MB.")]
     for ident, cobertura in o.cobertura.items():
         ancho, alto = o.px[ident]
-        lineas.append(f"  {ident}: {ancho} × {alto} px, cubre el {cobertura * 100:.0f} % de su "
-                      f"página")
+        lineas.append(f"  {ident}: {ancho} × {alto} px, cubre el {cobertura * 100:.0f} % de lo "
+                      f"que se ve del detalle")
     if r.extendida:
         lineas.append("  Extendida a toda el área de dibujo (los detalles sin ortofoto, con fondo "
                       "blanco).")
@@ -443,10 +444,15 @@ def texto_composicion(plano_ruta: Path, r: ResultadoComposicion) -> str:
               texto_informe_plantilla(r.plantilla), "",
               "Detalles (en orden de apilado: el último queda encima):"]
     for c in r.detalles:
-        x0, y0, x1, y1 = c.ocupado
+        x0, y0, x1, y1 = c.pagina_completa
         lineas.append(f"  {c.id}: paquete {c.prefijo}, esquina inferior izquierda "
                       f"({x0:.2f}, {y0:.2f}) mm; página X {x0:.2f} a {x1:.2f}, "
                       f"Y {y0:.2f} a {y1:.2f}")
+        if c.recorte is not None:
+            v = c.ocupado
+            lineas.append(f"    se ve X {v[0]:.2f} a {v[2]:.2f}, Y {v[1]:.2f} a {v[3]:.2f} "
+                          f"({v[2] - v[0]:.1f} × {v[3] - v[1]:.1f} mm: el dibujo y "
+                          f"{c.margen_mm:g} mm de margen)")
     lineas += texto_rosa_y_rotulo(r)
     lineas += texto_ortofoto(r)
     if r.localizacion is not None:
@@ -706,7 +712,8 @@ def preparar_servidor(args) -> ServidorEditor:
     exportador = leer_config_exportador(args.config)
     app = AplicacionEditor(ruta_html, formato.zonas[ZONA_EDITABLE], exportador,
                            intervalo_cuadricula_m=leer_config_ortofoto(
-                               args.config).cuadricula_intervalo_m)
+                               args.config).cuadricula_intervalo_m,
+                           margen_hoja_mm=config.margen_detalle_mm)
     registro = exportador.trabajo / "servidor.log" if exportador else None
     return ServidorEditor(app, args.puerto, registro=registro)
 
@@ -1012,7 +1019,8 @@ def main(argv: list[str] | None = None) -> int:
                                        args.sobrescribir, carpeta_notas=opciones.notas,
                                        carpeta_firmas=opciones.firmas,
                                        ruta_proyecto=opciones.proyecto,
-                                       carpeta_simbolos=opciones.simbolos)
+                                       carpeta_simbolos=opciones.simbolos,
+                                       margen_detalle_mm=opciones.margen_detalle_mm)
             carpeta = ruta_html.parent.resolve()
             print(f"Editor generado: {ruta_html.resolve()} "
                   f"({ruta_html.stat().st_size / 1024:.0f} KB)")
@@ -1054,9 +1062,11 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Error: {error}", file=sys.stderr)
                 return 2
             config_orto = leer_config_ortofoto(args.config) if args.config else None
-            simbolos = leer_config_componer(args.config).simbolos if args.config else None
+            config = leer_config_componer(args.config) if args.config else None
             resultado = componer_plano(plano, salida, args.sobrescribir, args.guias,
-                                       config_orto, simbolos)
+                                       config_orto, config.simbolos if config else None,
+                                       config.margen_detalle_mm if config
+                                       else MARGEN_POR_DEFECTO_MM)
             print(texto_composicion(args.plano, resultado))
             if args.codigo_avisos and resultado.advertencias:
                 return CODIGO_AVISOS

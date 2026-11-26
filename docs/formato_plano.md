@@ -80,6 +80,7 @@ Archivo `planos/mi_plano.json`:
 | `detalles[].posicion_mm` | `[x, y]` (números) | uno de los dos | Esquina inferior izquierda de la **página** del detalle, en mm de papel. |
 | `detalles[].centrar` | `true` | uno de los dos | Centra la página del detalle en el área de dibujo. |
 | `detalles[].etiqueta_escala` | `true` / `false` | no (v2) | `false`: ese detalle no lleva la etiqueta «ESC: 1:N». Por defecto `true`. |
+| `detalles[].margen_mm` | número de 0 a 50 | no (v2) | Borde que se deja alrededor de su dibujo en la hoja (ver «Recorte»). Sin la clave, `margen_detalle_mm` de `componedor.json` (1 mm). |
 | `rosa_vientos` | objeto | no (v2) | `{"visible": true/false, "posicion_mm": [x, y]}`, ambos opcionales (ver abajo). |
 | `rotulo` | objeto | no (v2) | Valores de los campos del rótulo (ver abajo). |
 
@@ -96,6 +97,20 @@ Reglas:
   silencio). `rotulo`, `rosa_vientos` y `etiqueta_escala` en un plano versión 1 son error
   («solo existe en la versión 2 del plano»).
 - Todavía **no** se admiten anclas CAD en el plano.json (solo posición o centrado).
+
+### Recorte: el dibujo y un margen (Fase 11)
+
+La página de cada paquete trae el margen de la exportación (5 mm). En la hoja **no se ve la
+página entera**: se recorta a su dibujo (`page_bounds_mm`) más el margen (`margen_mm` del
+detalle o, sin él, `margen_detalle_mm` de `componedor.json`, 1 mm), sin salirse de la página.
+
+- `posicion_mm` **sigue siendo la esquina de la página entera**: el dibujo no se mueve al
+  cambiar el margen; solo se ve más o menos borde. Un plano viejo abre y se compone con el
+  dibujo en el mismo sitio (con 1 mm de borde en lugar de 5).
+- Lo que debe quedar **dentro del área de dibujo** es lo que se ve (el dibujo y el margen); la
+  página puede sobresalir. `centrar` centra lo que se ve.
+- Sigue siendo vector (`show_pdf_page` con `clip`). La ortofoto de un detalle se corta al mismo
+  rectángulo.
 
 Si el archivo no cumple, `componer` muestra **todos** los problemas juntos, uno por línea,
 con la ruta del campo, por ejemplo:
@@ -637,8 +652,9 @@ ortofoto» del editor). Un perfil u otro bloque que no la necesita queda sin ell
   mismo sistema del dibujo), **no se compone** y el error dice qué hacer.
 - **Sistemas**: sin `crs_dibujo`, o con una ortofoto sin sistema y sin `crs`, **no se
   compone** (error claro). Nunca se supone uno. Si son distintos, se reproyecta.
-- **Dónde**: por cada detalle que la usa, su página en la hoja se lleva a CAD con la matriz de su
-  manifiesto; la ortofoto de esa caja va **exactamente sobre la página**, debajo del detalle.
+- **Dónde**: por cada detalle que la usa, lo que se ve de él en la hoja (su dibujo y el margen,
+  ver «Recorte») se lleva a CAD con la matriz de su manifiesto (anclada a la página entera); la
+  ortofoto de esa caja va **exactamente ahí**, debajo del detalle.
   Orden: plantilla (con la rosa y los símbolos) → ortofoto → detalles → rótulo.
 - **Cómo**: a `ppp` píxeles por pulgada de papel (300) en **mosaicos de 1024 px**, cada uno un
   JPEG (calidad `calidad_jpeg`, 85) que entra tal cual en el PDF. Donde no hay foto, o con
@@ -718,8 +734,8 @@ plano guarda todas las zonas, exportadas o no, en la entrada de su DXF:
 3. Cada detalle pasa por `importar_paquete` (la única puerta: completo, íntegro y
    coherente, con escala física garantizada). Si hay paquetes rechazados **no se genera
    el PDF**: se listan todos, con el `id` del detalle y los motivos.
-4. **Posiciones**: la página completa de cada detalle debe quedar dentro de
-   `area_dibujo`, con la misma regla estricta que `colocar`. Si no, error con el `id`, los
+4. **Posiciones**: lo que se ve de cada detalle (su dibujo y el margen, ver «Recorte») debe
+   quedar dentro de `area_dibujo`, con la misma regla estricta que `colocar`. Si no, error con el `id`, los
    mm que se pasa y la zona que invade. **El rótulo es inamovible**: no se permite poner
    detalles sobre él ni sobre otras zonas.
 5. **Traslapes**: no son error, son advertencias (entre detalles, y de un detalle sobre un

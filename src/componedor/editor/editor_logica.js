@@ -96,6 +96,53 @@
     return [pos[0] + l[0], pos[1] + l[1], pos[0] + l[2], pos[1] + l[3]];
   }
 
+  // ---------------------------------------------------------------------------------------
+  // Recorte (Fase 11, igual que recorte_detalle.py): en la hoja se ve el dibujo más un margen,
+  // no la página entera del paquete. c.pos sigue siendo la esquina de la PÁGINA (posicion_mm):
+  // el dibujo no se mueve al cambiar el margen. Lo visible es lo que debe caber en el área.
+  // ---------------------------------------------------------------------------------------
+
+  const MARGEN_POR_DEFECTO_MM = 1;
+  const MARGEN_MAXIMO_MM = 50;
+
+  /** El margen de una colocación: el suyo (c.margen) o el de componedor.json (datos). */
+  function margenDe(c, datos) {
+    if (c && typeof c.margen === "number") return c.margen;
+    return datos && typeof datos.margen_detalle_mm === "number" ? datos.margen_detalle_mm : MARGEN_POR_DEFECTO_MM;
+  }
+
+  /** Lo visible relativo a la esquina de la página (papel, Y arriba): el dibujo agrandado
+   *  `margen` por lado, sin salirse de la página. margen null: la página entera. */
+  function recorteDetalle(detalle, margen) {
+    const [ancho, alto] = detalle.tamano_pagina_mm;
+    if (margen === null || margen === undefined || !detalle.limites_dibujo_mm) return [0, 0, ancho, alto];
+    const l = detalle.limites_dibujo_mm;
+    return [Math.max(0, l[0] - margen), Math.max(0, l[1] - margen),
+      Math.min(ancho, l[2] + margen), Math.min(alto, l[3] + margen)];
+  }
+
+  /** Lo que se ve del detalle en papel con la página en pos. */
+  function visibleEnPapel(detalle, pos, margen) {
+    const r = recorteDetalle(detalle, margen);
+    return [pos[0] + r[0], pos[1] + r[1], pos[0] + r[2], pos[1] + r[3]];
+  }
+
+  /** [tamaño visible, zona corrida]: con ellos clampAZona, posicionCentrada y redondearDentro
+   *  dan la esquina de la PÁGINA que deja lo visible dentro (o centrado) de la zona. */
+  function geometriaVisible(detalle, margen, zona) {
+    const r = recorteDetalle(detalle, margen);
+    return [[r[2] - r[0], r[3] - r[1]], [zona[0] - r[0], zona[1] - r[1], zona[2] - r[0], zona[3] - r[1]]];
+  }
+  const clampDetalle = (pos, detalle, margen, zona) => clampAZona(pos, ...geometriaVisible(detalle, margen, zona));
+  const centrarDetalle = (detalle, margen, zona) => posicionCentrada(...geometriaVisible(detalle, margen, zona));
+  const redondearDetalle = (pos, detalle, margen, zona) => redondearDentro(pos, ...geometriaVisible(detalle, margen, zona));
+  /** ¿Cabe lo que se ve (dibujo + margen) en la zona? */
+  function cabeDetalle(detalle, margen, zona) {
+    const [t] = geometriaVisible(detalle, margen, zona);
+    return t[0] <= zona[2] - zona[0] + EPS_MM && t[1] <= zona[3] - zona[1] + EPS_MM;
+  }
+  const margenValido = (v) => typeof v === "number" && isFinite(v) && v >= 0 && v <= MARGEN_MAXIMO_MM;
+
   /** Igual que colocar.posicion_centrada (mismas operaciones, mismo resultado). */
   function posicionCentrada(tamano, zona) {
     const [ancho, alto] = tamano;
@@ -331,18 +378,23 @@
         }
         return B.pendienteParaGuardar(c, conOrtofoto);
       }
+      const margen = typeof c.margen === "number" ? c.margen : undefined;
       if (c.original && mismaPos(c.pos, c.posOriginal) && etiqueta === etiquetaOriginal &&
-          igualOrtofoto(c)) {
-        if (etiqueta === false) v2 = true;
+          igualOrtofoto(c) && margen === c.original.margen_mm) {
+        if (etiqueta === false || margen !== undefined) v2 = true;
         return JSON.parse(JSON.stringify(c.original));
       }
       const d = {
         id: c.id,
         manifiesto: c.detalle.manifiesto,
-        posicion_mm: redondearDentro(c.pos, c.detalle.tamano_pagina_mm, zona),
+        posicion_mm: redondearDetalle(c.pos, c.detalle, margenDe(c, datos), zona),
       };
       if (etiqueta === false) {
         d.etiqueta_escala = false;
+        v2 = true;
+      }
+      if (margen !== undefined) { // versión 2: el margen propio de este detalle (Fase 11)
+        d.margen_mm = margen;
         v2 = true;
       }
       if (usaOrtofoto(c)) d.ortofoto = true;
@@ -561,7 +613,7 @@
       if (v3 && "origen" in item && !(v6 && "manifiesto" in item)) { // bloque de un DXF sin exportar
         const b = B.leerPendiente(item, donde + " ('" + item.id + "')", dxfs, errores);
         if (!b) return;
-        const pagina = B.paginaMm(b.bloque.tamano_m, b.escala, b.bloque.dxf.margen_mm);
+        const pagina = B.paginaMm(b.bloque.tamano_m, b.escala, margenDe(null, datos));
         const centro = B.centroLimitado(b.centro, pagina, zona);
         const igual = centro[0] === b.centro[0] && centro[1] === b.centro[1];
         if (!igual) {
@@ -583,16 +635,22 @@
           : "el manifiesto '" + item.manifiesto + "' no está en el catálogo del editor."));
         return;
       }
-      if (!detalle.cabe) {
+      if (item.margen_mm !== undefined && (!v2 || !margenValido(item.margen_mm))) {
+        errores.push(donde + ".margen_mm: " + (v2 ? "se esperaba un número de 0 a " + MARGEN_MAXIMO_MM + " mm."
+          : "solo existe en la versión 2 del plano (use \"version\": 2)."));
+        return;
+      }
+      const margen = item.margen_mm !== undefined ? item.margen_mm : margenDe(null, datos);
+      if (!cabeDetalle(detalle, margen, zona)) {
         errores.push(donde + " ('" + item.id + "'): el detalle '" + detalle.id +
-          "' no cabe en el área de dibujo.");
+          "' no cabe en el área de dibujo (su dibujo y " + margen + " mm de margen).");
         return;
       }
       let pos;
       const tienePos = Array.isArray(item.posicion_mm) && item.posicion_mm.length === 2 &&
         item.posicion_mm.every((v) => typeof v === "number" && isFinite(v));
       if (item.centrar === true && item.posicion_mm === undefined) {
-        pos = posicionCentrada(detalle.tamano_pagina_mm, zona);
+        pos = centrarDetalle(detalle, margen, zona);
       } else if (tienePos && item.centrar !== true) {
         pos = item.posicion_mm.slice();
       } else {
@@ -605,7 +663,7 @@
           : "solo existe en la versión 2 del plano (use \"version\": 2)."));
         return;
       }
-      const ajustada = clampAZona(pos, detalle.tamano_pagina_mm, zona);
+      const ajustada = clampDetalle(pos, detalle, margen, zona);
       if (ajustada[0] !== pos[0] || ajustada[1] !== pos[1]) {
         avisos.push("'" + item.id + "' se salía del área de dibujo: se movió a (" +
           ajustada[0].toFixed(2) + ", " + ajustada[1].toFixed(2) + ") mm.");
@@ -622,6 +680,7 @@
         colocacion.zona = zonaDeColocacion(z);
       }
       if (item.etiqueta_escala === false) colocacion.etiqueta_escala = false;
+      if (item.margen_mm !== undefined) colocacion.margen = item.margen_mm;
       colocaciones.push(colocacion);
     });
     if (errores.length) return vacio(errores);
@@ -648,10 +707,10 @@
         errores.push("zonas: '" + z.nombre + "' tiene el mismo nombre que un detalle del plano.");
         continue;
       }
-      const pagina = B.paginaMm(z.tamano_m, z.escala, z.dxf.margen_mm);
+      const pagina = B.paginaMm(z.tamano_m, z.escala, margenDe(null, datos));
       const centro = B.centroLimitado(z.centro, pagina, zona);
       colocaciones.push({ id: z.nombre, escala: z.escala, centro, bloque: Object.assign(zonaDeColocacion(z).bloque,
-        { sugerida: B.escalaSugerida(z.tamano_m, z.dxf.margen_mm, zona) }) });
+        { sugerida: B.escalaSugerida(z.tamano_m, margenDe(null, datos), zona) }) });
     }
     if (errores.length) return vacio(errores);
     if (ortofoto && plano.version === 4) {
@@ -707,6 +766,16 @@
     rectPapelAPantalla,
     paginaEnPapel,
     dibujoEnPapel,
+    MARGEN_POR_DEFECTO_MM,
+    MARGEN_MAXIMO_MM,
+    margenDe,
+    margenValido,
+    recorteDetalle,
+    visibleEnPapel,
+    clampDetalle,
+    centrarDetalle,
+    redondearDetalle,
+    cabeDetalle,
     posicionCentrada,
     clampAZona,
     ajustarAPaso,

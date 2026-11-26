@@ -191,7 +191,8 @@ def test_pedidos_que_no_se_atienden(armar):
     casos = [
         (None, 400, "Se esperaba la lista «bloques»"),
         ([{"id": "x"}], 400, "Cada bloque lleva"),
-        ([pedido(carpeta, escala=2500)], 400, "no cabe en el área de dibujo a 1:2500"),
+        # 1350 m a 1:2500 = 540 mm + 2 × 1 mm (margen de la hoja) sí cabe; a 1:2000 no.
+        ([pedido(carpeta, escala=2000)], 400, "no cabe en el área de dibujo a 1:2000"),
         ([{**pedido(carpeta), "sha256": "0" * 64}], 409, "es de otro DXF"),
         ([pedido(carpeta, handle="FFFF")], 404, "no está en el DXF cargado"),
     ]

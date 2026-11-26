@@ -16,11 +16,12 @@ from conftest import (
     crear_plantilla_sintetica,
     escribir_formato,
 )
+from conftest import componer_pagina_entera as componer_plano  # sin recorte
 from ortofoto_sintetica import crear_geotiff, error_de_posicion, imagenes_pdf
 
 from componedor.cad_a_papel import MatrizCad
 from componedor.cli import main
-from componedor.componer import PlanoNoComponible, componer_plano
+from componedor.componer import PlanoNoComponible
 from componedor.configuracion import ConfigOrtofoto
 from componedor.ortofoto_copia import leer_indice
 from componedor.ortofoto_fuente import diferencias, fecha
@@ -182,9 +183,10 @@ def test_cli_resume_la_ortofoto(entorno, capsys):
     assert main(["componer", str(p.ruta), "--salida", str(entorno / "p.pdf")]) == 0
     salida = capsys.readouterr().out
     assert "Ortofoto (el original:" in salida and "a 300 ppp, calidad 85, opacidad 100 %" in salida
-    assert "a: 3071 × 1417 px, cubre el 100 % de su página" in salida
+    # La CLI recorta con 1 mm: la foto va detrás de lo que se ve (202 × 82 mm a 300 ppp).
+    assert "a: 2386 × 969 px, cubre el 100 % de lo que se ve del detalle" in salida
     assert "Copia reducida escrita:" in salida
-    assert "los 6 mosaico(s) de la ortofoto (los detalles siguen siendo vectores)" in salida
+    assert "los 3 mosaico(s) de la ortofoto (los detalles siguen siendo vectores)" in salida  # 2386 px: 3 de 1024
     assert "cada mosaico de la ortofoto es JPEG y está en su sitio (±0,1 mm)" in salida
 
 

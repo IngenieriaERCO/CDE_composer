@@ -11,10 +11,11 @@ import pytest
 
 from componedor import componer
 from componedor.cli import main
-from componedor.componer import PlanoNoComponible, componer_plano
+from componedor.componer import PlanoNoComponible
 from componedor.plano import leer_plano
 from componedor.transformaciones import rect_pdf_a_papel
 from componedor.unidades import mm_a_pt
+from conftest import componer_pagina_entera as componer_plano  # sin recorte
 from conftest import crear_paquete_real, crear_plantilla_sintetica, escribir_formato
 
 TOL = 0.1
@@ -216,8 +217,8 @@ def test_conteo_de_trazos_que_no_cuadra(entorno, monkeypatch):
 def test_verificacion_detecta_detalle_corrido(entorno, monkeypatch):
     original = componer.insertar_pagina
 
-    def insertar_corrido(hoja, formato, doc, pagina, posicion):
-        return original(hoja, formato, doc, pagina, (posicion[0] + 1.0, posicion[1]))
+    def insertar_corrido(hoja, formato, doc, pagina, posicion, recorte=None):
+        return original(hoja, formato, doc, pagina, (posicion[0] + 1.0, posicion[1]), recorte)
 
     monkeypatch.setattr(componer, "insertar_pagina", insertar_corrido)
     plano = leer_plano(_plano(entorno, [_d("d1", "a", (30, 430))]))
@@ -240,7 +241,9 @@ def test_cli_desde_otra_carpeta(entorno, tmp_path_factory, monkeypatch, capsys):
     assert (otra / "salida.pdf").is_file()
     assert "Plano: " in out and "(2 detalle(s))" in out
     assert "  d1: paquete a, esquina inferior izquierda (30.00, 430.00) mm" in out
-    assert "  d2: paquete b, esquina inferior izquierda (212.55, 237.00) mm" in out
+    # Centrado = lo que se ve (dibujo + 1 mm) centrado en el área: X 241,55..443,55 (342,55).
+    assert "  d2: paquete b, esquina inferior izquierda (205.25, 235.70) mm" in out
+    assert "se ve X 241.55 a 443.55, Y 256.00 a 338.00 (202.0 × 82.0 mm: el dibujo y 1 mm" in out
     assert "Advertencias: ninguna" in out
     assert "PDF: salida.pdf" in out
 
@@ -286,8 +289,8 @@ def test_detalle_realmente_corrido_medio_milimetro_falla(entorno, monkeypatch):
     (la tolerancia sigue siendo ±0,1 mm)."""
     original = componer.insertar_pagina
 
-    def insertar_corrido(hoja, formato, doc, pagina, posicion):
-        return original(hoja, formato, doc, pagina, (posicion[0], posicion[1] + 0.5))
+    def insertar_corrido(hoja, formato, doc, pagina, posicion, recorte=None):
+        return original(hoja, formato, doc, pagina, (posicion[0], posicion[1] + 0.5), recorte)
 
     monkeypatch.setattr(componer, "insertar_pagina", insertar_corrido)
     plano = leer_plano(_plano(entorno, [_d("d1", "a", (30, 430))]))

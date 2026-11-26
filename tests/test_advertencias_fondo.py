@@ -15,8 +15,8 @@ from componedor.advertencias import (
     clave_traslape_detalles,
     texto_advertencia,
 )
-from componedor.componer import componer_plano
 from componedor.plano import leer_plano
+from conftest import componer_pagina_entera as componer_plano  # sin recorte
 from conftest import crear_paquete_real, crear_plantilla_sintetica, escribir_formato
 
 ROSA = [612.0, 51.0, 652.0, 91.0]

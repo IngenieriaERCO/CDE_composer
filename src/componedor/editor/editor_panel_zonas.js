@@ -589,9 +589,9 @@
     const mmU = c && c.unidades ? c.unidades.mm_por_unidad : null;
     if (mmU && area() && z.escalaOrigen !== "usuario") {
       const n = B.leerEscalaEscrita(z.escala);
-      const cabe = !n.error && E.tamanoEnHoja(zona, mmU, n.n, c.margen_mm, area()).cabe;
+      const cabe = !n.error && E.tamanoEnHoja(zona, mmU, n.n, B.margenHoja(), area()).cabe;
       if (!cabe) { // sin escala o con una que ya no sirve: la sugerida
-        const sugerida = E.escalaSugerida(zona, mmU, c.margen_mm, area());
+        const sugerida = E.escalaSugerida(zona, mmU, B.margenHoja(), area());
         if (sugerida) {
           z.escala = String(sugerida);
           z.escalaOrigen = "programa";
@@ -1002,7 +1002,7 @@
       t.textContent = n.error;
       return;
     }
-    const r = E.tamanoEnHoja(z.zona, c.unidades.mm_por_unidad, n.n, c.margen_mm, area());
+    const r = E.tamanoEnHoja(z.zona, c.unidades.mm_por_unidad, n.n, B.margenHoja(), area());
     t.textContent = "A " + B.textoEscala(n.n) + (n.aviso ? " (" + n.aviso + ")" : "") + ": " + r.texto +
       (r.cabe ? " Cabe en el área de dibujo del A1." : " " + r.aviso);
     if (!r.cabe) t.classList.add("no-cabe");

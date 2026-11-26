@@ -44,6 +44,16 @@
   // ---------------------------------------------------------------------------------------
 
   /** Igual que bloques_dxf.pagina_mm. */
+  // El borde que queda en la HOJA alrededor del dibujo (Fase 11, componedor.json →
+  // margen_detalle_mm; 1 mm). El paquete se exporta con el margen del DXF (dxf.margen_mm, 5 mm)
+  // y componer recorta la página a su dibujo más esto: el tamaño en la hoja de un bloque o una
+  // zona sin exportar se mide con este. Lo fija editor_ui al arrancar.
+  let margenHojaMm = 1;
+  const margenHoja = () => margenHojaMm;
+  function fijarMargenHoja(m) {
+    if (typeof m === "number" && isFinite(m) && m >= 0) margenHojaMm = m;
+  }
+
   function paginaMm(tamanoM, n, margen) {
     return [tamanoM[0] * 1000 / n + 2 * margen, tamanoM[1] * 1000 / n + 2 * margen];
   }
@@ -450,7 +460,7 @@
     for (const c of colocaciones) {
       if (!c.bloque || c.bloque.zona) continue; // las zonas borrador van por su cuenta (editor_zonas)
       const b = c.bloque;
-      const pagina = paginaMm(b.tamano_m, c.escala, b.dxf.margen_mm);
+      const pagina = paginaMm(b.tamano_m, c.escala, margenHoja());
       const e = estadoCaja(c.centro, pagina, zona);
       let motivo = null;
       if (!catalogo) motivo = "cargue «" + b.dxf.nombre + "» con «Cargar DXF»";
@@ -473,7 +483,9 @@
    *  (el servidor da `desde_centro_mm`, que vale para cualquier copia a esa escala). */
   const posicionExportada = (centro, desdeCentro) => [centro[0] - desdeCentro[0], centro[1] - desdeCentro[1]];
 
-  return { EPS_MM, ESCALAS, ESCALA_MAXIMA, esNormalizada, leerEscalaEscrita, escalaAjustada, pedidosExportar, posicionExportada, paginaMm, excesoDeTamano, escalaSugerida, escalaVecina, textoEscala,
+  return {
+    margenHoja,
+    fijarMargenHoja, EPS_MM, ESCALAS, ESCALA_MAXIMA, esNormalizada, leerEscalaEscrita, escalaAjustada, pedidosExportar, posicionExportada, paginaMm, excesoDeTamano, escalaSugerida, escalaVecina, textoEscala,
     leerEscala, rectCentrado, rectDibujo, centroLimitado, centroZona, estadoCaja, escalaPorTirador,
     mmPorUnidadCad, centroCaja, cadAPapel, pxACad, imagenEnPapel, entradaDxf, nombreArchivo,
     leerListaDxf, leerPendiente, asignarIdsDxf, listaDxf, pendienteParaGuardar, leerZonas, zonaParaGuardar };

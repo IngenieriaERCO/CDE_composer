@@ -6,10 +6,10 @@ import pymupdf
 import pytest
 
 from componedor.cli import main
-from componedor.componer import componer_plano
 from componedor.elementos_plantilla import detectar_elementos, pdf_verificacion
 from componedor.formato import FormatoInvalido, cargar_formato, validar_formato
 from componedor.plano import leer_plano
+from conftest import componer_pagina_entera as componer_plano  # sin recorte
 from conftest import RUTA_A1, crear_paquete_real, crear_plantilla_sintetica, escribir_formato
 
 ROSA = (612.0, 51.0, 652.0, 91.0)
@@ -167,7 +167,17 @@ def test_dibujo_sobre_dos_elementos(entorno):
 
 def test_cli_muestra_las_advertencias(entorno, capsys):
     ruta = entorno / "plano.json"
-    _plano(entorno, (360.0, 40.0))
+    _plano(entorno, (400.0, 40.0))  # el dibujo sobre la rosa (la CLI recorta con 1 mm)
     assert main(["componer", str(ruta), "--salida", str(entorno / "p.pdf")]) == 0
     out = capsys.readouterr().out
-    assert "Advertencias (1):" in out and "tapa 'rosa_vientos'" in out
+    assert "Advertencias (1):" in out and "se monta sobre 'rosa_vientos'" in out
+
+
+def test_con_el_recorte_la_pagina_ya_no_tapa(entorno):
+    """Fase 11: con el margen de 1 mm lo que se ve es el dibujo más 1 mm; la página que tocaba
+    la rosa (X 360..620) ya no está: no hay advertencia."""
+    from componedor.componer import componer_plano as componer_con_recorte
+
+    r = componer_con_recorte(_plano(entorno, (360.0, 40.0)), entorno / "p.pdf")
+    assert r.advertencias == []
+    assert r.detalles[0].ocupado == pytest.approx((396.3, 60.3, 598.3, 142.3))

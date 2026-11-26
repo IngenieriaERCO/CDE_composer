@@ -367,7 +367,7 @@
     for (const c of colocaciones) {
       if (!esZona(c) && !(todas && esZonaExportada(c))) continue;
       const b = datosParaExportar(c);
-      const pagina = B.paginaMm(b.tamano_m, b.escala, b.dxf.margen_mm);
+      const pagina = B.paginaMm(b.tamano_m, b.escala, B.margenHoja()); // lo que se verá en la hoja
       const e = B.estadoCaja(b.centro, pagina, areaDibujo);
       let motivo = null;
       if (!catalogo) motivo = "cargue «" + b.dxf.nombre + "» con «Cargar DXF»";

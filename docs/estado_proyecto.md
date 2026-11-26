@@ -3173,7 +3173,7 @@ detalle está donde dice el plano (±0,1 mm)».
 - un detalle insertado de verdad 0,5 mm corrido falla con «diferencia máx. 0.500 mm, tolerancia
   ±0.1 mm».
 
-### Zonas del Model Space — la escala del dibujo (`texts`, protocolo 1.3) (2026-11-26)
+### Zonas del Model Space — la escala del dibujo (`texts`, protocolo 1.3) (2026-11-26, commit f596c86)
 
 Decisiones aprobadas: A) un «ESC 1:N» en una capa excluida se avisa pero no se usa solo;
 B) la escala escrita a mano se respeta, la del programa se actualiza al cambiar la zona;
@@ -3218,6 +3218,58 @@ ejes H/V siempre se elige.
 
 **Para el Exportador**: el editor trabaja con 1.2 (sin la escala del dibujo, con una nota) y
 con 1.3 o más.
+
+### Recorte de los detalles: el dibujo y un margen, no la página entera (2026-11-26)
+
+Problema: cada paquete trae 5 mm de borde blanco (el margen de la exportación) que ocupaba el
+A1 y hacía salir en rojo («no cabe») detalles cuyo dibujo sí cabía (via_tunez con ortofoto).
+Decisiones aprobadas: A) recortar al componer, sin reexportar; B) 1 mm por defecto; C) global en
+`componedor.json` (`margen_detalle_mm`) y por detalle en Selección (`margen_mm` en el plano.json,
+versión 2; los planos viejos abren igual); D) la ortofoto se corta al mismo margen.
+
+**Qué se hizo**
+- `recorte_detalle.py` (nuevo): recorte = `page_bounds_mm` agrandado el margen, sin salirse de
+  la página; lo visible en papel; centrar lo visible; `cabe_recortado`.
+- `colocar.insertar_pagina(…, recorte_mm)`: `show_pdf_page` con `clip` (sigue siendo vector).
+- `componer`: `posicion_mm` sigue siendo la esquina de la PÁGINA (el dibujo no se mueve);
+  `ocupado` = lo visible, que debe caber en el área; `pagina` = la página entera (para el fondo
+  blanco en la verificación). La verificación final sigue igual (±0,1 mm contra los trazos del
+  PDF del detalle: `get_drawings()` da los trazos sin recortar). Ortofoto: región = lo visible,
+  mapeo con la página entera. `margen_mm=None`: sin recorte (lo usan las pruebas de páginas).
+- `configuracion`: `margen_detalle_mm` (0 a 50; 1). `plano`: `detalles[].margen_mm` (v2).
+- «Cabe» con el dibujo y el margen en todas partes: inventario (y sus notas), datos del
+  editor, detalle recién exportado, escala sugerida de los bloques y de las zonas, y el
+  «no cabe» del servidor al exportar.
+- Editor: lo visible (detalle, bloque o zona borrador) con el margen de la hoja; la miniatura
+  recortada (svg anidado); clamp, centrar y redondeo de lo visible; «Margen (mm)» y «Se ve: …»
+  en Selección; `margen_mm` se lee y se guarda (versión 2).
+- CLI `componer`: dice qué se ve de cada detalle.
+
+**Cómo probarlo**:
+1. `Abrir editor.bat`, «Abrir plano.json» → `editor/Pruebadecambio.json`: via_tunez se ve 4 mm
+   más adentro (X 54, Y 94), sin rojo.
+2. Arrastrar via_tunez hacia la esquina superior izquierda: llega hasta el borde del área con su
+   dibujo (la página sobresale 4 mm y no importa).
+3. Selección → «Margen (mm)» = 0: se ve exactamente el dibujo; vacío: vuelve a 1 mm.
+4. Guardar y `Componer.bat`: el PDF sale, la foto y el dibujo terminan juntos a 1 mm.
+
+**Verificación en Edge** (`data/verificacion/verificar_margen.mjs`, editor real con
+`componedor.json`; capturas y PDF en `data/verificacion/margen_salida/`). **Todo OK**, sin errores
+de JavaScript: los 4 via_tunez caben; Pruebadecambio abre sin rojo con via_tunez en X 54,00 a
+492,90; pegado a la esquina la página empieza en x = 18,70 y lo visible justo en 22,70 y 571,30;
+margen 0 en Selección = el dibujo exacto, y el plano guarda `margen_mm: 0`; componer acepta ese
+plano (37 s, con ortofoto) y `Pruebadecambio.json` tal cual (27 s; ortofoto «cubre el 100 % de lo
+que se ve»). Ningún archivo de `resultados/` ni de `editor/` (salvo `editor.html`) se tocó.
+
+**Pruebas**: **1538 pasan** y 1 se salta (antes 1525). ruff: los mismos 173 hallazgos.
+- `test_recorte_detalle` (nuevo, 8): cálculo; un detalle con margen 0 y otro con 1 mm (recortes
+  del PDF, sin imágenes nuevas, el dibujo en su sitio); cabe lo visible aunque la página se
+  salga; centrar; margen general y propio; la verificación sigue detectando 0,5 mm; `margen_mm`
+  en el plano; con ortofoto (la foto cubre lo visible y sigue en su sitio).
+- Editor (Node): margen leído y guardado, acomodar lo visible, y lo visible igual que componer
+  con 0, 1 y 4,5 mm.
+- Ajustadas al recorte: inventario, datos del editor, sugeridas, CLI. Las de traslapes, elementos
+  y ortofoto escritas con la página entera siguen igual con `margen_mm=None`.
 
 ### Pendiente en la Fase 4 (al 2026-11-11)
 

@@ -2,6 +2,7 @@
   "version": 1,
   "formato": "formatos/A1_ERCO.json",
   "carpeta_simbolos": "simbolos",
+  "margen_detalle_mm": 1,
   "editor": {
     "paquetes": "data/input",
     "salida": "editor",

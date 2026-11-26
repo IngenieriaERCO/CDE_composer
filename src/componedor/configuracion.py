@@ -10,6 +10,11 @@ Esquema (versión 1):
                                                 de convenciones, con su indice.json y
                                                 biblioteca/<id>.pdf; para los dos. Sin ella,
                                                 la del formato)
+      "margen_detalle_mm": 1,                  (opcional: borde blanco que se deja alrededor
+                                                del dibujo de cada detalle en la hoja, de 0 a
+                                                50 mm; la página del paquete se recorta a su
+                                                dibujo más esto. Para los dos; 1. Un detalle
+                                                puede llevar otro en el plano.json)
       "editor": {
         "paquetes": "data/input",              (obligatorio: carpeta con los paquetes)
         "salida":   "editor",                  (obligatorio: carpeta del editor; se crea)
@@ -69,10 +74,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from componedor.estilos_impresion import nombre_valido
+from componedor.recorte_detalle import (
+    MARGEN_MAXIMO_MM,
+    MARGEN_POR_DEFECTO_MM,
+    margen_valido,
+)
 
 VERSION = 1
-CLAVES_GENERALES = ("version", "formato", "carpeta_simbolos", "editor", "componer", "exportador",
-                    "ortofoto")
+CLAVES_GENERALES = ("version", "formato", "carpeta_simbolos", "margen_detalle_mm", "editor",
+                    "componer", "exportador", "ortofoto")
 # Por sección: (obligatorias, opcionales, {clave: "carpeta" | "archivo"} de las que deben existir).
 SECCIONES = {
     "editor": (("paquetes", "salida"), ("notas", "firmas", "proyecto"),
@@ -95,6 +105,7 @@ class ConfigEditor:
     firmas: Path | None = None
     proyecto: Path | None = None
     simbolos: Path | None = None  # carpeta_simbolos (None: la biblioteca del formato)
+    margen_detalle_mm: float = MARGEN_POR_DEFECTO_MM  # recorte de cada detalle en la hoja
 
 
 @dataclass(frozen=True)
@@ -102,6 +113,7 @@ class ConfigComponer:
     formato: Path
     resultados: Path
     simbolos: Path | None = None  # carpeta_simbolos (None: la biblioteca del formato)
+    margen_detalle_mm: float = MARGEN_POR_DEFECTO_MM  # recorte de cada detalle en la hoja
 
 
 @dataclass(frozen=True)
@@ -247,7 +259,12 @@ def leer_config_ortofoto(ruta: Path | str) -> ConfigOrtofoto:
     return ConfigOrtofoto(ppp, calidad, float(intervalo))
 
 
-def _leer_seccion(ruta: Path | str, nombre: str, verificar_rutas: bool) -> dict[str, Path | None]:
+def _texto_margen() -> str:
+    return (f"margen_detalle_mm: se esperaba un número de 0 a {MARGEN_MAXIMO_MM:g} (mm de borde "
+            f"blanco alrededor del dibujo de cada detalle).")
+
+
+def _leer_seccion(ruta: Path | str, nombre: str, verificar_rutas: bool) -> dict:
     ruta = Path(ruta)
     datos = _leer_json(ruta)
     obligatorias, opcionales, tipos = SECCIONES[nombre]
@@ -257,6 +274,11 @@ def _leer_seccion(ruta: Path | str, nombre: str, verificar_rutas: bool) -> dict[
     rutas = {"formato": _ruta(datos.get("formato"), "formato", True, base, problemas),
              "simbolos": _ruta(datos.get("carpeta_simbolos"), "carpeta_simbolos", False, base,
                                problemas)}
+    margen = datos.get("margen_detalle_mm", MARGEN_POR_DEFECTO_MM)
+    if not margen_valido(margen):
+        problemas.append(_texto_margen())
+    else:
+        rutas["margen_detalle_mm"] = float(margen)
     seccion = datos.get(nombre)
     if not isinstance(seccion, dict):
         problemas.append(f'falta la sección "{nombre}" (un objeto con '

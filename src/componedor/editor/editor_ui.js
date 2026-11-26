@@ -99,14 +99,20 @@
   // Zona borrador (Fase 10e): un «bloque» sin exportar cuyo origen es un rectángulo del Model
   // Space (c.bloque.zona = {rect, capas, excluir, modo, desmarcadas}); su nombre es c.bloque.nombre.
   const esZona = (c) => !!(c.bloque && c.bloque.zona);
-  const paginaBloque = (c) => B.paginaMm(c.bloque.tamano_m, c.escala, c.bloque.dxf.margen_mm);
-  const paginaDe = (c) => esBloque(c) ? B.rectCentrado(c.centro, paginaBloque(c)) : L.paginaEnPapel(c.detalle, c.pos);
-  const dibujoDe = (c) => esBloque(c) ? B.rectDibujo(c.centro, paginaBloque(c), c.bloque.dxf.margen_mm)
+  // Lo que se ve en la hoja (Fase 11): el dibujo y el margen de la hoja (el del detalle o el de
+  // componedor.json), no la página del paquete con el margen de la exportación. c.pos sigue
+  // siendo la esquina de la PÁGINA del paquete (posicion_mm): el dibujo no se mueve.
+  B.fijarMargenHoja(L.margenDe(null, DATOS));
+  const margenDe = (c) => L.margenDe(c, DATOS);
+  const paginaBloque = (c) => B.paginaMm(c.bloque.tamano_m, c.escala, B.margenHoja());
+  const paginaDe = (c) => esBloque(c) ? B.rectCentrado(c.centro, paginaBloque(c))
+    : L.visibleEnPapel(c.detalle, c.pos, margenDe(c));
+  const dibujoDe = (c) => esBloque(c) ? B.rectDibujo(c.centro, paginaBloque(c), B.margenHoja())
     : L.dibujoEnPapel(c.detalle, c.pos);
   const escalaDe = (c) => esBloque(c) ? c.escala : c.detalle.escala;
   const estadoBloque = (c) => B.estadoCaja(c.centro, paginaBloque(c), ZONA);
   const sugeridaDe = (c) => c.bloque.sugerida !== undefined && c.bloque.sugerida !== null ? c.bloque.sugerida
-    : B.escalaSugerida(c.bloque.tamano_m, c.bloque.dxf.margen_mm, ZONA, escalasDe(c));
+    : B.escalaSugerida(c.bloque.tamano_m, B.margenHoja(), ZONA, escalasDe(c));
   const escalasDe = (c) => c.bloque.escalas || B.ESCALAS;
   const P = () => window.EditorPanelDxf || null; // el panel del DXF (vista previa); null sin él
   const PO = () => window.EditorPanelOrtofoto || null; // el panel de la ortofoto; null sin él
@@ -339,9 +345,10 @@
   function cajasOrtofoto() {
     const extender = extendida();
     return marcados().map((c) => {
-      const paginaDetalle = paginaDe(c);
-      // Extendida: el área de dibujo, con el MISMO mapeo CAD → papel del detalle.
-      const pagina = extender ? ZONA.slice() : paginaDetalle;
+      // El mapeo CAD → papel es el de la página ENTERA del paquete; la foto va detrás de lo
+      // que se ve (el mismo recorte que el dibujo) o, extendida, de toda el área de dibujo.
+      const paginaDetalle = esBloque(c) ? paginaDe(c) : L.paginaEnPapel(c.detalle, c.pos);
+      const pagina = extender ? ZONA.slice() : paginaDe(c);
       const r = { id: c.id, pagina, paginaDetalle, caja: null, mm_por_unidad: null, motivo: null };
       if (esBloque(c)) {
         const p = previaDe(c);
@@ -500,11 +507,15 @@
         continue;
       }
       const g = nodoSvg("g", { class: clases.join(" "), "data-id": c.id }, capaDetalles);
-      const pagina = L.paginaEnPapel(c.detalle, c.pos);
+      const pagina = paginaDe(c); // lo que se ve: el dibujo y el margen
       const r = L.rectPapelAPantalla(pagina, ESCALA);
       if (extendida() && c.ortofoto !== true) rectSvg(nodoSvg("rect", { class: "fondo-blanco" }, g), pagina);
-      const imagen = nodoSvg("image", { x: r.x, y: r.y, width: r.ancho, height: r.alto,
-        preserveAspectRatio: "none" }, g);
+      // La miniatura es de la página entera: se pone en su sitio y se recorta a lo que se ve
+      // (un <svg> anidado corta lo que sale de su caja), como el clip de componer.
+      const entera = L.rectPapelAPantalla(L.paginaEnPapel(c.detalle, c.pos), ESCALA);
+      const ventana = nodoSvg("svg", { x: r.x, y: r.y, width: r.ancho, height: r.alto, class: "recorte-detalle" }, g);
+      const imagen = nodoSvg("image", { x: entera.x - r.x, y: entera.y - r.y, width: entera.ancho, height: entera.alto,
+        preserveAspectRatio: "none" }, ventana);
       imagen.setAttribute("href", c.detalle.miniatura.data_url);
       rectSvg(nodoSvg("rect", { class: "pagina" }, g), pagina);
       rectSvg(nodoSvg("rect", { class: "dibujo" }, g), L.dibujoEnPapel(c.detalle, c.pos));
@@ -722,9 +733,10 @@
       return;
     }
     const pagina = L.paginaEnPapel(c.detalle, c.pos);
+    const visible = paginaDe(c);
     const dibujo = L.dibujoEnPapel(c.detalle, c.pos);
     // Se muestra exactamente lo que se guardará (0,01 mm, redondeado hacia dentro del área).
-    const guardada = L.redondearDentro(c.pos, c.detalle.tamano_pagina_mm, ZONA);
+    const guardada = L.redondearDetalle(c.pos, c.detalle, margenDe(c), ZONA);
     const filas = [
       nodo("div", { class: "fila" }, ""),
       campo("X (mm)", guardada[0], 0),
@@ -737,13 +749,17 @@
         ", Y " + mm(pagina[1]) + " a " + mm(pagina[3]) + " mm"),
       nodo("div", { class: "medida" }, "Dibujo: X " + mm(dibujo[0]) + " a " + mm(dibujo[2]) +
         ", Y " + mm(dibujo[1]) + " a " + mm(dibujo[3]) + " mm"),
+      campoMargen(c),
+      nodo("div", { class: "medida" }, "Se ve: X " + mm(visible[0]) + " a " + mm(visible[2]) +
+        ", Y " + mm(visible[1]) + " a " + mm(visible[3]) + " mm (" + mm(visible[2] - visible[0]) + " × " +
+        mm(visible[3] - visible[1]) + " mm: es lo que debe caber en el área de dibujo)."),
       ...filasEstilo(c),
     ];
     filas[0].appendChild(nodo("strong", {}, c.id));
     filas[0].appendChild(nodo("span", { class: "medida" }, " · " + c.detalle.id + " · 1:" + c.detalle.escala));
     const botones = nodo("div", { class: "botones" });
     const acciones = [
-      ["Centrar", () => mover(c, L.posicionCentrada(c.detalle.tamano_pagina_mm, ZONA))],
+      ["Centrar", () => mover(c, L.centrarDetalle(c.detalle, margenDe(c), ZONA))],
       ["Traer al frente", () => reordenar(c, +Infinity)],
       ["Enviar atrás", () => reordenar(c, -Infinity)],
       ["Quitar", () => quitar(c)],
@@ -961,7 +977,7 @@
     const ZE = window.EditorZonas;
     const tam = ZE.tamanoM(z.rect, mmU);
     return { dxf: dxfDe(catalogo), nombre, etiqueta: nombre, handle: null, ocurrencia: 1, total_ocurrencias: 1,
-      tamano_m: tam, caja_exacta: true, sugerida: B.escalaSugerida(tam, catalogo.margen_mm, ZONA),
+      tamano_m: tam, caja_exacta: true, sugerida: B.escalaSugerida(tam, B.margenHoja(), ZONA),
       escalas: catalogo.escalas || B.ESCALAS,
       zona: { rect: z.rect.slice(), capas: z.capas || null, excluir: z.excluir || null, modo: z.modo || "excluir",
         desmarcadas: (z.desmarcadas || []).slice(), escala_dibujo: z.escala_dibujo || null } };
@@ -999,6 +1015,40 @@
       const centro = c.centro.slice();
       centro[indice] = numero;
       moverCentro(c, centro);
+    });
+    fila.appendChild(input);
+    return fila;
+  }
+
+  /** Margen alrededor del dibujo de este detalle (Fase 11). Vacío: el de componedor.json. */
+  function campoMargen(c) {
+    const fila = nodo("div", { class: "fila margen-detalle" });
+    fila.appendChild(nodo("label", { for: "margen-detalle" }, "Margen (mm)"));
+    const general = L.margenDe(null, DATOS);
+    const input = nodo("input", { type: "text", inputmode: "decimal", id: "margen-detalle",
+      placeholder: mm(general) + " (general)" });
+    input.value = typeof c.margen === "number" ? mm(c.margen) : "";
+    input.title = "Borde blanco que se deja alrededor del dibujo en la hoja, de 0 a " + L.MARGEN_MAXIMO_MM +
+      " mm. Vacío: el de componedor.json (" + mm(general) + " mm).";
+    input.addEventListener("change", () => {
+      const texto = input.value.trim().replace(",", ".");
+      const numero = texto === "" ? null : Number(texto);
+      if (numero !== null && !L.margenValido(numero)) {
+        mensaje("El margen va de 0 a " + L.MARGEN_MAXIMO_MM + " mm (vacío: el general, " + mm(general) + " mm).", "error");
+        pintarPropiedades();
+        return;
+      }
+      if (numero !== null && !L.cabeDetalle(c.detalle, numero, ZONA)) {
+        mensaje("Con " + mm(numero) + " mm de margen '" + c.id + "' no cabe en el área de dibujo.", "error");
+        pintarPropiedades();
+        return;
+      }
+      if (numero === null) delete c.margen;
+      else c.margen = numero;
+      const dentro = L.clampDetalle(c.pos, c.detalle, margenDe(c), ZONA);
+      if (dentro) c.pos = dentro; // si con el margen nuevo se salía, se acomoda
+      marcarCambios();
+      actualizar();
     });
     fila.appendChild(input);
     return fila;
@@ -1180,8 +1230,8 @@
   function agregar(detalle) {
     const ids = new Set(estado.colocaciones.map((c) => c.id));
     const id = L.idUnico(detalle.id, ids);
-    let pos = L.clampAZona(L.posicionCentrada(detalle.tamano_pagina_mm, ZONA),
-      detalle.tamano_pagina_mm, ZONA);
+    const margen = L.margenDe(null, DATOS);
+    let pos = L.clampDetalle(L.centrarDetalle(detalle, margen, ZONA), detalle, margen, ZONA);
     if (!pos) {
       mensaje("'" + detalle.id + "' no cabe en el área de dibujo.", "error");
       return;
@@ -1189,7 +1239,7 @@
     // Si ya hay un detalle exactamente ahí (p. ej. otra copia), se corre 10 mm para que se vea.
     const ocupada = (p) => estado.colocaciones.some((c) => c.pos[0] === p[0] && c.pos[1] === p[1]);
     for (let i = 0; i < 20 && ocupada(pos); i++) {
-      pos = L.clampAZona([pos[0] + 10, pos[1] - 10], detalle.tamano_pagina_mm, ZONA);
+      pos = L.clampDetalle([pos[0] + 10, pos[1] - 10], detalle, margen, ZONA);
     }
     estado.colocaciones.push({ id, detalle, pos });
     estado.seleccion = id;
@@ -1267,7 +1317,7 @@
 
   /** «Ajustar a la hoja»: la escala exacta más grande con la que cabe (puede no ser normalizada). */
   function ajustarALaHoja(c) {
-    const n = B.escalaAjustada(c.bloque.tamano_m, c.bloque.dxf.margen_mm, ZONA);
+    const n = B.escalaAjustada(c.bloque.tamano_m, B.margenHoja(), ZONA);
     if (!n) {
       mensaje("'" + c.id + "' no cabe en el área de dibujo ni a 1:" + B.ESCALA_MAXIMA + ".", "error");
       return;
@@ -1297,7 +1347,7 @@
       moverCentro(c, [pos[0] + p[0] / 2, pos[1] + p[1] / 2]);
       return;
     }
-    const limitada = L.clampAZona(pos, c.detalle.tamano_pagina_mm, ZONA);
+    const limitada = L.clampDetalle(pos, c.detalle, margenDe(c), ZONA);
     if (!limitada) return;
     if (limitada[0] !== c.pos[0] || limitada[1] !== c.pos[1]) {
       c.pos = limitada;
@@ -1392,7 +1442,7 @@
         L.ajustarAPaso(p.y - arrastre.dy, estado.paso)];
       if (arrastre.tirador) {
         const c = arrastre.c;
-        cambiarEscala(c, B.escalaPorTirador(c.centro, [p.x, p.y], c.bloque.tamano_m, c.bloque.dxf.margen_mm, escalasDe(c)));
+        cambiarEscala(c, B.escalaPorTirador(c.centro, [p.x, p.y], c.bloque.tamano_m, B.margenHoja(), escalasDe(c)));
       } else if (arrastre.rosa) moverRosa(pos);
       else if (esBloque(arrastre.c)) moverCentro(arrastre.c, pos);
       else mover(arrastre.c, pos);
@@ -1732,8 +1782,9 @@
     const centroDe = esBloque(c) ? c.centro
       : [c.pos[0] + c.detalle.tamano_pagina_mm[0] / 2, c.pos[1] + c.detalle.tamano_pagina_mm[1] / 2];
     const pos = B.posicionExportada(centroDe, resultado.desde_centro_mm);
-    const limitada = L.clampAZona(pos, detalle.tamano_pagina_mm, ZONA) || pos;
+    const limitada = L.clampDetalle(pos, detalle, margenDe(c), ZONA) || pos;
     const nueva = { id: c.id, detalle, pos: limitada };
+    if (typeof c.margen === "number") nueva.margen = c.margen; // volver a exportar: su margen
     if (c.etiqueta_escala === false) nueva.etiqueta_escala = false;
     if (c.ortofoto === true) nueva.ortofoto = true; // exportado: sigue con su ortofoto
     // Una zona exportada recuerda su zona (se guarda en el plano y se puede volver a exportar).

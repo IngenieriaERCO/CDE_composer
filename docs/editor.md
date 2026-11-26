@@ -581,6 +581,13 @@ En el PDF la pone `componer`; si el original se movió, usa la copia
 
 ## 3. Qué se ve en la hoja
 
+**Recorte (Fase 11)**: cada detalle se ve con su dibujo y un borde de **1 mm** (`margen_detalle_mm`
+de `componedor.json`), no con la página entera que trae el paquete (5 mm de margen). El recuadro
+del detalle, la regla de «no cabe» (rojo) y los traslapes miden eso. En **Selección**, «Margen
+(mm)» cambia el borde de ese detalle (de 0 a 50; vacío = el general) y «Se ve: …» dice el
+rectángulo que debe caber. X e Y siguen siendo la esquina de la PÁGINA del paquete: el dibujo no
+se mueve al cambiar el margen.
+
 | Elemento | Aspecto |
 |---|---|
 | Hoja A1 completa | La plantilla de fondo (rótulo incluido, sin detalles), en **vector** desde la 4.3f (`plantilla.svg`): sus líneas y letras se ven nítidas a cualquier zoom. |

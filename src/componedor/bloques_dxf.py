@@ -123,7 +123,8 @@ def _entero(v) -> int | None:
 
 
 def _bloque(b, margen_mm: float, zona: RectMM, zona_nombre: str) -> dict:
-    """Una entrada de la carpeta; ValueError con el motivo si no se puede usar."""
+    """Una entrada de la carpeta; ValueError con el motivo si no se puede usar. `margen_mm`: el
+    de la hoja (la escala sugerida y su página son lo que se verá en el A1)."""
     if not isinstance(b, dict):
         raise ValueError("no es un objeto")  # noqa: TRY004 - dato del trabajador, no del programa
     for clave in ("ref", "name", "handle"):
@@ -183,10 +184,12 @@ def _omitidos(datos: dict) -> tuple[list[dict], dict]:
 
 
 def catalogo_dxf(datos: dict, zona: RectMM, zona_nombre: str = "el área de dibujo",
-                 anonimos_min: int | None = None) -> dict:
+                 anonimos_min: int | None = None, margen_hoja_mm: float | None = None) -> dict:
     """La carpeta del DXF para el editor, a partir del `data` de `load`. `anonimos_min` es el
     umbral que se pidió en `load`; si la respuesta trae el que se usó
-    (`anonymous_min_entities`), vale ese (para explicarlo en la subsección de anónimos)."""
+    (`anonymous_min_entities`), vale ese (para explicarlo en la subsección de anónimos).
+    `margen_hoja_mm`: el borde que queda en la hoja (componer recorta la página a su dibujo más
+    esto); con él se sugiere la escala. None: el margen de la exportación."""
     if not isinstance(datos, dict):
         raise RespuestaInvalida("la respuesta de «load» no es un objeto")
     dxf = datos.get("dxf")
@@ -202,7 +205,8 @@ def catalogo_dxf(datos: dict, zona: RectMM, zona_nombre: str = "el área de dibu
     bloques, problemas = [], []
     for i, b in enumerate(datos["blocks"], start=1):
         try:
-            bloques.append(_bloque(b, float(margen), zona, zona_nombre))
+            bloques.append(_bloque(b, float(margen if margen_hoja_mm is None else margen_hoja_mm),
+                                   zona, zona_nombre))
         except ValueError as e:
             nombre = b.get("name") if isinstance(b, dict) else None
             problemas.append(f"bloque {i}" + (f" («{nombre}»)" if nombre else "")

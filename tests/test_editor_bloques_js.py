@@ -236,7 +236,7 @@ def test_el_editor_rechaza_un_plano_v3_mal_escrito(entorno_editor):
     assert "origen.escala: se esperaba «1:N»" in r["escala"]["errores"][0]
     assert r["fuera"]["errores"] == []
     assert r["fuera"]["avisos"] == [("'B' se salía del área de dibujo: su centro se movió a "
-                                     "(557.40, 200.00) mm.")]
+                                     "(561.40, 200.00) mm.")]  # con 1 mm de margen en la hoja
 
 
 def test_ids_de_dxf_al_guardar():
@@ -278,7 +278,8 @@ def test_que_bloques_se_piden_al_exportar():
     colocaciones = [
         {"id": "exportado", "detalle": {}, "pos": [0, 0]},
         c("ok", "50CA", 5000, (342.55, 297.0)),
-        c("grande", "50CA", 2500, (342.55, 297.0)),
+        # 1350 m a 1:2000 = 675 mm: no cabe (a 1:2500, con 1 mm de margen en la hoja, sí).
+        c("grande", "50CA", 2000, (342.55, 297.0)),
         c("afuera", "1A3", 50, (30, 30), tamano=(10, 4)),
         c("ajeno", "50CA", 5000, (342.55, 297.0), d=otro),
         c("viejo", "50CA", 5000, (342.55, 297.0), d=cambiado),
@@ -289,7 +290,7 @@ def test_que_bloques_se_piden_al_exportar():
     assert r["pedidos"] == [{"id": "ok", "handle": "50CA", "sha256": SHA, "escala": 5000,
                              "centro_mm": [342.55, 297.0]}]
     assert {o["id"]: o["motivo"] for o in r["omitidos"]} == {
-        "grande": "no cabe a 1:2500: cambie la escala",
+        "grande": "no cabe a 1:2000: cambie la escala",
         "afuera": "se sale del área de dibujo: muévalo",
         "ajeno": "es de «otro.dxf» y el cargado es «GUAMO_prueba.dxf»",
         "viejo": "el DXF cambió desde que se colocó: «Volver a cargar» primero",

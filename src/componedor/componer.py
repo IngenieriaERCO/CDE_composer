@@ -121,6 +121,12 @@ from componedor.plano import Plano
 from componedor.plano_dxf import texto_pendientes
 from componedor.plano_zonas import texto_zonas_sin_exportar
 from componedor.plantilla import TOLERANCIA_MARCO_MM, InformePlantilla, buscar_marco
+from componedor.recorte_detalle import (
+    MARGEN_POR_DEFECTO_MM,
+    posicion_centrada_recorte,
+    recorte_pagina,
+    visible_en_papel,
+)
 from componedor.rosa import NOMBRE as ROSA
 from componedor.rosa import (
     InformeRosa,
@@ -153,7 +159,9 @@ class PlanoNoComponible(ValueError):
 class DetalleColocado:
     id: str
     prefijo: str  # del paquete
-    ocupado: RectMM  # página del detalle en la hoja, mm de papel
+    # Lo que se ve del detalle en la hoja (mm de papel): su página recortada a su dibujo más el
+    # margen (recorte_detalle.py). Es lo que debe quedar dentro del área de dibujo.
+    ocupado: RectMM
     dibujo: RectMM  # page_bounds_mm trasladado a mm de papel
     tiene_fondo: bool = True  # paquete antiguo con fondo blanco de página (tapa lo de abajo)
     escala: float | None = None  # N de 1:N (manifiesto)
@@ -165,6 +173,15 @@ class DetalleColocado:
     # que el exportador puede dar hasta 0,5 mm más grande que los trazos (la coherencia h lo
     # admite); así ±0,1 mm mide solo la colocación. None: el PDF no tiene trazos.
     trazos: RectMM | None = None
+    # La PÁGINA entera del paquete en la hoja (mm de papel; `posicion_mm` es su esquina): con
+    # ella se ubica el dibujo y se reconoce el fondo blanco. None: igual a `ocupado`.
+    pagina: RectMM | None = None
+    recorte: RectMM | None = None  # mm de la página del detalle (Y abajo); None: sin recorte
+    margen_mm: float | None = None  # el margen con que se recortó
+
+    @property
+    def pagina_completa(self) -> RectMM:
+        return self.pagina if self.pagina is not None else self.ocupado
 
 
 @dataclass
@@ -199,6 +216,7 @@ class _Ortofoto:
     rosa: RectMM | None = None  # dónde quedó la rosa (se redibuja si la foto la tapa)
     fondos: list = field(default_factory=list)  # páginas de los detalles sin ortofoto (extendida)
     paginas: dict = field(default_factory=dict)  # id → página de cada detalle (obstáculos)
+    extendida: bool = False  # «Extender a todo el layout» (un solo detalle con ortofoto)
 
 
 @dataclass
@@ -216,11 +234,14 @@ class _Textos:
 
 def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
                    guias: bool = False, config_ortofoto: ConfigOrtofoto | None = None,
-                   carpeta_simbolos: Path | None = None) -> ResultadoComposicion:
+                   carpeta_simbolos: Path | None = None,
+                   margen_mm: float | None = MARGEN_POR_DEFECTO_MM) -> ResultadoComposicion:
     """Compone `plano` en `salida`. Lanza `PlanoNoComponible` (o `FileExistsError`).
     config_ortofoto: ppp y calidad JPEG de la ortofoto (por defecto 300 y 85).
     carpeta_simbolos: la biblioteca de convenciones (`carpeta_simbolos` de componedor.json);
-    None: la del formato."""
+    None: la del formato. margen_mm: el borde que se deja alrededor del dibujo de cada detalle
+    (`margen_detalle_mm` de componedor.json); un detalle puede traer el suyo. None: la página
+    entera, sin recorte (como antes de la Fase 11)."""
     salida = Path(salida)
     if salida.exists() and not sobrescribir:
         raise FileExistsError(
@@ -246,7 +267,7 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
     aceptados = _importar(plano)
     documentos: dict[Path, pymupdf.Document] = {}
     try:
-        colocados = _posiciones(plano, formato, aceptados, documentos)
+        colocados = _posiciones(plano, formato, aceptados, documentos, margen_mm)
         advertencias = _traslapes(colocados) + _sobre_elementos(colocados, elementos)
         textos, valores, avisos = _textos(plano, formato, colocados, elementos)
         advertencias += avisos
@@ -270,7 +291,7 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
             doc.close()
     if resultado.ortofoto is not None:
         advertencias += resultado.ortofoto.avisos
-        resultado.extendida = any(d.region is not None for d in ortofoto.detalles)
+        resultado.extendida = ortofoto.extendida
         for c in resultado.cuadriculas:
             advertencias += c.avisos
         if eleccion.origen == "original":
@@ -315,9 +336,12 @@ def _localizacion(plano: Plano, formato: Formato) -> ImagenLocalizacion | None:
 
 def _detalle_ortofoto(aceptado: PaqueteAceptado, colocado: DetalleColocado,
                       region: RectMM | None = None) -> DetalleOrtofoto:
+    """La ortofoto va detrás de lo que se ve del detalle (el mismo recorte que su dibujo) o,
+    extendida, de `region`; el mapeo CAD → papel es el de su página entera."""
     m = aceptado.manifiesto
-    return DetalleOrtofoto(colocado.id, colocado.ocupado, m.pdf.dibujo.matriz,
-                           m.unidades.milimetros_por_unidad, colocado.tiene_fondo, region)
+    return DetalleOrtofoto(colocado.id, colocado.pagina_completa, m.pdf.dibujo.matriz,
+                           m.unidades.milimetros_por_unidad, colocado.tiene_fondo,
+                           region if region is not None else colocado.ocupado)
 
 
 def _armar_ortofoto(plano: Plano, formato: Formato, colocados: list[tuple], eleccion: Eleccion,
@@ -342,7 +366,7 @@ def _armar_ortofoto(plano: Plano, formato: Formato, colocados: list[tuple], elec
                      (o.intervalo_m or config.cuadricula_intervalo_m) if o.cuadricula else None,
                      obstaculos + no_editables, rosa,
                      [c.ocupado for d, _, _, c in colocados if not d.ortofoto] if extender else [],
-                     {c.id: c.ocupado for *_, c in colocados})
+                     {c.id: c.ocupado for *_, c in colocados}, extender)
 
 
 def _copia(plano: Plano, o: _Ortofoto) -> InformeCopia:
@@ -418,8 +442,10 @@ def _importar(plano: Plano) -> dict[Path, PaqueteAceptado]:
 # --- 4. posiciones dentro del área de dibujo ---------------------------------------------
 
 def _posiciones(plano: Plano, formato: Formato, aceptados: dict[Path, PaqueteAceptado],
-                documentos: dict[Path, pymupdf.Document]) -> list[tuple]:
-    """(detalle, aceptado, documento, DetalleColocado) por detalle; junta TODOS los errores."""
+                documentos: dict[Path, pymupdf.Document],
+                margen_mm: float | None = MARGEN_POR_DEFECTO_MM) -> list[tuple]:
+    """(detalle, aceptado, documento, DetalleColocado) por detalle; junta TODOS los errores.
+    Lo que debe caber en el área es lo que se ve: el dibujo más el margen (recorte_detalle)."""
     zona = formato.zonas[ZONA]
     colocados, errores = [], []
     con_fondo: dict[Path, bool] = {}  # por PDF: se mira una sola vez
@@ -432,9 +458,19 @@ def _posiciones(plano: Plano, formato: Formato, aceptados: dict[Path, PaqueteAce
             con_fondo[ruta_pdf] = tiene_fondo_de_pagina(documentos[ruta_pdf][0])
         doc = documentos[ruta_pdf]
         ancho, alto = tamano_visible_mm(doc[0])
-        x, y = (detalle.posicion_mm if detalle.posicion_mm is not None
-                else posicion_centrada((ancho, alto), zona))
-        ocupado = (x, y, x + ancho, y + alto)
+        margen = detalle.margen_mm if detalle.margen_mm is not None else margen_mm
+        limites = aceptado.manifiesto.pdf.dibujo.limites_pagina_mm
+        # Una página girada (nunca del Exportador) va entera: el recorte supone /Rotate 0.
+        recorte = (recorte_pagina((ancho, alto), limites, margen)
+                   if margen is not None and doc[0].rotation == 0 else None)
+        if detalle.posicion_mm is not None:
+            x, y = detalle.posicion_mm
+        elif recorte is not None:
+            x, y = posicion_centrada_recorte(recorte, alto, zona)
+        else:
+            x, y = posicion_centrada((ancho, alto), zona)
+        pagina = (x, y, x + ancho, y + alto)
+        ocupado = visible_en_papel(recorte, alto, (x, y)) if recorte is not None else pagina
         motivo = motivo_fuera_de_zona(ocupado, ZONA, zona)
         if motivo:
             invadidas = [nombre for nombre, rect in formato.zonas.items()
@@ -444,8 +480,7 @@ def _posiciones(plano: Plano, formato: Formato, aceptados: dict[Path, PaqueteAce
                            f"demás zonas no se pueden ocupar.")
             errores.append(f"detalle '{detalle.id}': {motivo}")
             continue
-        dibujo = limites_dibujo_en_papel(aceptado.manifiesto.pdf.dibujo.limites_pagina_mm,
-                                         alto, (x, y))
+        dibujo = limites_dibujo_en_papel(limites, alto, (x, y))
         mascara = aceptado.manifiesto.pdf.dibujo.mascara_mm
         if ruta_pdf not in trazos_pdf:  # medidos una vez por PDF (sin fondo; con su máscara)
             trazos_pdf[ruta_pdf] = medir_limites_trazos(doc[0], mascara)
@@ -457,7 +492,9 @@ def _posiciones(plano: Plano, formato: Formato, aceptados: dict[Path, PaqueteAce
                                           limites_dibujo_en_papel(mascara, alto, (x, y))
                                           if mascara is not None else None,
                                           limites_dibujo_en_papel(trazos, alto, (x, y))
-                                          if trazos is not None else None)))
+                                          if trazos is not None else None,
+                                          pagina, recorte,
+                                          margen if recorte is not None else None)))
     if errores:
         raise PlanoNoComponible(
             f"No se compone el plano: {len(errores)} detalle(s) fuera de '{ZONA}' "
@@ -574,7 +611,8 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
             trazos_por_detalle = []
             for _, _, doc_detalle, colocado in colocados:
                 trazos_por_detalle.append(len(doc_detalle[0].get_drawings()))
-                insertar_pagina(base, formato, doc_detalle, 0, colocado.ocupado[:2])
+                insertar_pagina(base, formato, doc_detalle, 0, colocado.pagina_completa[:2],
+                                colocado.recorte)
             todos = textos.rotulo + textos.etiquetas
             if localizacion is not None:  # debajo de los textos del rótulo
                 insertar_localizacion(base, formato.alto_mm, localizacion)
@@ -682,7 +720,8 @@ def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
             inicio += n
             # Su fondo blanco se reconoce por el TAMAÑO de la página (no por la posición
             # esperada): así, si el detalle quedó corrido, se mide su dibujo y no su fondo.
-            pagina = rect_papel_a_pdf(colocado.ocupado, formato.alto_mm)
+            # Con recorte, get_drawings() da los trazos sin recortar: la página entera.
+            pagina = rect_papel_a_pdf(colocado.pagina_completa, formato.alto_mm)
             dibujados = [t for t in propios if not es_fondo_blanco(
                 t, pymupdf.Rect(t["rect"].x0, t["rect"].y0, t["rect"].x0 + pagina.width,
                                 t["rect"].y0 + pagina.height))]

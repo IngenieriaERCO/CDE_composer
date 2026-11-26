@@ -65,6 +65,7 @@ componer siempre con el mismo formato. Las rutas son relativas a la carpeta del 
   "version": 1,
   "formato": "formatos/A1_ERCO.json",
   "carpeta_simbolos": "simbolos",
+  "margen_detalle_mm": 1,
   "editor": {"paquetes": "data/input", "salida": "editor", "notas": "notas",
              "firmas": "firmas", "proyecto": null},
   "componer": {"resultados": "resultados"},
@@ -79,10 +80,19 @@ componer siempre con el mismo formato. Las rutas son relativas a la carpeta del 
 `biblioteca/<id>.pdf`), para el editor y para `componer`; sin ella, la del formato. Una clave mal
 escrita o una ruta que no existe es error, y se listan todos los problemas juntos.
 
+`margen_detalle_mm` (opcional, **1 mm**, de 0 a 50) es el **borde blanco que queda en la hoja
+alrededor del dibujo de cada detalle**. El Exportador entrega cada página con 5 mm de margen
+(`exportador.margen_mm`); al componer, la página se **recorta** a su dibujo más este margen
+(sigue siendo vector, no hay que volver a exportar) y la ortofoto se corta igual. Lo que debe
+caber en el área de dibujo, y lo que el editor marca en rojo si no cabe, es eso: el dibujo y el
+margen. Cada detalle puede llevar el suyo («Margen (mm)» en el panel Selección; en el plano.json,
+`margen_mm`). Con 0 mm el corte cae justo en el borde del dibujo (media línea del borde puede
+quedar fuera).
+
 La sección `exportador` es opcional: sin ella el editor funciona igual, pero sin «Cargar DXF».
 `comando` es el comando del Exportador Vectorial (o una lista `[programa, argumentos…]`);
 `trabajo`, la carpeta del trabajador (se crea); `margen_mm`, el margen de página con que se
-exportará (por defecto 5 mm); `cache_previas_mb` (opcional), el tope de la caché de vistas previas
+exportará (por defecto 5 mm; en la hoja se recorta a `margen_detalle_mm`); `cache_previas_mb` (opcional), el tope de la caché de vistas previas
 del trabajador (por defecto, el suyo: 500 MB); `paquetes` (opcional, `data/input/dxf`), dónde
 publica «Exportar»; `para_borrar` (opcional, `_para_borrar`), adónde se mueven los paquetes viejos;
 `anonimos_min_entidades` (opcional, 100), cuántas entidades visibles debe dibujar un bloque

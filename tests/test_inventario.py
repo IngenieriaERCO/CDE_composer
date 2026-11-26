@@ -15,7 +15,8 @@ def formato():
 
 
 def _grande(carpeta, prefijo="grande", **kw):
-    """Paquete coherente con página de 700 x 120 mm: no cabe en el área de dibujo A1."""
+    """Paquete coherente con página de 700 x 120 mm (no cabe en el área de dibujo A1) y el
+    dibujo de siempre, de 200 x 80 mm (sí cabe)."""
     cambiar = {"pdf.page_size_mm": [700.0, 120.0], "pdf.expected_page_size_mm": [700.0, 120.0],
                **kw.pop("cambiar", {})}
     return crear_paquete_real(carpeta, prefijo, pagina_mm=(700.0, 120.0), cambiar=cambiar, **kw)
@@ -54,26 +55,31 @@ def test_cabe(tmp_path, formato):
     assert e.cabe is True and e.notas == []
 
 
-def test_no_cabe_con_margen_sugiere_escala(tmp_path, formato):
+def test_cabe_el_dibujo_aunque_la_pagina_no(tmp_path, formato):
+    """Fase 11: se mide lo que se verá (el dibujo y 1 mm), no la página con el margen de la
+    exportación: la página de 700 mm no cabe, el dibujo de 200 + 2 mm sí."""
     _grande(tmp_path)
     (e,) = construir_inventario(tmp_path, formato)
+    assert e.cabe is True and e.notas == []
+    # Con un margen de 0 mm, igual; el margen es el de la hoja (sale de componedor.json).
+    assert construir_inventario(tmp_path, formato, margen_hoja_mm=0)[0].cabe is True
+
+
+def test_no_cabe_sugiere_escala(tmp_path, formato):
+    """En el cajetín (155,9 x 125 mm) el dibujo de 200 x 80 mm no cabe."""
+    crear_paquete_real(tmp_path)
+    (e,) = construir_inventario(tmp_path, formato, zona="cajetin")
     assert e.estado == ACEPTADO  # no caber NO es motivo de rechazo
     assert e.cabe is False
-    # Contenido 690 x 110 (página - 2 x 5 mm); a 1:100 la página sería 355 x 65 mm.
-    assert e.notas == ["no cabe en area_dibujo: se pasa 60.3 mm de ancho y 0.0 mm de alto",
-                       "escala sugerida (aproximada): 1:75, página ≈ 470.0 x 83.3 mm"]
-
-
-def test_no_cabe_sin_margen_no_sugiere(tmp_path, formato):
-    _grande(tmp_path, quitar=["pdf.margin_mm"])
-    (e,) = construir_inventario(tmp_path, formato)
-    assert e.estado == ACEPTADO and e.cabe is False
-    assert e.notas[1] == "sin escala sugerida: el manifiesto no indica pdf.margin_mm"
+    # Dibujo y 1 mm: 202 x 82 mm (se pasa 46,1 mm); a 1:75, 200 x 50/75 + 2 = 135,3 mm.
+    assert e.notas == [("no cabe en cajetin: el dibujo y 1 mm de margen se pasan 46.1 mm de "
+                        "ancho y 0.0 mm de alto"),
+                       "escala sugerida (aproximada): 1:75, dibujo y margen ≈ 135.3 x 55.3 mm"]
 
 
 def test_no_cabe_ni_con_la_mayor_escala(tmp_path, formato):
-    _grande(tmp_path, cambiar={"scale.denominator": 10000.0})  # ya está en la mayor de la lista
-    (e,) = construir_inventario(tmp_path, formato)
+    crear_paquete_real(tmp_path, cambiar={"scale.denominator": 10000.0})  # ya en la mayor
+    (e,) = construir_inventario(tmp_path, formato, zona="cajetin")
     assert e.cabe is False
     assert e.notas[1] == "sin escala sugerida: ni a 1:10000 cabe (la mayor de la lista estándar)"
 
@@ -125,11 +131,14 @@ def test_cli_no_caber_no_cambia_el_codigo(tmp_path, capsys):
     assert "Cabe" in out
     filas = {l.split()[0]: l.split()[-2:] for l in out.splitlines()
              if l.startswith(("bueno", "grande"))}
-    assert filas == {"bueno": ["aceptado", "sí"], "grande": ["aceptado", "no"]}
-    assert "Notas:\n  grande:\n    - no cabe en area_dibujo: se pasa 60.3 mm" in out
-    assert "escala sugerida (aproximada): 1:75" in out
+    # «grande» cabe: se mide su dibujo y 1 mm, no su página de 700 mm (Fase 11).
+    assert filas == {"bueno": ["aceptado", "sí"], "grande": ["aceptado", "sí"]}
     assert out.rstrip().endswith("2 detalle(s): 2 aceptado(s), 0 rechazado(s), "
-                                 "1 no caben en area_dibujo.")
+                                 "0 no caben en area_dibujo.")
+    assert main(["inventario", str(tmp_path), "--formato", str(RUTA_A1), "--zona", "cajetin"]) == 0
+    out = capsys.readouterr().out
+    assert "    - no cabe en cajetin: el dibujo y 1 mm de margen se pasan 46.1 mm" in out
+    assert "escala sugerida (aproximada): 1:75" in out
 
 
 def test_cli_rechazados_codigo_1(tmp_path, capsys):

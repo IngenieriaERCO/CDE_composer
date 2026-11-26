@@ -60,8 +60,14 @@ def test_detalles_aceptados(entorno):
     # izquierda de la página (alto 120): Y = 120 - 98,7 = 21,3 a 120 - 18,7 = 101,3.
     assert a["limites_dibujo_mm"] == pytest.approx([37.3, 21.3, 237.3, 101.3])
     assert a["miniatura"] == {"archivo": "miniaturas/a.png"}
-    assert detalles["grande"]["cabe"] is False
-    assert detalles["grande"]["notas"][0].startswith("no cabe en area_dibujo")
+    # «grande»: página de 700 mm (no cabe), pero su dibujo mide 200 × 80: con el recorte de
+    # 1 mm (Fase 11) lo que se ve cabe. Con un margen que deja la página entera, no.
+    assert detalles["grande"]["cabe"] is True and detalles["grande"]["notas"] == []
+    datos, _ = construir_datos_editor(entorno / "input", entorno / "formato.json",
+                                      entorno / "editor", margen_detalle_mm=50)
+    grande = {x["id"]: x for x in datos["detalles"]}["grande"]
+    # Con 50 mm: X 0..287,3 (no pasa del borde de la página): todavía cabe.
+    assert datos["margen_detalle_mm"] == 50 and grande["cabe"] is True
 
 
 def test_rechazados_con_motivos(entorno):
@@ -217,9 +223,10 @@ def test_cli_preparar_editor(entorno, capsys):
     out = capsys.readouterr().out
     assert "plantilla.png (1600 x 1131 px) y 2 miniatura(s) en miniaturas/" in out
     assert "Elementos fijos de la plantilla: 1" in out
-    assert "  grande: 1:50, página 700.00 x 120.00 mm, NO cabe en area_dibujo" in out
+    # Cabe lo que se ve: el dibujo y 1 mm (la página de 700 mm se recorta al componer).
+    assert "  grande: 1:50, página 700.00 x 120.00 mm, cabe en area_dibujo" in out
     assert "  sin_escala: rechazado (1 motivo(s))" in out
-    assert out.rstrip().endswith("2 aceptado(s), 1 rechazado(s), 1 cabrían en area_dibujo.")
+    assert out.rstrip().endswith("2 aceptado(s), 1 rechazado(s), 2 cabrían en area_dibujo.")
     assert main(args) == 1
     assert "Use --sobrescribir" in capsys.readouterr().err
     assert main(args + ["--sobrescribir"]) == 0

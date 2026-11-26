@@ -41,6 +41,7 @@ from componedor.formato import Formato, cargar_formato
 from componedor.fuente import FuenteInvalida, cargar_fuente
 from componedor.inventario import ACEPTADO, EntradaInventario, construir_inventario
 from componedor.proyecto import ProyectoInvalido, leer_proyecto
+from componedor.recorte_detalle import MARGEN_POR_DEFECTO_MM
 from componedor.rosa import NOMBRE as ROSA
 from componedor.rosa import documento_rosa_sola
 from componedor.rotulo_formato import aviso_campos_retirados
@@ -62,18 +63,22 @@ def construir_datos_editor(carpeta_paquetes: Path | str, ruta_formato: Path | st
                            carpeta_salida: Path | str, carpeta_notas: Path | str | None = None,
                            carpeta_firmas: Path | str | None = None,
                            ruta_proyecto: Path | str | None = None,
+                           margen_detalle_mm: float = MARGEN_POR_DEFECTO_MM,
                            ) -> tuple[dict, list[EntradaInventario]]:
     """Estructura de editor_datos.json (sin los tamaños en píxeles de las imágenes, que se
     agregan al generarlas) y las entradas del inventario. Las rutas van relativas a
     `carpeta_salida`, que es donde el editor guardará el plano.json. `carpeta_notas`: las
     notas típicas para el catálogo del rótulo (subfase 4.3a). `carpeta_firmas`: de ella solo
     se toman los NOMBRES de las personas; `ruta_proyecto`: proyecto.json para prellenar un
-    plano nuevo (4.3b; si no es válido, `ProyectoInvalido`)."""
+    plano nuevo (4.3b; si no es válido, `ProyectoInvalido`). `margen_detalle_mm`: el borde
+    que queda en la hoja alrededor del dibujo de cada detalle (recorte_detalle.py): con él se
+    dice si «cabe»."""
     carpeta_salida = Path(carpeta_salida)
     formato = cargar_formato(ruta_formato)
     proyecto = leer_proyecto(ruta_proyecto, formato.rotulo) if ruta_proyecto is not None else None
     # Con subcarpetas: los paquetes que exporta el editor van en <paquetes>/dxf/<dxf>/ (etapa 3).
-    entradas = construir_inventario(carpeta_paquetes, formato, ZONA_EDITABLE, recursivo=True)
+    entradas = construir_inventario(carpeta_paquetes, formato, ZONA_EDITABLE, recursivo=True,
+                                    margen_hoja_mm=margen_detalle_mm)
 
     detalles, rechazados, ids = [], [], set()
     for e in entradas:
@@ -101,6 +106,8 @@ def construir_datos_editor(carpeta_paquetes: Path | str, ruta_formato: Path | st
             # Para la ortofoto (caja CAD de la página en la hoja): cad_to_page y mm por unidad.
             "cad_a_pagina": list(e.cad_a_pagina) if e.cad_a_pagina else None,
             "mm_por_unidad": e.mm_por_unidad,
+            # Cabe lo que se verá: el dibujo más el margen (no la página con el margen de la
+            # exportación). Un detalle puede llevar otro margen: el editor lo vuelve a medir.
             "cabe": bool(e.cabe),
             "tiene_fondo": tiene_fondo,
             "notas": list(e.notas),
@@ -125,6 +132,9 @@ def construir_datos_editor(carpeta_paquetes: Path | str, ruta_formato: Path | st
         "rosa_vientos": _datos_rosa(formato),
         "detalles": detalles,
         "rechazados": rechazados,
+        # El borde que se deja alrededor del dibujo de cada detalle (componedor.json →
+        # margen_detalle_mm): la página del paquete se recorta a su dibujo más esto.
+        "margen_detalle_mm": margen_detalle_mm,
         # Subfase 4.3a (aditivo): definición del rótulo, tabla de anchos de la fuente, catálogo
         # de notas y símbolos (los PNG se agregan en preparar_editor). Nunca firmas.
         "rotulo": _datos_rotulo(formato, carpeta_notas, carpeta_firmas, proyecto, carpeta_salida),
@@ -175,7 +185,8 @@ def preparar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
                     carpeta_firmas: Path | str | None = None,
                     ruta_proyecto: Path | str | None = None,
                     carpeta_archivos: Path | str | None = None,
-                    carpeta_simbolos: Path | str | None = None) -> dict:
+                    carpeta_simbolos: Path | str | None = None,
+                    margen_detalle_mm: float = MARGEN_POR_DEFECTO_MM) -> dict:
     """Escribe editor_datos.json, plantilla.png, plantilla.svg, rosa.png, miniaturas/<id>.png y
     simbolos/<id>.png en `carpeta_archivos` (por defecto, `carpeta_salida`).
 
@@ -196,7 +207,8 @@ def preparar_editor(carpeta_paquetes: Path | str, ruta_formato: Path | str,
             f"reemplazar los datos del editor.")
 
     datos, entradas = construir_datos_editor(carpeta_paquetes, ruta_formato, carpeta_salida,
-                                             carpeta_notas, carpeta_firmas, ruta_proyecto)
+                                             carpeta_notas, carpeta_firmas, ruta_proyecto,
+                                             margen_detalle_mm)
     formato = cargar_formato(ruta_formato)
     if datos["rotulo"] is not None:
         # carpeta_simbolos (componedor.json): la biblioteca de convenciones; si no, la del formato.

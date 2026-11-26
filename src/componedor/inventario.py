@@ -14,6 +14,11 @@ from componedor.colocar import exceso_de_tamano
 from componedor.formato import Formato
 from componedor.importador import evaluar_paquete, texto_motivo
 from componedor.paquete import localizar_paquetes
+from componedor.recorte_detalle import (
+    MARGEN_POR_DEFECTO_MM,
+    recorte_pagina,
+    tamano_visible,
+)
 
 ACEPTADO, RECHAZADO = "aceptado", "rechazado"
 # Escalas normalizadas de ingeniería, de mayor a menor detalle. La sugerida es la PRIMERA con la
@@ -57,8 +62,11 @@ def _matriz(m) -> tuple[float, ...] | None:
 
 def construir_inventario(carpeta: Path | str, formato: Formato | None = None,
                          zona: str = "area_dibujo", recursivo: bool = False,
+                         margen_hoja_mm: float = MARGEN_POR_DEFECTO_MM,
                          ) -> list[EntradaInventario]:
-    """Una entrada por paquete de `carpeta` (en el orden de `localizar_paquetes`)."""
+    """Una entrada por paquete de `carpeta` (en el orden de `localizar_paquetes`).
+    `margen_hoja_mm`: lo que «cabe» es el dibujo más este margen (la página se recorta al
+    componer, recorte_detalle.py), no la página con el margen de la exportación."""
     carpeta = Path(carpeta)
     rect_zona = None
     if formato is not None:
@@ -89,7 +97,7 @@ def construir_inventario(carpeta: Path | str, formato: Formato | None = None,
             mm_por_unidad=m.unidades.milimetros_por_unidad if m else None,
         )
         if rect_zona is not None and m is not None:
-            _evaluar_cabida(entrada, m, zona, rect_zona)
+            _evaluar_cabida(entrada, m, zona, rect_zona, margen_hoja_mm)
         if entrada.sha256 is not None:
             if entrada.sha256 in vistos:
                 original = vistos[entrada.sha256]
@@ -105,33 +113,31 @@ def _tamano_dibujo(m) -> tuple[float, float]:
     return x1 - x0, y1 - y0
 
 
-def _evaluar_cabida(entrada: EntradaInventario, m, zona: str, rect_zona) -> None:
-    dx, dy = exceso_de_tamano(m.pdf.tamano_pagina_mm, rect_zona)
+def _evaluar_cabida(entrada: EntradaInventario, m, zona: str, rect_zona,
+                    margen_hoja_mm: float = MARGEN_POR_DEFECTO_MM) -> None:
+    recorte = recorte_pagina(m.pdf.tamano_pagina_mm, m.pdf.dibujo.limites_pagina_mm,
+                             margen_hoja_mm)
+    dx, dy = exceso_de_tamano(tamano_visible(recorte), rect_zona)
     entrada.cabe = not (dx or dy)
     if entrada.cabe:
         return
-    entrada.notas.append(f"no cabe en {zona}: se pasa {dx:.1f} mm de ancho y {dy:.1f} mm de alto")
-    entrada.notas.append(_sugerir_escala(m, rect_zona))
+    entrada.notas.append(f"no cabe en {zona}: el dibujo y {margen_hoja_mm:g} mm de margen se "
+                         f"pasan {dx:.1f} mm de ancho y {dy:.1f} mm de alto")
+    entrada.notas.append(_sugerir_escala(m, rect_zona, margen_hoja_mm))
 
 
-def _sugerir_escala(m, rect_zona) -> str:
-    """La primera escala estándar mayor que la actual con la que la página cabría.
-
-    Aproximada: se escala el contenido (página menos 2 veces el margen) y se le vuelve a
-    sumar el margen; el exportador real puede dar unas décimas distintas.
-    """
-    margen = m.pdf.margen_mm
-    if margen is None:
-        return "sin escala sugerida: el manifiesto no indica pdf.margin_mm"
-    ancho, alto = m.pdf.tamano_pagina_mm
-    contenido = (ancho - 2 * margen, alto - 2 * margen)
+def _sugerir_escala(m, rect_zona, margen_hoja_mm: float = MARGEN_POR_DEFECTO_MM) -> str:
+    """La primera escala estándar mayor que la actual con la que el dibujo (más el margen de
+    la hoja) cabría. Aproximada: se escala el dibujo; el exportador real puede dar unas
+    décimas distintas."""
+    contenido = _tamano_dibujo(m)
     actual = m.escala.denominador
     for n in ESCALAS_ESTANDAR:
         if n <= actual:
             continue
-        pagina = tuple(c * actual / n + 2 * margen for c in contenido)
+        pagina = tuple(c * actual / n + 2 * margen_hoja_mm for c in contenido)
         if exceso_de_tamano(pagina, rect_zona) == (0.0, 0.0):
-            return (f"escala sugerida (aproximada): 1:{n}, página ≈ {pagina[0]:.1f} x "
+            return (f"escala sugerida (aproximada): 1:{n}, dibujo y margen ≈ {pagina[0]:.1f} x "
                     f"{pagina[1]:.1f} mm")
     return (f"sin escala sugerida: ni a 1:{ESCALAS_ESTANDAR[-1]} cabe (la mayor de la lista "
             f"estándar)")
