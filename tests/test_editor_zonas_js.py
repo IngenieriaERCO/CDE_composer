@@ -291,3 +291,21 @@ def test_aviso_de_escala_distinta():
                  "El dibujo está a 1:10 y se exportará a 1:20: los textos saldrán a la mitad de su tamaño.",
                  "El dibujo está a 1:10 y se exportará a 1:25: los textos saldrán a 0,4 veces su tamaño.",
                  None, None]
+
+
+def test_las_vistas_previas_se_preguntan_cada_120_ms():
+    """El Exportador da cada vista en ~0,1 s: el cuadro «Zonas del modelo» pregunta por la tarea
+    cada 120 ms (no los 500 ms por defecto de seguirTarea)."""
+    texto = (Path(componedor.__path__[0]) / "editor" / "editor_panel_zonas.js").read_text(encoding="utf-8")
+    assert "const SONDEO_VISTA_MS = 120;" in texto and "sondeoMs: SONDEO_VISTA_MS" in texto
+    llamada = texto[texto.index("const fin = await S.seguirTarea(cliente, r.tarea.id, (foto) => {"):]
+    assert llamada[:200].rstrip().endswith("}, z.sondeoMs);") or "}, z.sondeoMs);" in llamada[:250]
+
+
+def test_la_vista_nitida_se_pide_200_ms_despues_de_parar():
+    """Tras la última vuelta de rueda (o el fin del arrastre) la vista nítida se pide a los 200 ms;
+    si se sigue girando, el temporizador anterior se cancela."""
+    texto = (Path(componedor.__path__[0]) / "editor" / "editor_panel_zonas.js").read_text(encoding="utf-8")
+    assert "const ESPERA_NITIDA_MS = 200;" in texto
+    i = texto.index("temporizador = setTimeout(() => pedirNitida(false), ESPERA_NITIDA_MS);")
+    assert "clearTimeout(temporizador)" in texto[i - 200:i]

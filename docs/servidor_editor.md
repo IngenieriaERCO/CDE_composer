@@ -369,13 +369,18 @@ s las lejanas).
   de la cámara y de la matriz `cad_a_px` de la imagen que hay, así la rueda (`zoomEnPunto`: el
   punto bajo el cursor se queda) y el arrastre con la rueda (`desplazar`) escalan la imagen al
   instante, sin pedir nada. El botón de la rueda no activa el autodesplazamiento del navegador.
-- Vista nítida: 450 ms después de la última vuelta de rueda o del fin del arrastre se mira si
+- Vista nítida: 200 ms después de la última vuelta de rueda o del fin del arrastre se mira si
   la imagen que hay sirve (`necesitaVistaNitida`: cubre lo que se ve de dibujo y tiene al menos
   0,75 px de imagen por px de pantalla). Si no, se pide `vista` = lo que se ve recortado a la
   caja de todo el Model Space (a milésimas de unidad). Si lo que se ve abarca todo el Model
   Space, es la vista de todo (de la caché). Las ya pedidas se guardan en el editor; pedir otra
   cancela la que esperaba. Con «Ver la imagen con el filtro de capas», las vistas llevan el
   filtro.
+- Por cada vista pedida el editor pregunta por su tarea **cada 120 ms** (`SONDEO_VISTA_MS`; el
+  resto de las tareas, cada 500 ms). Medido con PRGD (2026-11-26, `medir_vistas_zonas.mjs`):
+  del pedido al PNG listo, 608 ms con 500 ms y 262 ms con 120 ms; poner la imagen y pintarla,
+  unos 20 ms. Con la espera tras la rueda en 200 ms (antes 450), de la última vuelta de rueda a
+  la vista pintada: unos 400 ms (antes 1071 ms).
 - La zona, los grupos y el rectángulo que se arrastra se guardan en coordenadas del dibujo y se
   dibujan con la matriz de la imagen que se ve: son exactos a cualquier zoom. Los grosores y las
   letras no cambian con el zoom (`vector-effect: non-scaling-stroke`).

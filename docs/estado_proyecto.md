@@ -3338,6 +3338,36 @@ rótulo», con sus avisos.
 `test_planos_editor` (nombres seguros, no pisar, índice) y `test_editor_hojas_js` (hoja nueva,
 nombres, versión 7 en el editor y en Python). Ajustadas: las versiones soportadas (1 a 7).
 
+### «Zonas del modelo»: vistas más rápidas al acercar y alejar (2026-11-26)
+
+Problema: con el Exportador dando cada vista en 0,1 s, la vista tardaba en actualizarse.
+**Causa medida**: el editor preguntaba por la tarea de cada vista cada 500 ms.
+**Cambios** (solo esos): `editor_panel_zonas.js` pregunta cada **120 ms** por las vistas previas
+(`SONDEO_VISTA_MS`) y pide la vista nítida **200 ms** después de la última vuelta de rueda o del
+fin del arrastre (`ESPERA_NITIDA_MS`, antes 450; si se sigue girando, se cancela la anterior como
+antes). El resto sigue igual.
+
+**Medición en Edge con PRGD y el exportador real** (`data/verificacion/medir_vistas_zonas.mjs`:
+tiempos de red por CDP y una traza de Rendimiento, como el panel Rendimiento de Edge; 8 vistas
+nuevas por serie, acercando con la rueda):
+
+| Tramo (media) | Antes (500 ms, 450 ms) | Sondeo 120 ms | Y espera 200 ms |
+|---|---|---|---|
+| Última vuelta de rueda → pedido | 441 ms | 418 ms | 177 ms |
+| Pedido → PNG listo (tarea, sondeos y descarga) | 608 ms | 262 ms | 197 ms |
+| PNG → imagen puesta en el cuadro | 8 ms | 6 ms | 4 ms |
+| Imagen puesta → pintada (repintado del editor) | 14 ms | 15 ms | 19 ms |
+| **Rueda → vista pintada** | **1071 ms** | **701 ms** | **397 ms** |
+
+(La última columna: 16 vistas en dos sitios de PRGD, 397 y 396 ms de media.)
+
+El repintado del editor es corto (unos 20 ms por vista; en la traza: raster 660 ms, pintar 222 ms
+y layout 97 ms en total para las 8 vistas).
+
+**Pruebas**: **1557 pasan** y 1 se salta (antes 1555); `test_editor_zonas_js`: las vistas previas
+se preguntan cada 120 ms y la vista nítida se pide 200 ms después de parar (cancelando la
+anterior). ruff: los mismos 173 hallazgos.
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

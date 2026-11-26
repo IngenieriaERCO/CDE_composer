@@ -12,7 +12,7 @@
  *   - clic izquierdo y arrastrar: dibujar la zona (a cualquier zoom);
  *   - clic izquierdo en un grupo (G1, G2…) o en sus botones: ir a ese grupo.
  * La «cámara» es la ventana CAD que se ve (z.camara). La imagen que hay se escala al instante
- * (el viewBox del SVG sale de la cámara y de la matriz de esa imagen); 450 ms después de parar,
+ * (el viewBox del SVG sale de la cámara y de la matriz de esa imagen); 200 ms después de parar,
  * se pide al Exportador una vista nítida de la ventana, si la imagen actual no la cubre o se
  * ve pixelada (las ya pedidas se toman de la caché del editor; el Exportador tiene la suya).
  * La zona, los grupos y el rectángulo se guardan y se dibujan en coordenadas del dibujo: son
@@ -58,11 +58,17 @@
   const EXPLICACION_PRIMERA = "La primera vista de una sesión calcula las cajas de todo el Model " +
     "Space (una sola vez): con un DXF grande puede tardar más de un minuto. Puede cerrar este " +
     "cuadro y seguir con el plano mientras tanto.";
-  const ESPERA_NITIDA_MS = 450; // tras la última vuelta de rueda o el fin del arrastre
+  const ESPERA_NITIDA_MS = 200; // tras la última vuelta de rueda o el fin del arrastre (antes 450)
   const DOBLE_CLIC_MS = 400;
   const TOL_GRUPO_PANTALLA = 24; // px de pantalla alrededor de un grupo (o su etiqueta)
 
+  // Cada cuánto se pregunta por una vista previa pedida. El Exportador la da en ~0,1 s (con la
+  // vista preparada, protocolo 1.2): con 500 ms (lo de siempre en seguirTarea) se perdía casi
+  // medio segundo por vista al acercar o alejar.
+  const SONDEO_VISTA_MS = 120;
+
   const z = {
+    sondeoMs: SONDEO_VISTA_MS, // (las verificaciones lo cambian para medir antes y después)
     sesion: null, // la sesión del DXF para la que vale lo de abajo
     vista: null, // {cuerpo, resultado, url}: la imagen que se ve
     todo: null, // {caja, grupos}: lo de la vista de todo el Model Space
@@ -422,7 +428,7 @@
       const fin = await S.seguirTarea(cliente, r.tarea.id, (foto) => {
         p.foto = foto;
         if (z.pidiendo === p) pintarOcupado();
-      });
+      }, z.sondeoMs);
       if (fin.estado === "terminada" && /^\/api\/previas\/t-\d+$/.test(fin.resultado.url)) {
         const v = { cuerpo, resultado: fin.resultado, url: URL.createObjectURL(await cliente.png(fin.resultado.url)) };
         z.cache.set(clave, v);
