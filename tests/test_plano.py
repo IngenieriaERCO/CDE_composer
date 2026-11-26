@@ -89,7 +89,7 @@ def test_detalles_invalidos(tmp_path, detalles, esperado):
 
 
 @pytest.mark.parametrize("cambio, esperado", [
-    ({"version": 7}, "- version: versión 7 no soportada; el componedor entiende las versiones 1 a 6"),
+    ({"version": 8}, "- version: versión 8 no soportada; el componedor entiende las versiones 1 a 7"),
     ({"version": "1"}, "- version: se esperaba un número entero; tiene texto '1'"),
     ({"version": True}, "- version: se esperaba un número entero; tiene un booleano"),
     ({"formato": None}, "- formato: se esperaba una ruta (texto); tiene null"),

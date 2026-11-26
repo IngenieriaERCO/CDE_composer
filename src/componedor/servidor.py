@@ -48,12 +48,13 @@ RUTA_CANCELAR = re.compile(r"^/api/tareas/(t-\d+)/cancelar$")
 RUTA_PNG = re.compile(r"^/api/previas/(t-\d+)$")
 RUTA_PNG_ORTOFOTO = re.compile(r"^/api/ortofoto/previas/(o-\d+)$")
 RUTAS_GET = ("/", "/api/estado", "/api/exportados", "/api/ortofoto", "/api/localizacion",
-              "/api/localizacion/imagen", "/api/estilos")
+              "/api/localizacion/imagen", "/api/estilos", "/api/planos")
 RUTAS_POST = ("/api/dxf/elegir", "/api/dxf/recargar", "/api/previa", "/api/previa/zona",
               "/api/exportar", "/api/exportar/zona", "/api/zonas/nombre", "/api/textos/zona",
               "/api/trabajador/reiniciar", "/api/trabajador/detener", "/api/latido",
               "/api/ortofoto/elegir", "/api/ortofoto/quitar", "/api/ortofoto/previa",
-              "/api/localizacion/elegir", "/api/localizacion/quitar")
+              "/api/localizacion/elegir", "/api/localizacion/quitar",
+              "/api/planos/leer", "/api/planos/guardar", "/api/hojas", "/api/hojas/indice")
 
 
 def ruta_conocida(metodo: str, ruta: str) -> bool:
@@ -263,6 +264,19 @@ def _manejador(servidor: ServidorEditor):
                 return app.localizacion.elegir(cuerpo.get("archivo_plano"))
             if ruta == "/api/localizacion/quitar":
                 return app.localizacion.quitar()
+            # Varias hojas de un proyecto (plano versión 7): planos_editor.py.
+            if metodo == "GET" and ruta == "/api/planos":
+                return app.planos.listar()
+            if ruta == "/api/planos/leer":
+                return app.planos.leer(cuerpo.get("archivo"))
+            if ruta == "/api/planos/guardar":
+                return app.planos.guardar(cuerpo.get("archivo"), cuerpo.get("texto"),
+                                          cuerpo.get("nuevo") is True)
+            if ruta == "/api/hojas":
+                return app.planos.hojas(cuerpo.get("archivo"), cuerpo.get("rotulo"),
+                                        cuerpo.get("campos"))
+            if ruta == "/api/hojas/indice":
+                return app.planos.guardar_indice(cuerpo.get("indice"), cuerpo.get("hojas"))
             m = RUTA_CANCELAR.match(ruta)
             return app.cancelar(m.group(1))
 

@@ -366,7 +366,7 @@ def test_el_editor_rechaza_la_ortofoto_mal_escrita(entorno_editor):
               "marca_no_booleana": {"version": 5, "ortofoto": {"archivo": "a.tif"},
                                     "detalles": [{**detalle, "ortofoto": "sí"}]},
               "sin_seccion": {"version": 5, "detalles": [{**detalle, "ortofoto": True}]},
-              "v7": {"version": 7, "detalles": [detalle]}}
+              "v8": {"version": 8, "detalles": [detalle]}}
     r = js("""const res = {};
       for (const [k, p] of Object.entries(entrada.planos)) res[k] = L.leerPlano(JSON.stringify(p), entrada.datos).errores;
       return res;""", {"planos": planos, "datos": datos})
@@ -377,7 +377,7 @@ def test_el_editor_rechaza_la_ortofoto_mal_escrita(entorno_editor):
     assert r["marca_no_booleana"] == ["detalles[0].ortofoto: se esperaba true o false."]
     assert r["sin_seccion"] == [("detalles[0] ('a'): lleva \"ortofoto\": true, pero el plano no "
                                  "tiene la sección \"ortofoto\".")]
-    assert "versiones 1 a 6" in r["v7"][0]
+    assert "versiones 1 a 7" in r["v8"][0]
 
 
 # --- etapa B: extendida y cuadrícula --------------------------------------------------------------

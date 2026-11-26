@@ -132,7 +132,9 @@
       if (!F.representable(actual)) {
         return fila(c.etiqueta, nodo("div", { class: "medida" }, "Valor que el formulario no sabe mostrar: se conserva sin editar."));
       }
-      const placeholder = c.por_defecto ? c.por_defecto + " (por defecto)" : "";
+      // Automáticos (hoja, de, número de plano): el valor del índice de hojas, si lo hay.
+      const auto = opciones.automatico ? opciones.automatico(c.campo) : undefined;
+      const placeholder = auto ? auto + " (automático)" : c.por_defecto ? c.por_defecto + " (por defecto)" : "";
       const entrada = entradaTexto(actual, c.celda, ["rotulo." + c.campo, "campo '" + c.campo + "'"],
         (v) => cambiar(c.campo, v), placeholder);
       if (c.campo === "titulo") {

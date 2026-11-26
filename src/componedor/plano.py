@@ -1,4 +1,4 @@
-"""Lectura y validación del plano.json (versiones 1 a 5): qué detalles van en la hoja y dónde.
+"""Lectura y validación del plano.json (versiones 1 a 7): qué detalles van en la hoja y dónde.
 
 Formato: docs/formato_plano.md. Todas las rutas son relativas a la carpeta del plano.json.
 Las posiciones van en mm de papel (origen en la esquina inferior izquierda de la hoja, Y
@@ -27,6 +27,13 @@ y, en un detalle exportado desde una zona, "origen": {"zona": "<nombre>"}: ver p
 Una zona que ningún detalle nombra es un borrador: `componer` no compone el plano hasta
 exportarla.
 
+Versión 7 (varias hojas de un proyecto, «Nueva hoja a partir de esta») = versión 6 más:
+  - "detalles" puede ir vacío: una hoja con solo el rótulo (`componer` la compone, con aviso);
+  - "copiado_de": {"hoja": "<plano.json>", "revisar": ["notas", ...]}: la hoja se hizo a partir
+    de otra y esos campos del rótulo se copiaron sin revisar todavía (el editor y `componer`
+    lo avisan hasta que se toquen). Las hojas de un proyecto se listan en <proyecto>.hojas.json
+    (hojas_proyecto.py), que da «hoja», «de» y el número de plano automáticos.
+
 Versión 5 (ortofoto por detalle) = versión 4 más, en cada detalle (exportado o pendiente),
 "ortofoto": true para que lleve la ortofoto detrás (sin la clave: false). Un plano versión 4
 con ortofoto se lee como si todos los detalles la usaran (lo que hacía la versión 4): así se
@@ -53,7 +60,7 @@ from componedor.plano_ortofoto import OrtofotoPlano, leer_ortofoto
 from componedor.plano_zonas import ZonaPlano, leer_origen_zona, leer_zonas
 from componedor.recorte_detalle import MARGEN_MAXIMO_MM, margen_valido
 
-VERSIONES_SOPORTADAS = (1, 2, 3, 4, 5, 6)
+VERSIONES_SOPORTADAS = (1, 2, 3, 4, 5, 6, 7)
 CLAVES_PLANO = {"version", "formato", "plantilla", "detalles"}
 CLAVES_DETALLE = {"id", "manifiesto", "posicion_mm", "centrar"}
 CLAVES_PLANO_V2 = CLAVES_PLANO | {"rotulo", "rosa_vientos"}
@@ -62,6 +69,8 @@ CLAVES_DETALLE_V5 = CLAVES_DETALLE_V2 | {"ortofoto"}
 CLAVES_DETALLE_V6 = CLAVES_DETALLE_V5 | {"origen"}  # exportado desde una zona: {"zona": nombre}
 CLAVES_PLANO_V3 = CLAVES_PLANO_V2 | {"dxf"}
 CLAVES_PLANO_V4 = CLAVES_PLANO_V3 | {"ortofoto"}
+CLAVES_PLANO_V7 = CLAVES_PLANO_V4 | {"copiado_de"}
+CLAVES_COPIADO = {"hoja", "revisar"}
 CLAVES_ROSA = {"visible", "posicion_mm"}
 
 
@@ -100,6 +109,8 @@ class Plano:
     pendientes: tuple[BloquePendiente, ...] = ()  # versión 3: bloques sin exportar
     ortofoto: OrtofotoPlano | None = None  # versión 4: la ortofoto de fondo
     zonas: tuple[ZonaPlano, ...] = ()  # versión 6: las zonas del Model Space del plano
+    copiado_de: str | None = None  # versión 7: el plano.json de la hoja de donde se copió
+    revisar: tuple[str, ...] = ()  # versión 7: campos del rótulo copiados sin revisar
 
     @property
     def carpeta(self) -> Path:
@@ -131,16 +142,19 @@ def leer_plano(ruta: Path | str) -> Plano:
 
     errores: list[str] = []
     carpeta = ruta.parent
-    v6 = datos.get("version") == 6  # zonas del Model Space (plano_zonas.py)
+    v7 = datos.get("version") == 7  # varias hojas: detalles vacíos y "copiado_de"
+    v6 = datos.get("version") == 6 or v7  # zonas del Model Space (plano_zonas.py)
     v5 = datos.get("version") == 5 or v6
     v4 = datos.get("version") == 4 or v5
     v3 = datos.get("version") == 3 or v4  # cada versión incluye todo lo de la anterior
     v2 = datos.get("version") == 2 or v3
-    validas = (CLAVES_PLANO_V4 if v4 else CLAVES_PLANO_V3 if v3 else CLAVES_PLANO_V2 if v2
-               else CLAVES_PLANO)
+    validas = (CLAVES_PLANO_V7 if v7 else CLAVES_PLANO_V4 if v4 else CLAVES_PLANO_V3 if v3
+               else CLAVES_PLANO_V2 if v2 else CLAVES_PLANO)
 
     for clave in sorted(set(datos) - validas):
-        if clave == "ortofoto":
+        if clave == "copiado_de":
+            errores.append("copiado_de: solo existe en la versión 7 del plano (use \"version\": 7)")
+        elif clave == "ortofoto":
             errores.append("ortofoto: solo existe en la versión 4 del plano (use \"version\": 4)")
         elif clave == "dxf":
             errores.append("dxf: solo existe en la versión 3 del plano (use \"version\": 3)")
@@ -157,7 +171,7 @@ def leer_plano(ruta: Path | str) -> Plano:
         errores.append(f"version: se esperaba un número entero; tiene {_tipo(version)}")
     elif version not in VERSIONES_SOPORTADAS:
         errores.append(f"version: versión {version} no soportada; el componedor entiende las "
-                       f"versiones 1 a 6")
+                       f"versiones 1 a 7")
 
     formato = _ruta(datos, "formato", carpeta, errores, obligatoria=True)
     plantilla = _ruta(datos, "plantilla", carpeta, errores, obligatoria=False)
@@ -171,8 +185,9 @@ def leer_plano(ruta: Path | str) -> Plano:
         errores.append("detalles: falta el campo")
     elif not isinstance(lista, list):
         errores.append(f"detalles: se esperaba una lista; tiene {_tipo(lista)}")
-    elif not lista and not (v6 and zonas):  # versión 6: solo zonas borrador, todavía sin detalles
-        errores.append("detalles: la lista está vacía; el plano necesita al menos un detalle")
+    elif not lista and not (v6 and zonas) and not v7:  # v6: solo borradores; v7: hoja vacía
+        errores.append("detalles: la lista está vacía; el plano necesita al menos un detalle "
+                       "(una hoja con solo el rótulo es de la versión 7)")
     else:
         vistos: dict[str, int] = {}
         for i, item in enumerate(lista):
@@ -213,6 +228,9 @@ def leer_plano(ruta: Path | str) -> Plano:
         detalles = [replace(d, ortofoto=True) for d in detalles]
         pendientes = [replace(d, ortofoto=True) for d in pendientes]
 
+    copiado_de, revisar = _copiado(datos["copiado_de"], errores) if v7 and "copiado_de" in datos \
+        else (None, ())
+
     vistas: dict[str, str] = {}
     for d in detalles:
         if d.zona in vistas:
@@ -227,7 +245,26 @@ def leer_plano(ruta: Path | str) -> Plano:
             + "\n".join(f"- {e}" for e in errores)
         )
     return Plano(ruta, version, formato, plantilla, tuple(detalles), rotulo, rosa,
-                 tuple(dxfs.values()), tuple(pendientes), ortofoto, tuple(zonas))
+                 tuple(dxfs.values()), tuple(pendientes), ortofoto, tuple(zonas), copiado_de,
+                 revisar)
+
+
+def _copiado(valor, errores: list[str]) -> tuple[str | None, tuple[str, ...]]:
+    """"copiado_de": {"hoja": "<plano.json>", "revisar": [campos del rótulo]} (versión 7)."""
+    if not isinstance(valor, dict):
+        errores.append("copiado_de: se esperaba {\"hoja\": \"<plano.json>\", \"revisar\": [...]}")
+        return None, ()
+    for clave in sorted(set(valor) - CLAVES_COPIADO):
+        errores.append(f"copiado_de.{clave}: campo no reconocido (campos válidos: hoja, revisar)")
+    hoja = valor.get("hoja")
+    if not (isinstance(hoja, str) and hoja.strip()):
+        errores.append("copiado_de.hoja: se esperaba el nombre del plano.json de la otra hoja")
+        hoja = None
+    revisar = valor.get("revisar", [])
+    if not (isinstance(revisar, list) and all(isinstance(c, str) and c.strip() for c in revisar)):
+        errores.append("copiado_de.revisar: se esperaba una lista de campos del rótulo")
+        revisar = []
+    return hoja, tuple(revisar)
 
 
 def _zonas(lista, dxfs: dict, errores: list[str]) -> list[ZonaPlano]:

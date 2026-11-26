@@ -426,3 +426,4 @@ main { flex: 1; display: flex; min-height: 0; }
 .linea-escala.ambar { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; font-weight: 600; }
 .escalas-dibujo .escala-candidata.elegida { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
 .lamina-zonas .marca-texto { fill: none; stroke: #16a34a; stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+#selector-hoja { max-width: 280px; }

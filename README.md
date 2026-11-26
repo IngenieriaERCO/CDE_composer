@@ -384,6 +384,13 @@ Cada paquete se verifica (`importar_paquete` y que sea el pedido) y el bloque pa
 detalle normal, puesto por el centro CAD. Lo ya publicado se reutiliza; los paquetes viejos que
 se reemplazan se mueven a `_para_borrar/`.
 
+**Varias hojas** (con `Abrir editor.bat`): «Nueva hoja a partir de esta» guarda la hoja actual y
+crea la siguiente (`<proyecto>_02.json`) con el mismo rótulo (sin título) y el área de dibujo
+vacía; el selector «Hoja N de M» pasa de una a otra. Hoja, De y No. PLANO salen solos del índice
+`<proyecto>.hojas.json` (…-PL-106 → …-PL-107) y se pueden escribir a mano. Notas, convenciones y
+revisiones copiadas quedan en Advertencias «revíselo» hasta que se cambien. Plano versión 7: una
+hoja puede ir sin detalles (solo el rótulo). Ver [docs/editor.md](docs/editor.md).
+
 **Mostrar escala**: en el panel Selección, cada detalle tiene el casillero «Mostrar escala»; desmarcado, no se escribe su «ESC: 1:N» (ni en el editor ni en el PDF), para los dibujos que ya traen su escala escrita. Una zona con su «ESC 1:N» leído, exportada a esa escala, empieza desmarcada.
 
 **Zonas del modelo** (Fase 10, con `Abrir editor.bat` y un DXF cargado): el botón «Zonas del

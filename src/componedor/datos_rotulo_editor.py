@@ -138,7 +138,8 @@ def definicion_editor(definicion: DefinicionRotulo) -> dict:
     for nombre, campo in definicion.campos.items():
         if isinstance(campo, CampoTexto):
             campos[nombre] = {"tipo": "texto", **_celda(campo.celda),
-                              "por_defecto": campo.por_defecto, "calculado": campo.calculado}
+                              "por_defecto": campo.por_defecto, "calculado": campo.calculado,
+                              "automatico": campo.automatico}
         elif isinstance(campo, CampoTabla):
             primera = next(iter(campo.celdas.values()))
             campos[nombre] = {

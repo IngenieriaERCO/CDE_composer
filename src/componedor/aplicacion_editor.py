@@ -150,6 +150,11 @@ class AplicacionEditor:
                          if elegir_ortofoto else OrtofotoEditor(
                              self.ruta_html.parent, intervalo_m=intervalo_cuadricula_m))
         self.zona = zona
+        # «Nueva hoja a partir de esta» y el selector de hojas: los plano.json de su carpeta.
+        from componedor.planos_editor import (
+            PlanosEditor,  # aquí: planos_editor importa este módulo
+        )
+        self.planos = PlanosEditor(self.ruta_html.parent)
         self.config = config
         self._elegir = elegir
         self._fabrica = fabrica or (

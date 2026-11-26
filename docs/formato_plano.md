@@ -159,8 +159,8 @@ falta queda vacío, salvo su valor por defecto. `null` o `""` dejan la celda vac
 | ~~`disenador`, `revisor`~~ | — | **Retirados** (plantilla v3: la franja del logo solo lleva el logo). Un plano viejo que los traiga se compone igual: se ignoran con un solo aviso. |
 | `revisiones` | lista de objetos | Tabla de revisiones (ver abajo). |
 | `firmas` | objeto por fila | Tabla DIBUJÓ / DISEÑÓ / REVISÓ / APROBÓ (ver abajo). |
-| `hoja`, `de` | texto o entero | HOJA __ DE __ (las dos celdas tienen el mismo rango en X, 812,9–827,4 mm, y van centradas: los dos valores quedan uno debajo del otro). |
-| `no_plano` | texto | No. PLANO. |
+| `hoja`, `de` | texto o entero | HOJA __ DE __ (las dos celdas tienen el mismo rango en X, 812,9–827,4 mm, y van centradas: los dos valores quedan uno debajo del otro). **Automáticos** si la hoja está en un índice de hojas y no los escribe (ver «Varias hojas»). |
+| `no_plano` | texto | No. PLANO. **Automático** igual: el de la hoja anterior con su último número sumado en 1. |
 | `notas` | objeto | `{"archivos": [...], "adicionales": [...]}`: notas numeradas (ver «Notas»). |
 | `convenciones` | lista (máx. 24) | `[{"simbolo": "corte"}, {"simbolo": "via_existente", "descripcion": "…"}]` (ver «Convenciones»). |
 | `escala` | **calculada** | No se escribe: es la escala de los detalles si todos tienen la misma (`1:1.000`), si no `INDICADAS`. |
@@ -733,6 +733,37 @@ plano guarda todas las zonas, exportadas o no, en la entrada de su DXF:
   exportadas) con su nombre, capas y escala, cada una centrada donde está hoy. Sirve para cuando
   cambia el DXF: «Cargar DXF» otra vez (el mismo archivo) y el botón.
 - Una zona no puede estar en dos detalles; dos zonas no pueden tener el mismo nombre.
+
+## Varias hojas de un proyecto (versión 7)
+
+Un plano.json **por hoja**, todos en la carpeta del editor, y un índice
+`<proyecto>.hojas.json` con sus nombres en orden (lo escribe «Nueva hoja a partir de esta»):
+
+```json
+{"version": 1, "hojas": ["Pruebadecambio.json", "Pruebadecambio_02.json"]}
+```
+
+La versión 7 es la 6 más:
+
+- `"detalles": []` vale: una hoja con solo el rótulo. `componer` la compone y avisa
+  («La hoja no tiene detalles: sale solo el rótulo.»).
+- `"copiado_de": {"hoja": "<plano.json>", "revisar": ["notas", "convenciones", "revisiones"]}`:
+  la hoja se hizo a partir de otra y esos campos del rótulo se copiaron sin revisar todavía. El
+  editor y `componer` lo avisan; el editor quita cada campo de la lista cuando se cambia (y quita
+  `copiado_de` cuando no queda ninguno).
+
+**Campos automáticos del rótulo** (en el formato, `"automatico"` en el campo de texto): si la hoja
+está en un índice y **no** los escribe, se llenan solos al componer (y en el editor, como
+sugerencia «… (automático)»):
+
+| `automatico` | Campo en A1 ERCO | Valor |
+|---|---|---|
+| `hoja_actual` | `hoja` | La posición de la hoja en el índice (1, 2, …). |
+| `total_hojas` | `de` | Cuántas hojas tiene el índice. |
+| `numero_siguiente` | `no_plano` | El número de la hoja anterior con su **último** número sumado en 1, con sus ceros (`…-PL-106` → `…-PL-107`). La primera hoja lo escribe a mano; si una intermedia escribe el suyo, las siguientes siguen desde ese. |
+
+Lo escrito a mano siempre manda. Una hoja que no está en ningún índice se compone como siempre
+(sin automáticos). Los planos de versiones 1 a 6 no cambian.
 
 ## Qué hace `componer` con el plano
 

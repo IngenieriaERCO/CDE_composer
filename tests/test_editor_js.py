@@ -265,7 +265,7 @@ def test_leer_plano(entorno):
     assert [c["pos"] for c in r["ok"]["colocaciones"]] == [
         [30, 40], [205.25, 235.7]]  # página 260 × 120; dibujo +37,3..+237,3 × +21,3..+101,3
     assert r["version"]["errores"] == [
-        "version: versión 9 no soportada; el editor entiende las versiones 1 a 6."]
+        "version: versión 9 no soportada; el editor entiende las versiones 1 a 7."]
     assert "no está en el catálogo del editor" in r["desconocido"]["errores"][0]
     assert "el paquete 'malo' está rechazado" in r["rechazado"]["errores"][0]
     assert "'x' está repetido" in r["repetido"]["errores"][0]

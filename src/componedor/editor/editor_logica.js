@@ -34,6 +34,9 @@
   // editor_ortofoto.js (plano versión 4), igual.
   const O = typeof module === "object" && module.exports
     ? require("./editor_ortofoto.js") : self.EditorOrtofoto;
+  // Varias hojas (versión 7): "copiado_de" y la hoja vacía.
+  const H = typeof module === "object" && module.exports
+    ? require("./editor_hojas.js") : self.EditorHojas;
 
   const EPS_MM = 1e-6; // igual que formato.EPS_MM: solo ruido numérico
   const ZONA_EDITABLE = "area_dibujo";
@@ -313,7 +316,7 @@
   }
 
   // ---------------------------------------------------------------------------------------
-  // plano.json (versiones 1 a 5, docs/formato_plano.md).
+  // plano.json (versiones 1 a 7, docs/formato_plano.md).
   // ---------------------------------------------------------------------------------------
 
   /** id, id_2, id_3… el primero que no esté en `usados`. */
@@ -442,15 +445,19 @@
     if (pendientes.length) nuevo.version = 3;
     if (extra.ortofoto) nuevo.version = 5; // la 4 (ortofoto en todos) se migra a la 5 al guardar
     if (conZona.length) nuevo.version = 6; // zonas del Model Space
+    // Versión 7: una hoja sin nada en el área de dibujo, o con campos copiados por revisar.
+    const copiado = extra.copiado && extra.copiado.revisar && extra.copiado.revisar.length ? extra.copiado : null;
+    if (copiado) nuevo.copiado_de = { hoja: copiado.hoja, revisar: copiado.revisar.slice() };
+    if (copiado || (!detalles.length && !conZona.length)) nuevo.version = 7;
     // No se baja de versión (un plano 3 sin bloques pendientes sigue siendo válido).
-    if (original && [2, 3, 4, 5, 6].includes(original.version) &&
+    if (original && [2, 3, 4, 5, 6, 7].includes(original.version) &&
         original.version > nuevo.version) nuevo.version = original.version;
     if (!original) return nuevo;
     // Mismo orden de claves que el original; lo que no estaba, al final.
     const salida = {};
     for (const clave of Object.keys(original)) {
       if (clave in nuevo) salida[clave] = nuevo[clave];
-      else if (!["rosa_vientos", "rotulo", "dxf", "ortofoto"].includes(clave)) salida[clave] = original[clave];
+      else if (!["rosa_vientos", "rotulo", "dxf", "ortofoto", "copiado_de"].includes(clave)) salida[clave] = original[clave];
     }
     for (const clave of Object.keys(nuevo)) {
       // "plantilla": null es lo mismo que no tenerla: si el original no la traía, no se agrega.
@@ -549,7 +556,8 @@
     const errores = [];
     const avisos = [];
     let plano;
-    const vacio = (lista) => ({ colocaciones: [], errores: lista, avisos, rosa: null, rotulo: null, ortofoto: null });
+    const vacio = (lista) => ({ colocaciones: [], errores: lista, avisos, rosa: null, rotulo: null, ortofoto: null,
+      copiado: null });
     try {
       plano = JSON.parse(texto);
     } catch (e) {
@@ -558,11 +566,12 @@
     if (!esObjeto(plano)) {
       return vacio(["El plano debe ser un objeto JSON {...}."]);
     }
-    if (![1, 2, 3, 4, 5, 6].includes(plano.version)) {
+    if (![1, 2, 3, 4, 5, 6, 7].includes(plano.version)) {
       errores.push("version: versión " + JSON.stringify(plano.version) +
-        " no soportada; el editor entiende las versiones 1 a 6.");
+        " no soportada; el editor entiende las versiones 1 a 7.");
     }
-    const v6 = plano.version === 6; // zonas del Model Space (Fase 10e3)
+    const v7 = plano.version === 7; // varias hojas: hoja vacía y "copiado_de"
+    const v6 = plano.version === 6 || v7; // zonas del Model Space (Fase 10e3)
     const v5 = plano.version === 5 || v6;
     const v4 = plano.version === 4 || v5;
     const v3 = plano.version === 3 || v4; // cada versión incluye todo lo de la anterior
@@ -591,8 +600,12 @@
       avisos.push("El plano usa el formato '" + plano.formato + "' y el editor '" +
         datos.formato + "': se usará el del editor.");
     }
-    // Versión 6: un plano solo con zonas borrador no tiene detalles todavía.
-    if (!Array.isArray(plano.detalles) || (plano.detalles.length === 0 && !zonas.length)) {
+    if (!v7 && plano.copiado_de !== undefined) {
+      errores.push("copiado_de: solo existe en la versión 7 del plano (use \"version\": 7).");
+    }
+    const copiado = v7 ? H.leerCopiado(plano.copiado_de, errores) : null;
+    // Versión 6: un plano solo con zonas borrador no tiene detalles todavía; versión 7: hoja vacía.
+    if (!Array.isArray(plano.detalles) || (plano.detalles.length === 0 && !zonas.length && !v7)) {
       errores.push("detalles: se esperaba una lista con al menos un detalle.");
       return vacio(errores);
     }
@@ -725,7 +738,7 @@
       avisos.push("Plano versión 4: la ortofoto iba detrás de todos los detalles. Ahora se elige por " +
         "detalle («Usar ortofoto»): quedan todos marcados. Se guardará en versión 5.");
     }
-    return { colocaciones, errores, avisos, rosa, rotulo, ortofoto, original: plano };
+    return { colocaciones, errores, avisos, rosa, rotulo, ortofoto, original: plano, copiado };
   }
 
   /**

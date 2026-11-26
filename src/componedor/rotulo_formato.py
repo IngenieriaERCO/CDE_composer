@@ -79,7 +79,10 @@ FORMATO_FECHA_POR_DEFECTO = "dd/mm/aa"
 # Día, mes y año, una vez cada uno, separados por el mismo «/», «-» o «.» (aa o aaaa).
 FORMATO_FECHA = re.compile(r"^(dd|mm|aa|aaaa)([/.-])(dd|mm|aa|aaaa)\2(dd|mm|aa|aaaa)$")
 CLAVES_TEXTO = {"tipo", "rect_mm", "alinear", "altura_mm", "altura_min_mm", "lineas_max",
-                "por_defecto", "calculado"}
+                "por_defecto", "calculado", "automatico"}
+# Campos que se llenan solos si la hoja no los escribe, desde el índice de hojas del proyecto
+# (hojas_proyecto.py); a diferencia de los calculados, se pueden escribir a mano.
+AUTOMATICOS = ("hoja_actual", "total_hojas", "numero_siguiente")
 CLAVES_TABLA = {"tipo", "altura_mm", "altura_min_mm", "filas", "columnas", "columna_clave",
                 "orden"}
 CLAVES_NOTAS = {"tipo", "rect_mm", "altura_mm", "altura_min_mm", "separacion_notas"}
@@ -118,6 +121,7 @@ class CampoTexto:
     celda: Celda
     por_defecto: str | None = None
     calculado: str | None = None
+    automatico: str | None = None  # "hoja_actual" | "total_hojas" | "numero_siguiente"
 
 
 @dataclass(frozen=True)
@@ -403,10 +407,16 @@ def _campo_texto(nombre: str, valor: dict, donde: str, errores: list[str]) -> Ca
                        f"tiene {calculado!r}")
     if calculado is not None and por_defecto is not None:
         errores.append(f"{donde}: un campo calculado no lleva por_defecto")
+    automatico = valor.get("automatico")
+    if automatico is not None and automatico not in AUTOMATICOS:
+        errores.append(f"{donde}.automatico: se esperaba uno de {', '.join(AUTOMATICOS)}; "
+                       f"tiene {automatico!r}")
+    if automatico is not None and calculado is not None:
+        errores.append(f"{donde}: un campo no puede ser calculado y automático a la vez")
     if len(errores) > n:
         return None
     return CampoTexto(nombre, Celda(nombre, rect, alinear, altura, minima, lineas),
-                      por_defecto, calculado)
+                      por_defecto, calculado, automatico)
 
 
 def _campo_tabla(nombre: str, valor: dict, donde: str, errores: list[str]) -> CampoTabla | None:

@@ -158,6 +158,9 @@
    * [{ruta, persona, imagen, caja_mm, celda_mm}], problemas: [{ruta, rect_mm, nivel:
    * "error"|"aviso", mensaje}]}.
    */
+  /** Un campo de texto sin escribir (vacío o solo espacios). */
+  const vacioTexto = (v) => v === undefined || v === null || (typeof v === "string" && !v.trim());
+
   function piezasRotulo(entrada) {
     const definicion = entrada.definicion;
     const fuente = entrada.fuente;
@@ -248,8 +251,12 @@
       let c;
       if (campo.calculado === "escala_comun") c = { contenido: F.escalaComun(entrada.escalas || []) };
       else if (campo.calculado) c = { contenido: F.ultimaRevision(letras, (definicion.campos.revisiones || { orden: [] }).orden) };
-      else if (campo.nombre in valores) c = contenido(valores[campo.nombre], "rotulo." + campo.nombre, campo.lineas_max);
-      else c = { contenido: campo.por_defecto || "" };
+      else if (campo.nombre in valores && !(campo.automatico && vacioTexto(valores[campo.nombre]) &&
+        entrada.automaticos && entrada.automaticos[campo.nombre])) {
+        c = contenido(valores[campo.nombre], "rotulo." + campo.nombre, campo.lineas_max);
+      } else if (campo.automatico && entrada.automaticos && entrada.automaticos[campo.nombre]) {
+        c = { contenido: entrada.automaticos[campo.nombre] }; // del índice de hojas (versión 7)
+      } else c = { contenido: campo.por_defecto || "" };
       if (c.error) problema(celda.ruta, celda.rect_mm, "error", c.error);
       else contenidos.push({ celda, contenido: c.contenido });
     }

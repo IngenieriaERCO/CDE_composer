@@ -38,6 +38,7 @@ MARCADORES = {
     "/*@@JS_BLOQUES@@*/": "editor_bloques.js",  # antes de la lógica: la usa (plano versión 3)
     "/*@@JS_ORTOFOTO@@*/": "editor_ortofoto.js",  # antes de la lógica: la usa (plano versión 4)
     "/*@@JS_LOCALIZACION@@*/": "editor_localizacion.js",  # imagen de localización (rótulo)
+    "/*@@JS_HOJAS@@*/": "editor_hojas.js",  # antes de la lógica: la usa (plano versión 7)
     "/*@@JS_LOGICA@@*/": "editor_logica.js",
     "/*@@JS_ROTULO@@*/": "editor_rotulo.js",
     "/*@@JS_MAQUETACION@@*/": "editor_maquetacion.js",
@@ -60,6 +61,7 @@ MARCADORES = {
     "/*@@JS_PANEL_ZONAS@@*/": "editor_panel_zonas.js",  # el diálogo «Zonas del modelo»
     "/*@@JS_PANEL_ORTOFOTO@@*/": "editor_panel_ortofoto.js",
     "/*@@JS_PANEL_LOCALIZACION@@*/": "editor_panel_localizacion.js",
+    "/*@@JS_PANEL_HOJAS@@*/": "editor_panel_hojas.js",  # «Hoja N de M» y «Nueva hoja…»
 }
 MARCADOR_DATOS = "@@DATOS_EDITOR@@"
 # Lo que dejaban versiones anteriores junto a editor.html; se quita al regenerar.

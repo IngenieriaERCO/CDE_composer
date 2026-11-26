@@ -772,6 +772,31 @@ fondo que está debajo no tapa al de encima.
   queda visible y en su lugar original.
 - Si cierra o recarga la página con cambios sin guardar, el navegador pide confirmación.
 
+### Varias hojas: «Nueva hoja a partir de esta» (plano versión 7)
+
+Con el servidor local (`Abrir editor.bat`), en la barra de arriba:
+
+- **Selector «Hoja N de M»**: las hojas del proyecto (el índice `<proyecto>.hojas.json` de la
+  carpeta del editor). Al elegir otra, si hay cambios, se pregunta y se **guarda** la actual
+  antes de abrir la otra. Si una hoja no abre (por ejemplo, falta un paquete), sigue abierta la
+  de antes y nada se pisa.
+- **«Nueva hoja a partir de esta»**: guarda la hoja actual (tiene que estar guardada en la
+  carpeta del editor) y crea `<proyecto>_02.json`, `_03`… al lado, con:
+  - el área de dibujo **vacía** (sin detalles, bloques ni zonas);
+  - **todo el rótulo copiado y editable**, menos el título (vacío) y los automáticos;
+  - notas, convenciones y revisiones marcadas en Advertencias «copiado de la hoja N, revíselo»
+    hasta que se cambien;
+  - la ortofoto del plano (ningún detalle la usa hasta marcar «Usar ortofoto»). El DXF sigue
+    cargado: no hay que volver a cargarlo.
+- **Hoja, De y No. PLANO** salen solos del índice (el formulario los muestra como «2
+  (automático)»); se pueden escribir a mano. Al crear el índice, «hoja» y «de» de la primera hoja
+  pasan a ser automáticos (si no, diría «1 de 1»); su número de plano se conserva.
+- Una hoja vacía se guarda y se compone (solo el rótulo), con aviso.
+
+Sin servidor, el selector y el botón quedan desactivados (el navegador solo no puede escribir
+varios archivos). Componer todas las hojas de una vez queda para después: cada hoja se compone
+con `Componer.bat`, como siempre.
+
 ## 7. Limitaciones
 
 - Un plano con bloques sin exportar no se compone: hay que exportarlos (etapa 3) antes.

@@ -3271,7 +3271,7 @@ que se ve»). Ningún archivo de `resultados/` ni de `editor/` (salvo `editor.ht
 - Ajustadas al recorte: inventario, datos del editor, sugeridas, CLI. Las de traslapes, elementos
   y ortofoto escritas con la página entera siguen igual con `margen_mm=None`.
 
-### «Mostrar escala» por detalle (2026-11-26)
+### «Mostrar escala» por detalle (2026-11-26, commit 299f042)
 
 Decisiones aprobadas: A) si la escala leída del dibujo no es la de exportación, empieza marcado;
 B) las zonas agregadas antes siguen con la escala visible; C) solo casillero por detalle.
@@ -3298,6 +3298,45 @@ exportar y componer: en el PDF solo «ESC: 1:20»).
 **Pruebas**: **1541 pasan** y 1 se salta (antes 1538). ruff: los mismos 173 hallazgos.
 `test_plano_v6` (etiqueta en las zonas) y `test_editor_plano_v6_js` (borrador desmarcado se guarda
 y se lee; valor inicial).
+
+### Varias hojas: «Nueva hoja a partir de esta» (plano versión 7) (2026-11-26)
+
+Decisiones aprobadas: A) un plano.json por hoja y un índice `<proyecto>.hojas.json`; B) hoja, de y
+número de plano automáticos desde el índice, editables (el número suma 1 al último número del
+anterior); C) en la hoja nueva se vacía el título; notas, convenciones y revisiones se copian y
+quedan «copiado de la hoja N, revíselo» hasta que se toquen; D) una hoja vacía se compone, con
+aviso; E) componer todas las hojas de una vez, después.
+
+**Qué se hizo**
+- `hojas_proyecto.py` (nuevo): el índice, número siguiente (…-106 → …-107) y valores automáticos.
+- `rotulo_formato`: campo de texto `"automatico"` (`hoja_actual`, `total_hojas`,
+  `numero_siguiente`), en `formatos/A1_ERCO.json` para hoja, de y no_plano.
+- `plano.py`: versión 7 (`"detalles": []`, `copiado_de`). `componer`: llena los automáticos que la
+  hoja no escribe y avisa de hoja vacía y de campos copiados sin revisar.
+- `planos_editor.py` (nuevo) y rutas del servidor: listar, leer y guardar planos de la carpeta
+  del editor (solo `.json` sin carpetas; una hoja nueva nunca pisa otra) y el índice.
+- Editor: `editor_hojas.js` (lógica) y `editor_panel_hojas.js` (selector «Hoja N de M» y botón);
+  `editor_logica` lee y escribe la versión 7; Advertencias «revíselo»; automáticos como sugerencia
+  en el formulario y en la vista previa; guardar una hoja vacía; si una hoja no abre, sigue la de
+  antes con su nombre (nada se pisa).
+
+**Cómo probarlo**: ver docs/editor.md («Varias hojas»). Con `Abrir editor.bat`: abrir
+`Pruebadecambio.json` (guardado en `editor/`), «Nueva hoja a partir de esta», editar el rótulo de
+la hoja 2, volver a la 1 con el selector y componer las dos con `Componer.bat`.
+
+**Verificación en Edge** (`data/verificacion/verificar_hojas.mjs`, sobre una COPIA de
+Pruebadecambio.json en `data/verificacion/hojas_editor/`, con `servidor_hojas_prueba.py`; nada de
+`editor/` se tocó). **Todo OK**, sin errores de JavaScript: hoja 2 creada vacía con el rótulo
+copiado sin título; selector «Hoja 2 de 2»; automáticos 2 / 2 / …-PL-107 (también en el
+formulario); avisos de notas y revisiones (el de notas se quita al cambiarlas); índice con las 2
+hojas; la hoja 1 deja hoja y de automáticos; cambiar de hoja guarda la 2; una hoja que no abre no
+pisa nada; componer: hoja 1 «1 de 2, …-PL-106, 3 detalles» y hoja 2 «2 de 2, …-PL-107, solo el
+rótulo», con sus avisos.
+
+**Pruebas**: **1555 pasan** y 1 se salta (antes 1541). ruff: los mismos 173 hallazgos.
+`test_hojas_proyecto` (índice, números, automáticos, versión 7, componer dos hojas),
+`test_planos_editor` (nombres seguros, no pisar, índice) y `test_editor_hojas_js` (hoja nueva,
+nombres, versión 7 en el editor y en Python). Ajustadas: las versiones soportadas (1 a 7).
 
 ### Pendiente en la Fase 4 (al 2026-11-11)
 

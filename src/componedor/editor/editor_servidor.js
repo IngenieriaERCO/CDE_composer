@@ -107,6 +107,12 @@
         archivoPlano ? { archivo_plano: archivoPlano } : {}),
       quitarLocalizacion: () => pedir("POST", "/api/localizacion/quitar"),
       imagenLocalizacion: () => pedir("GET", "/api/localizacion/imagen", null, true),
+      // Varias hojas (versión 7): planos de la carpeta del editor e índice <proyecto>.hojas.json.
+      planos: () => pedir("GET", "/api/planos"),
+      leerPlano: (archivo) => pedir("POST", "/api/planos/leer", { archivo }),
+      guardarPlano: (archivo, texto, nuevo) => pedir("POST", "/api/planos/guardar", { archivo, texto, nuevo: !!nuevo }),
+      hojas: (cuerpo) => pedir("POST", "/api/hojas", cuerpo),
+      guardarIndice: (indice, hojas) => pedir("POST", "/api/hojas/indice", { indice, hojas }),
     };
   }
 

@@ -86,13 +86,13 @@
         }
       },
       "hoja": {"tipo": "texto", "rect_mm": [812.9, 38.3, 827.4, 43.6],
-               "alinear": "centro", "altura_mm": 2.0},
+               "alinear": "centro", "altura_mm": 2.0, "automatico": "hoja_actual"},
       "de": {"tipo": "texto", "rect_mm": [812.9, 32.3, 827.4, 37.6],
-             "alinear": "centro", "altura_mm": 2.0},
+             "alinear": "centro", "altura_mm": 2.0, "automatico": "total_hojas"},
       "escala": {"tipo": "texto", "rect_mm": [803.4, 21.4, 827.4, 25.6],
                  "alinear": "centro", "altura_mm": 2.0, "calculado": "escala_comun"},
       "no_plano": {"tipo": "texto", "rect_mm": [690.9, 13.5, 807.0, 20.1],
-                   "alinear": "izq", "altura_mm": 2.5},
+                   "alinear": "izq", "altura_mm": 2.5, "automatico": "numero_siguiente"},
       "rev": {"tipo": "texto", "rect_mm": [818.2, 13.5, 827.4, 20.1],
               "alinear": "centro", "altura_mm": 2.5, "calculado": "ultima_revision"}
     }

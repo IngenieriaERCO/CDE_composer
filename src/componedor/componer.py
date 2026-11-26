@@ -89,6 +89,7 @@ from componedor.formato import (
     cargar_formato,
 )
 from componedor.fuente import Fuente, FuenteInvalida, cargar_fuente
+from componedor.hojas_proyecto import valores_automaticos
 from componedor.importador import PaqueteAceptado, PaqueteRechazado, importar_paquete
 from componedor.localizacion import ImagenLocalizacion, LocalizacionInvalida
 from componedor.localizacion import insertar as insertar_localizacion
@@ -268,7 +269,8 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
     documentos: dict[Path, pymupdf.Document] = {}
     try:
         colocados = _posiciones(plano, formato, aceptados, documentos, margen_mm)
-        advertencias = _traslapes(colocados) + _sobre_elementos(colocados, elementos)
+        advertencias = (avisos_de_hoja(plano) + _traslapes(colocados)
+                        + _sobre_elementos(colocados, elementos))
         textos, valores, avisos = _textos(plano, formato, colocados, elementos)
         advertencias += avisos
         localizacion = _localizacion(plano, formato)
@@ -549,7 +551,8 @@ def _textos(plano: Plano, formato: Formato, colocados: list[tuple],
         raise PlanoNoComponible(f"No se compone el plano: {e}") from e
     escalas = [c.escala for *_, c in colocados]
     try:
-        rotulo = preparar_rotulo(formato.rotulo, plano.rotulo, escalas, fuente, plano.carpeta)
+        rotulo = preparar_rotulo(formato.rotulo, _rotulo_con_automaticos(plano, formato), escalas,
+                                 fuente, plano.carpeta)
     except RotuloInvalido as e:
         raise PlanoNoComponible(f"No se compone el plano. {e}") from e
     etiquetas, avisos = colocar_etiquetas(
@@ -559,6 +562,29 @@ def _textos(plano: Plano, formato: Formato, colocados: list[tuple],
     return (_Textos(fuente, rotulo.textos, etiquetas, rotulo.notas, rotulo.simbolos,
                     rotulo.biblioteca, rotulo.firmas, rotulo.muestras), rotulo.valores,
             rotulo.advertencias + avisos)
+
+
+def _rotulo_con_automaticos(plano: Plano, formato: Formato) -> dict | None:
+    """El rótulo del plano con los campos automáticos que no escribe (hoja, de, número de plano)
+    llenos desde el índice de hojas del proyecto (hojas_proyecto.py). Sin índice: tal cual."""
+    campos = {n: c.automatico for n, c in formato.rotulo.campos.items()
+              if getattr(c, "automatico", None)}
+    actual = plano.rotulo if isinstance(plano.rotulo, dict) else {}
+    automaticos = valores_automaticos(plano.ruta, campos, actual)
+    if not automaticos:
+        return plano.rotulo
+    return {**actual, **automaticos}
+
+
+def avisos_de_hoja(plano: Plano) -> list[str]:
+    """Versión 7: hoja sin detalles, y campos del rótulo copiados de otra hoja sin revisar."""
+    avisos = []
+    if not plano.detalles:
+        avisos.append("La hoja no tiene detalles: sale solo el rótulo.")
+    for campo in plano.revisar:
+        avisos.append(f"rotulo.{campo}: copiado de la hoja «{plano.copiado_de}» sin revisar: "
+                      f"revíselo (el editor deja de avisar cuando se cambia).")
+    return avisos
 
 
 # --- 6 y 7. componer, guardar en temporal, verificar y renombrar -------------------------

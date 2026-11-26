@@ -49,6 +49,12 @@
     // Ortofoto del plano (versión 4): {archivo, bytes, crs, crs_dibujo, opacidad} o null. Se
     // conserva aunque el editor esté sin servidor (se guarda igual).
     ortofoto: null,
+    // Varias hojas (versión 7): el nombre del plano.json abierto o guardado (en la carpeta del
+    // editor), los campos copiados de otra hoja que faltan revisar ({hoja, revisar, valores al
+    // abrir}) y los valores automáticos del rótulo (hoja, de, número de plano) del índice.
+    archivo: null,
+    copiado: null,
+    automaticos: {},
     paso: 1,
     cambios: false,
     vista: { x: 0, y: 0, ancho: ANCHO_PX, alto: ALTO_PX },
@@ -138,6 +144,10 @@
 
   function marcarCambios() {
     estado.cambios = true;
+    if (estado.copiado) { // un campo copiado de otra hoja que se cambió ya está revisado
+      estado.copiado.revisar = window.EditorHojas.porRevisar(estado.copiado.revisar, estado.copiado.valores,
+        (campo) => R.valor(estado.rotulo, campo));
+    }
     programarVistaPrevia(); // el rótulo pudo cambiar (los paneles llaman aquí)
     // El aviso de «ESC: DEFINIR» de la imagen de localización depende de la escala escrita.
     const pl = window.EditorPanelLocalizacion;
@@ -574,7 +584,7 @@
     // Mismos elementos que usa componer: la rosa en su posición actual (oculta: no cuenta).
     const elementos = L.elementosVisibles(DATOS.elementos_plantilla, rosaParaLogica());
     const lista = L.advertencias(colocadosParaAdvertencias(), elementos, DATOS.advertencias)
-      .concat(advertenciasBloques(), advertenciasEstilo(), advertenciasOrtofoto());
+      .concat(advertenciasBloques(), advertenciasEstilo(), advertenciasOrtofoto(), advertenciasHoja());
     // Etiquetas «ESC: 1:N» (4.3f): las mismas que pondría componer, con sus avisos al final.
     etiquetasActuales = calcularEtiquetas(elementos);
     for (const aviso of etiquetasActuales.avisos) lista.push({ nivel: "aviso", texto: aviso, ids: [] });
@@ -647,11 +657,11 @@
     }
     const rotulo = R.serializar(estado.rotulo);
     const escalas = estado.colocaciones.map(escalaDe);
-    const clave = JSON.stringify([rotulo === undefined ? null : rotulo, escalas]);
+    const clave = JSON.stringify([rotulo === undefined ? null : rotulo, escalas, estado.automaticos]);
     if (clave !== claveRotulo) {
       claveRotulo = clave;
       lienzoRotulo.dibujarRotulo(V.piezasRotulo({ rotulo, definicion: DEFINICION_ROTULO, fuente: FUENTE_ROTULO,
-        simbolos: DATOS_ROTULO.simbolos, catalogo: DATOS_ROTULO.notas, escalas }));
+        simbolos: DATOS_ROTULO.simbolos, catalogo: DATOS_ROTULO.notas, escalas, automaticos: estado.automaticos }));
     }
     lienzoRotulo.dibujarEtiquetas(etiquetasActuales.textos);
   }
@@ -786,6 +796,19 @@
         "exportar (" + DX().textoEstilo(elegido) + "): se queda así."));
     }
     return filas;
+  }
+
+  /** Versión 7: hoja vacía y campos del rótulo copiados de otra hoja todavía sin revisar. */
+  function advertenciasHoja() {
+    const lista = [];
+    if (!estado.colocaciones.length) {
+      lista.push({ nivel: "aviso", ids: [], texto: "La hoja no tiene detalles: al componer sale solo el rótulo." });
+    }
+    for (const campo of (estado.copiado && estado.copiado.revisar) || []) {
+      lista.push({ nivel: "aviso", ids: [], texto: "Rótulo · " + campo + ": copiado de la hoja «" +
+        estado.copiado.hoja + "», revíselo (el aviso se quita al cambiarlo)." });
+    }
+    return lista;
   }
 
   function advertenciasEstilo() {
@@ -1133,6 +1156,7 @@
     datos: DATOS_ROTULO,
     modelo: () => estado.rotulo,
     escalas: () => estado.colocaciones.map(escalaDe),
+    automatico: (campo) => estado.automaticos[campo],
     alCambiar: marcarCambios,
   });
 
@@ -1608,10 +1632,7 @@
   }
 
   async function guardar() {
-    if (!estado.colocaciones.length) {
-      mensaje("El plano está vacío: agregue al menos un detalle antes de guardar.", "error");
-      return;
-    }
+    // Una hoja vacía (solo el rótulo) se guarda en la versión 7; componer avisa.
     const texto = textoPlano();
     if (window.showSaveFilePicker) {
       try {
@@ -1622,7 +1643,9 @@
         const escritor = await archivo.createWritable();
         await escritor.write(new Blob([texto], { type: "application/json" }));
         await escritor.close();
+        estado.archivo = archivo.name;
         guardado(archivo.name, false);
+        if (window.EditorPanelHojas) window.EditorPanelHojas.refrescar();
         return;
       } catch (error) {
         if (error && error.name === "AbortError") return; // el usuario canceló: nada que hacer
@@ -1639,7 +1662,7 @@
     // Versión 6: las zonas (borradores y exportadas) van en la lista "dxf" del plano.
     return L.serializarPlano(estado.colocaciones, DATOS, {
       rosa: estado.rosa, rotulo: R.paraGuardar(estado.rotulo), original: estado.original,
-      ortofoto: estado.ortofoto });
+      ortofoto: estado.ortofoto, copiado: estado.copiado });
   }
 
   function guardado(nombre, descargado) {
@@ -1657,11 +1680,11 @@
     }
   }
 
-  function abrir(texto) {
+  function abrir(texto, archivo) {
     const resultado = L.leerPlano(texto, DATOS);
     if (resultado.errores.length) {
       mensaje("No se pudo abrir el plano:\n- " + resultado.errores.join("\n- "), "error");
-      return;
+      return false; // el plano de antes sigue abierto, con su nombre
     }
     estado.colocaciones = resultado.colocaciones;
     for (const c of estado.colocaciones) { // un DXF = una entrada (por sha256), como al agregar
@@ -1678,6 +1701,10 @@
     estado.rotulo = R.crearModelo(resultado.rotulo, DEFINICION_ROTULO); // se conserva al guardar
     estado.original = resultado.original;
     estado.ortofoto = resultado.ortofoto || null;
+    estado.archivo = archivo || null;
+    estado.copiado = resultado.copiado ? Object.assign({}, resultado.copiado, { valores: Object.fromEntries(
+      resultado.copiado.revisar.map((c) => [c, R.valor(estado.rotulo, c)])) }) : null;
+    estado.automaticos = {};
     if (PO() && PO().repintar) PO().repintar();
     if (window.EditorPanelLocalizacion) window.EditorPanelLocalizacion.repintar();
     pintarRotulo();
@@ -1686,6 +1713,7 @@
     const resumen = "Plano abierto: " + resultado.colocaciones.length + " detalle(s).";
     if (resultado.avisos.length) mensaje(resumen + "\n- " + resultado.avisos.join("\n- "), "");
     else mensaje(resumen, "ok");
+    return true;
   }
 
   document.getElementById("btn-guardar").addEventListener("click", guardar);
@@ -1697,7 +1725,10 @@
     const archivo = ev.target.files[0];
     ev.target.value = "";
     if (!archivo) return;
-    archivo.text().then(abrir, (e) => mensaje("No se pudo leer el archivo: " + e.message, "error"));
+    archivo.text().then((texto) => {
+      abrir(texto, archivo.name);
+      if (window.EditorPanelHojas) window.EditorPanelHojas.refrescar();
+    }, (e) => mensaje("No se pudo leer el archivo: " + e.message, "error"));
   });
   document.getElementById("btn-copiar").addEventListener("click", () => {
     const texto = document.getElementById("texto-comando").textContent;
@@ -1834,6 +1865,22 @@
   }
 
   window.EditorUI = { agregarBloque, catalogoCambiado, refrescar: () => actualizar(),
+    // Varias hojas (editor_panel_hojas.js): el plano como texto y objeto, abrir otro con su
+    // nombre, si hay cambios, el rótulo y los valores automáticos (hoja, de, número de plano).
+    textoPlano, abrirTexto: abrir, archivo: () => estado.archivo, hayCambios: () => !!estado.cambios,
+    guardadoEn: (nombre) => { estado.archivo = nombre; estado.cambios = false; mostrarComando(nombre); },
+    mensaje, definicionRotulo: () => DEFINICION_ROTULO, rotulo: () => R.serializar(estado.rotulo),
+    quitarHojaYDe: () => {
+      const H = window.EditorHojas;
+      for (const [campo, tipo] of Object.entries(H.camposAutomaticos(DEFINICION_ROTULO))) {
+        if (tipo !== "numero_siguiente") R.cambiar(estado.rotulo, campo, undefined);
+      }
+    },
+    fijarAutomaticos: (valores) => {
+      estado.automaticos = valores || {};
+      panelRotulo.pintar();
+      programarVistaPrevia();
+    },
     colocaciones: () => estado.colocaciones, zona: () => ZONA, aplicarExportado, registrarDetalles,
     // Zonas borrador (Fase 10e): agregar desde el cuadro «Zonas del modelo», cambiarla al editarla,
     // y los nombres que ya usa el plano (para pedir el siguiente Zona_NN).
