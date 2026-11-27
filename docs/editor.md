@@ -794,8 +794,17 @@ arriba, una **pestaña por hoja** (con cuántas advertencias tiene) y «+»:
 - Al abrir una hoja de un proyecto con índice (`.hojas.json`, con el servidor), el editor ofrece
   abrir el proyecto completo, una pestaña por hoja; los archivos viejos no se tocan y al guardar
   se propone `<proyecto>_proyecto.json`.
-- «Exportar bloques y zonas» exporta los de la **hoja activa** (exportar todas las hojas de una
-  vez llega en la subfase 8c).
+- **Exportar**: «Exportar bloques y zonas» exporta los de la **hoja activa**; con dos o más hojas,
+  **«Exportar todas las hojas (N)»** exporta los borradores de TODAS, uno a la vez, hoja por hoja
+  (bloques y luego zonas). Una sola barra («Hoja 2 de 3 («Perfil») · Zona_03 · 5 de 9 · lleva
+  12 s») con **Cancelar** (termina lo que está exportando y no empieza lo siguiente; lo ya
+  exportado queda). Cada detalle queda donde estaba su borrador, en su hoja, aunque no sea la que
+  se ve (se puede cambiar de pestaña mientras tanto). Si uno falla, sigue con el resto; al final,
+  el resumen («6 exportado(s), 2 con problemas») y la lista con la hoja y el motivo de cada uno
+  (también lo que no se pudo pedir: otro DXF sin cargar, no cabe, se sale del área). Lo que falló
+  queda como borrador. No guarda solo: avisa que hay cambios.
+- **«Volver a exportar zonas de todas las hojas (N)»**: lo mismo que «Volver a exportar zonas»,
+  para las zonas de todas las hojas (cuando cambió el DXF).
 
 ## 7. Limitaciones
 

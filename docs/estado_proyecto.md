@@ -3461,6 +3461,37 @@ guardar sin tocar da el mismo archivo; exportar cada hoja y componer: PDF de 4 p
 **Pruebas**: **1575 pasan** y 1 se salta (antes 1572). `test_editor_proyecto_js` (3). ruff: los
 mismos 173 hallazgos.
 
+### Proyecto en un solo archivo — subfase 8c: «Exportar todas las hojas» (2026-11-27)
+
+Decisiones: A) se queda también el botón de la hoja activa; B) los borradores de un DXF que no
+está cargado se saltan con aviso y salen en la lista final; C) «Volver a exportar zonas» también
+para todas las hojas.
+
+**Qué se hizo**
+- `editor_zonas.colaDeHojas` (Node): la cola hoja por hoja (bloques y luego zonas) y lo que no se
+  pide, cada uno con su hoja.
+- `editor_panel_dxf.js`: «Exportar todas las hojas (N)» y «Volver a exportar zonas de todas las
+  hojas (N)» (con dos o más hojas); uno a la vez, una sola barra («Hoja 2 de 3 («Perfil») ·
+  Zona_03 · 5 de 9 · lleva 12 s») con Cancelar (termina el actual y no empieza lo siguiente); si
+  uno falla sigue; al final, el resumen y la lista (hoja y motivo). No guarda: avisa.
+- `editor_ui.aplicarExportado(id, resultado, hoja)`: el detalle queda en SU hoja aunque no sea la
+  activa; `hojasParaExportar()`.
+
+**Cómo probarlo**: ver docs/editor.md («Varias hojas en un proyecto: pestañas», Exportar).
+
+**Verificación en Edge** (`data/verificacion/verificar_exportar_todas.mjs`). **Todo OK**, sin
+errores de JavaScript.
+- Trabajador falso, copia de Pruebadecambio en 3 hojas con 8 borradores (uno roto, una zona que
+  no cabe): Cancelar a la mitad (2 exportados, 5 sin empezar); exportar todas (4 exportados, 2
+  con problemas: el bloque roto con su motivo y la zona que no cabe, cada uno con su hoja; quedan
+  como borradores); cambiar de pestaña mientras exporta; «Volver a exportar zonas de todas las
+  hojas» (3 de la caché, la que no cabe en la lista); guardar y componer: PDF de 3 páginas.
+- PRGD con el exportador real: 2 hojas con una zona cada una (1:10 y 1:20), exportadas y
+  compuestas en un PDF de 2 páginas.
+
+**Pruebas**: **1576 pasan** y 1 se salta (antes 1575): `test_editor_proyecto_js` (la cola de todas
+las hojas). ruff: los mismos 173 hallazgos.
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

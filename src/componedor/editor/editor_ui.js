@@ -2057,12 +2057,14 @@
    * centro CAD (centro − desde_centro_mm). Si por redondeo se saliera del área, se acomoda.
    * Devuelve true si cambió algo.
    */
-  function aplicarExportado(idPlano, resultado) {
-    const i = estado.colocaciones.findIndex((c) => c.id === idPlano && (esBloque(c)
+  /** `hoja`: el índice de la hoja del borrador («Exportar todas las hojas», 8c); sin él, la activa. */
+  function aplicarExportado(idPlano, resultado, hoja) {
+    const lista = hoja === undefined || hoja === estado.activa ? estado.colocaciones : estado.hojas[hoja].colocaciones;
+    const i = lista.findIndex((c) => c.id === idPlano && (esBloque(c)
       ? (esZona(c) ? resultado.tipo === "zona" : c.bloque.handle === resultado.handle) && c.escala === resultado.escala
       : !!c.zona && resultado.tipo === "zona" && c.detalle.escala === resultado.escala)); // volver a exportar
     if (i < 0) return false; // se quitó o se cambió mientras se exportaba
-    const c = estado.colocaciones[i];
+    const c = lista[i];
     const [detalle] = registrarDetalles([resultado.detalle]);
     // El centro: el del borrador, o (volver a exportar) el de la página del detalle de hoy.
     const centroDe = esBloque(c) ? c.centro
@@ -2080,10 +2082,16 @@
     } else if (c.zona) {
       nueva.zona = c.zona;
     }
-    estado.colocaciones[i] = nueva;
+    lista[i] = nueva;
     marcarCambios();
     actualizar();
     return true;
+  }
+
+  /** Las hojas del proyecto para «Exportar todas las hojas» (8c): [{indice, nombre, colocaciones}]. */
+  function hojasParaExportar() {
+    guardarActiva();
+    return estado.hojas.map((h, i) => ({ indice: i, nombre: h.nombre, colocaciones: h.colocaciones }));
   }
 
   /** La ortofoto del plano cambió (panel de la ortofoto): {archivo, …} o null para quitarla. */
@@ -2097,6 +2105,7 @@
     // Varias hojas (editor_panel_hojas.js): el plano como texto y objeto, abrir otro con su
     // nombre, si hay cambios, el rótulo y los valores automáticos (hoja, de, número de plano).
     textoPlano, abrirTexto: abrir, archivo: () => estado.archivo, hayCambios: () => !!estado.cambios,
+    hojasParaExportar,
     mensaje, viejo: () => estado.viejo,
     // Un proyecto con índice (.hojas.json) en pestañas: [{nombre, texto}] de sus hojas.
     abrirIndice: (hojas, indice) => {

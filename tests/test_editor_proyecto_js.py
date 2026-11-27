@@ -89,3 +89,29 @@ def test_automaticos_y_nombres():
     assert r["nombres"] == ["Hoja 2", "Hoja 4"]
     assert r["guardar"] == ["Pruebadecambio_proyecto.json", "Obra_proyecto.json", "Obra.json", "proyecto.json"]
     assert r["numero"] == ["A-010", None] and r["zona"] == "Zona_01_3"
+
+
+def test_cola_de_todas_las_hojas():
+    """«Exportar todas las hojas» (8c): hoja por hoja, bloques y luego zonas; lo que no se pide
+    (otro DXF, no cabe) va a la lista con su hoja; «volver a exportar» solo las zonas."""
+    zonas_js = str(__import__("pathlib").Path(componedor.__path__[0]) / "editor" / "editor_zonas.js")
+    r = js("""
+      const E = require(entrada.zonas);
+      const dxf = {sha256: entrada.sha, nombre: "GUAMO_prueba.dxf", margen_mm: 5};
+      const otro = {sha256: "f".repeat(64), nombre: "otro.dxf", margen_mm: 5};
+      const bloque = (id, d) => ({id, escala: 50, centro: [342.55, 297], bloque: {handle: "1A1", tamano_m: [10, 4], dxf: d}});
+      const zona = (id, escala) => ({id, escala, centro: [342.55, 297], bloque: {nombre: id, dxf, tamano_m: [0.67, 0.65],
+        zona: {rect: entrada.rect, capas: null, excluir: null}}});
+      const cat = {dxf: {sha256: entrada.sha, nombre: "GUAMO_prueba.dxf"}, sesion_activa: true, bloques: [{handle: "1A1"}]};
+      const hojas = [{indice: 0, nombre: "Planta", colocaciones: [zona("Zona_01", 20), bloque("Viga", dxf)]},
+                     {indice: 1, nombre: "Perfil", colocaciones: [bloque("Ajeno", otro), zona("Zona_02", 1)]}];
+      const area = [22.7, 22.7, 662.4, 571.3];
+      const todas = E.colaDeHojas(hojas, cat, area, null, false);
+      const zonas = E.colaDeHojas(hojas, cat, area, null, true);
+      const corto = (l) => l.map((x) => [x.hoja, x.nombreHoja, x.id, x.bloque ? "bloque" : x.zona ? "zona" : x.motivo]);
+      return {cola: corto(todas.cola), omitidos: corto(todas.omitidos), zonas: corto(zonas.cola)};""",
+           {"zonas": zonas_js, "sha": SHA, "rect": RECT})
+    assert r["cola"] == [[0, "Planta", "Viga", "bloque"], [0, "Planta", "Zona_01", "zona"]]
+    assert [o[:3] for o in r["omitidos"]] == [[1, "Perfil", "Ajeno"], [1, "Perfil", "Zona_02"]]
+    assert "otro.dxf" in r["omitidos"][0][3] and "no cabe" in r["omitidos"][1][3]
+    assert r["zonas"] == [[0, "Planta", "Zona_01", "zona"]]

@@ -431,7 +431,28 @@
       " (" + n(zona[2] - zona[0]) + " × " + n(zona[3] - zona[1]) + u + ")";
   }
 
-  return { MIN_PX, RESOLUCION_MIN, MODOS, pxACad, cadAPx, cajaAPx, zonaDesdeArrastre, redondear,
+  /**
+   * «Exportar todas las hojas» (8c): la cola, hoja por hoja (bloques y luego zonas), y lo que no se
+   * pide, cada uno con su hoja. hojas: [{indice, nombre, colocaciones}]. {cola: [{hoja, nombreHoja,
+   * id, bloque | zona}], omitidos: [{hoja, nombreHoja, id, motivo}]}. soloZonas: «Volver a exportar
+   * zonas de todas las hojas» (todas las zonas, borradores y exportadas).
+   */
+  function colaDeHojas(hojas, catalogo, area, estilo, soloZonas) {
+    const cola = [];
+    const omitidos = [];
+    for (const h of hojas) {
+      const bloques = soloZonas ? { pedidos: [], omitidos: [] } : B.pedidosExportar(h.colocaciones, catalogo, area);
+      const zonas = pedidosZonas(h.colocaciones, catalogo, area, estilo, !!soloZonas);
+      const de = { hoja: h.indice, nombreHoja: h.nombre };
+      for (const o of bloques.omitidos.concat(zonas.omitidos)) omitidos.push(Object.assign({}, de, { id: o.id, motivo: o.motivo }));
+      for (const p of bloques.pedidos) cola.push(Object.assign({}, de, { id: p.id, bloque: p }));
+      for (const p of zonas.pedidos) cola.push(Object.assign({}, de, { id: p.id, zona: p.cuerpo }));
+    }
+    return { cola, omitidos };
+  }
+
+  return {
+    colaDeHojas, MIN_PX, RESOLUCION_MIN, MODOS, pxACad, cadAPx, cajaAPx, zonaDesdeArrastre, redondear,
     encuadrar, zoomEnPunto, desplazar, factorRueda, cajaDeImagen, necesitaVistaNitida, interseccion,
     grupoEnPunto, paginaZona, tamanoM, escalaSugerida, tamanoEnHoja, ordenarCapas, textoEstadoCad,
     filtroCapas, textoFiltro, cuerpoPrevia, clavePrevia, limpiarNombre, esZona, esZonaExportada,

@@ -390,7 +390,9 @@ hoja siguiente con el mismo rótulo (sin título); doble clic renombra; ◀ ▶ 
 Borrar. Hoja, De y No. PLANO salen solos de la posición (…-PL-106 → …-PL-107). **Guardar plano**
 escribe un solo archivo con todas las hojas, y arrastrarlo a `Componer.bat` da
 `resultados/<archivo>.pdf` con todas las planchas. Un plano viejo se abre como una hoja y al
-guardar se propone `<nombre>_proyecto.json`. Ver [docs/editor.md](docs/editor.md).
+guardar se propone `<nombre>_proyecto.json`. **«Exportar todas las hojas»** exporta los
+borradores de todas las hojas de una vez (una barra con Cancelar; si uno falla, sigue y da la lista
+al final). Ver [docs/editor.md](docs/editor.md).
 **Componer el proyecto**: arrastre el índice `<proyecto>.hojas.json` a `Componer.bat` y sale UN PDF
 con todas las hojas, una por página, en orden: `resultados/<proyecto>_proyecto.pdf`. Si una hoja
 falla no sale nada, y el mensaje dice todas las que fallaron. Ver

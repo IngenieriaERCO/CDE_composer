@@ -572,17 +572,43 @@
     return D.textoError(f);
   }
 
+  const esZonaDelPlano = (c) => (c.bloque && c.bloque.zona) || (!c.bloque && c.zona);
+
   function seccionExportar() {
     const ui = UI();
     const pendientes = ui ? ui.colocaciones().filter((c) => c.bloque) : [];
     const bloques = pendientes.length;
     const zonas = pendientes.filter((c) => c.bloque.zona).length;
     // «Volver a exportar zonas» (Fase 10e4): todas las zonas del plano, borradores y exportadas.
-    const todasLasZonas = ui ? ui.colocaciones().filter((c) => (c.bloque && c.bloque.zona) || (!c.bloque && c.zona)).length : 0;
-    if (!bloques && !todasLasZonas && !x.trabajos.length) return null;
+    const todasLasZonas = ui ? ui.colocaciones().filter(esZonaDelPlano).length : 0;
+    // Todas las hojas del proyecto (8c).
+    const hojas = ui && ui.hojasParaExportar ? ui.hojasParaExportar() : [];
+    const variasHojas = hojas.length > 1;
+    const borradoresProyecto = hojas.reduce((s, h) => s + h.colocaciones.filter((c) => c.bloque).length, 0);
+    const zonasProyecto = hojas.reduce((s, h) => s + h.colocaciones.filter(esZonaDelPlano).length, 0);
+    if (!bloques && !todasLasZonas && !x.trabajos.length && !x.todas && !(variasHojas && (borradoresProyecto || zonasProyecto))) return null;
     const caja = nodo("div", { class: "exportar-dxf" });
     caja.appendChild(nodo("div", { class: "nombre" }, "Exportar"));
-    const enCurso = x.trabajos.some(enMarcha);
+    const enCurso = x.trabajos.some(enMarcha) || !!(x.todas && x.todas.enMarcha);
+    if (variasHojas) {
+      const todas = nodo("button", { type: "button", id: "btn-exportar-todas" },
+        "Exportar todas las hojas (" + borradoresProyecto + ")");
+      todas.disabled = !borradoresProyecto || enCurso || x.pidiendo;
+      todas.title = "Los bloques y zonas sin exportar de TODAS las hojas, uno a la vez, hoja por hoja; cada uno " +
+        "queda como detalle en el lugar de su borrador, en su hoja. Si uno falla, sigue con el resto.";
+      todas.addEventListener("click", () => exportarTodas(false));
+      caja.appendChild(todas);
+      if (zonasProyecto) {
+        const re = nodo("button", { type: "button", id: "btn-reexportar-todas" },
+          "Volver a exportar zonas de todas las hojas (" + zonasProyecto + ")");
+        re.disabled = enCurso || x.pidiendo;
+        re.title = "Exporta otra vez TODAS las zonas de TODAS las hojas (para cuando cambió el DXF), cada una en su " +
+          "lugar de hoy. Primero «Volver a cargar» el DXF.";
+        re.addEventListener("click", () => exportarTodas(true));
+        caja.appendChild(re);
+      }
+    }
+    if (x.todas) caja.appendChild(cajaTodas());
     const boton = nodo("button", { type: "button", id: "btn-exportar" },
       (zonas ? "Exportar bloques y zonas del plano (" : "Exportar bloques del plano (") + bloques + ")");
     boton.disabled = !bloques || enCurso || x.pidiendo;
@@ -640,6 +666,108 @@
       caja.appendChild(botones);
     }
     return caja;
+  }
+
+  // ---------------------------------------------------------------------------------------
+  // «Exportar todas las hojas» (8c): una cola, uno a la vez, hoja por hoja (bloques y luego
+  // zonas), con una sola barra y Cancelar. Si uno falla, sigue con el resto; al final, la lista
+  // de lo que falló o no se pudo pedir, cada uno con su hoja. No guarda: avisa que hay cambios.
+  // ---------------------------------------------------------------------------------------
+
+  function cajaTodas() {
+    const t = x.todas;
+    const caja = nodo("div", { class: "exportar-todas", id: "exportar-todas" });
+    const lleva = D.duracion ? D.duracion((Date.now() - t.inicio) / 1000) : Math.round((Date.now() - t.inicio) / 1000) + " s";
+    if (t.enMarcha) {
+      const a = t.actual;
+      caja.appendChild(nodo("div", { class: "dato" }, (t.soloZonas ? "Volviendo a exportar zonas · " : "") +
+        (a ? "Hoja " + (a.hoja + 1) + " de " + t.hojas + " («" + a.nombreHoja + "») · " + a.id + " · " : "") +
+        (t.hecho + 1) + " de " + t.total + " · lleva " + lleva));
+      const barra = nodo("progress", { max: String(t.total) });
+      barra.value = t.hecho;
+      caja.appendChild(barra);
+      const cancelar = nodo("button", { type: "button", id: "btn-cancelar-todas" }, t.cancelando ? "Cancelando…" : "Cancelar");
+      cancelar.disabled = !!t.cancelando;
+      cancelar.title = "Termina lo que se está exportando y no empieza lo siguiente (lo ya exportado queda).";
+      cancelar.addEventListener("click", () => {
+        t.cancelando = true;
+        if (t.tarea) cliente.cancelar(t.tarea).catch(() => {});
+        pintar();
+      });
+      caja.appendChild(cancelar);
+    } else {
+      const problemas = t.fallas.length + t.omitidos.length;
+      caja.appendChild(nodo("div", { class: problemas ? "dato aviso" : "dato ok", id: "resumen-todas" },
+        (t.soloZonas ? "Volver a exportar zonas de todas las hojas: " : "Exportar todas las hojas: ") +
+        t.exportados + " exportado(s)" + (problemas ? ", " + problemas + " con problemas" : "") +
+        (t.cancelado ? " (cancelado: " + t.pendientes + " sin empezar)" : "") + ". Guarde el plano para no perderlo."));
+      if (problemas) {
+        caja.appendChild(lista(t.fallas.concat(t.omitidos).map((f) => "Hoja " + (f.hoja + 1) + " («" + f.nombreHoja + "») · " +
+          f.id + ": " + f.motivo), "avisos-dxf"));
+      }
+    }
+    return caja;
+  }
+
+  async function exportarTodas(soloZonas) {
+    const ui = UI();
+    if (!ui || (x.todas && x.todas.enMarcha)) return;
+    const catalogo = vista.estado && vista.estado.dxf;
+    const hojas = ui.hojasParaExportar();
+    const { cola, omitidos } = window.EditorZonas.colaDeHojas(hojas, catalogo, ui.zona(), vista.estilo || null, soloZonas);
+    const t = x.todas = { enMarcha: true, soloZonas: !!soloZonas, total: cola.length, hecho: 0, hojas: hojas.length,
+      inicio: Date.now(), exportados: 0, fallas: [], omitidos, actual: null, tarea: null, cancelando: false,
+      cancelado: false, pendientes: 0 };
+    x.trabajos = x.trabajos.filter(enMarcha);
+    pintar();
+    const reloj = setInterval(pintar, 1000);
+    try {
+      for (let k = 0; k < cola.length; k++) {
+        if (t.cancelando) {
+          t.cancelado = true;
+          t.pendientes = cola.length - k;
+          break;
+        }
+        const item = cola[k];
+        t.actual = item;
+        t.tarea = null;
+        pintar();
+        let foto;
+        try {
+          if (item.bloque) {
+            const r = await cliente.exportar([item.bloque], vista.estilo || undefined);
+            t.tarea = r.tareas[0].id;
+          } else {
+            t.tarea = (await cliente.exportarZona(item.zona)).tarea.id;
+          }
+          if (t.cancelando) cliente.cancelar(t.tarea).catch(() => {});
+          foto = await S.seguirTarea(cliente, t.tarea, () => {});
+        } catch (err) {
+          foto = { estado: "fallida", error: { mensaje: err.message } };
+        }
+        t.hecho = k + 1;
+        if (foto.estado === "terminada") {
+          if (ui.aplicarExportado(item.id, foto.resultado, item.hoja)) t.exportados++;
+          else t.fallas.push(Object.assign({}, item, { motivo: "se quitó o se cambió mientras se exportaba" }));
+        } else if (foto.estado === "cancelada") { // no es una falla: queda sin empezar, como borrador
+          t.cancelado = true;
+          t.pendientes = cola.length - k;
+          break;
+        } else {
+          t.fallas.push(Object.assign({}, item, { motivo: D.textoError(foto) }));
+        }
+      }
+    } finally {
+      clearInterval(reloj);
+      t.enMarcha = false;
+      t.actual = null;
+      ui.refrescar();
+      ui.mensaje((soloZonas ? "Volver a exportar zonas de todas las hojas: " : "Exportar todas las hojas: ") +
+        t.exportados + " exportado(s)" + (t.fallas.length + t.omitidos.length ? ", " + (t.fallas.length + t.omitidos.length) +
+        " con problemas (la lista está en el panel del DXF)" : "") + ". Hay cambios: guarde el plano.",
+      t.fallas.length + t.omitidos.length ? "aviso" : "ok");
+      await refrescar();
+    }
   }
 
   /** «Exportar bloques y zonas» o (soloZonas) «Volver a exportar zonas»: todas las zonas del plano. */
