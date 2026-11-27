@@ -3516,6 +3516,27 @@ proyecto.json» y la copia se borró → recargar: no ofrece nada.
 
 **Pruebas**: **1577 pasan** y 1 se salta (antes 1576); `test_planos_editor` (la copia automática). ruff: los mismos 173 hallazgos.
 
+### Verificación final: trazos contados por peso (2026-11-27)
+
+Problema: PLANO-PILOTO-FINAL (10 hojas) no componía la hoja 2: «la hoja tiene 118862 trazos y se
+esperaban 118863». Causa: en la zona VISTA_FRONTAL_CIMENTACION (PRGD-25, 1:35) hay un relleno y un
+borde de la misma figura cuyos caminos difieren en 0,00002 pt; en la página suelta `get_drawings()`
+los da separados («f» y «s») y, insertada en la hoja (otra precisión), los junta en un «fs». El
+dibujo no cambiaba; solo el conteo. No era el recorte ni la máscara (pasaba con cualquier margen).
+
+**Qué se hizo**: `comprobacion_dibujo.peso_trazo` / `peso_trazos` / `cortar_por_peso`: cada trazo
+pesa 1 por el relleno y 1 por el borde («fs» = 2), en la hoja base, en el PDF de cada detalle y en
+la hoja final; los trazos de cada detalle se separan sumando ese peso. La tolerancia (±0,1 mm) no
+cambia.
+
+**Pruebas**: **1580 pasan** y 1 se salta (antes 1577); ruff: los mismos 173. `test_peso_trazos` (3): el peso y el corte; una página con «relleno y luego borde»
+que se junta al insertarla compone (con el código de antes fallaba con «4 trazos y se esperaban
+5»); un trazo realmente perdido sigue fallando. Se mantienen las de un detalle movido 0,5 mm.
+
+**Verificación**: `data/verificacion/verificar_piloto.py` compone una COPIA de
+PLANO-PILOTO-FINAL.json (en `data/verificacion/piloto/`; no se tocó `editor/`): PDF de 10 páginas
+en 204 s.
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

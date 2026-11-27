@@ -68,9 +68,11 @@ from componedor.colocar import (
 )
 from componedor.composicion import MANTENER, hoja_base_con_rosa
 from componedor.comprobacion_dibujo import (
+    cortar_por_peso,
     es_fondo_blanco,
     limites_de_trazos,
     medir_limites_trazos,
+    peso_trazos,
     recortar_a_zona,
     tiene_fondo_de_pagina,
 )
@@ -610,7 +612,7 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
             raise PlanoNoComponible(f"No se compone el plano: {e}") from e
         try:
             base = doc[0]
-            trazos_base = len(base.get_drawings())
+            trazos_base = peso_trazos(base.get_drawings())
             imagenes_base = len(base.get_image_info())
             if informe_rosa is not None:
                 # La rosa se mide ANTES de poner los detalles: así nada de ellos se confunde
@@ -626,7 +628,7 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
                 if textos.simbolos:
                     dibujar_simbolos(base, textos.simbolos, textos.biblioteca, formato.alto_mm)
                 dibujar_muestras(base, textos.muestras, formato.alto_mm)
-                trazos_base = len(base.get_drawings())
+                trazos_base = peso_trazos(base.get_drawings())
                 imagenes_base = len(base.get_image_info())
             if ortofoto is not None:
                 # Detrás de los detalles: va antes que ellos en el contenido de la página.
@@ -637,10 +639,10 @@ def _componer_y_verificar(formato: Formato, colocados: list[tuple], salida: Path
                 # la rosa y los fondos son parte de la hoja base (antes de los detalles).
                 imagenes_base += (len(base.get_image_info()) - imagenes_antes
                                   - len(informe_orto.mosaicos))
-                trazos_base = len(base.get_drawings())
+                trazos_base = peso_trazos(base.get_drawings())
             trazos_por_detalle = []
             for _, _, doc_detalle, colocado in colocados:
-                trazos_por_detalle.append(len(doc_detalle[0].get_drawings()))
+                trazos_por_detalle.append(peso_trazos(doc_detalle[0].get_drawings()))
                 insertar_pagina(base, formato, doc_detalle, 0, colocado.pagina_completa[:2],
                                 colocado.recorte)
             todos = textos.rotulo + textos.etiquetas
@@ -737,17 +739,18 @@ def _verificar(ruta: Path, formato: Formato, informe: InformePlantilla | None,
         textos_mal += verificar_localizacion(page, localizacion, formato.alto_mm)
         trazos = page.get_drawings()
         esperados = trazos_base + sum(trazos_por_detalle)
-        if len(trazos) != esperados:
+        # Por peso (relleno y borde por separado: comprobacion_dibujo.peso_trazo), así no
+        # importa si get_drawings() junta un relleno y un borde del mismo camino al insertar.
+        grupos = cortar_por_peso(trazos, [trazos_base, *trazos_por_detalle])
+        if grupos is None:
             # Los trazos de cada detalle se separan por su orden de dibujo; si el conteo no
             # cuadra no se puede saber cuáles son de quién: error, nunca verificación a ciegas.
             return [f"no se pudo separar el dibujo de cada detalle: la hoja tiene "
-                    f"{len(trazos)} trazos y se esperaban {esperados} (hoja base "
-                    f"{trazos_base} + detalles {' + '.join(map(str, trazos_por_detalle))})"]
+                    f"{peso_trazos(trazos)} trazos (relleno y borde por separado) y se esperaban "
+                    f"{esperados} (hoja base {trazos_base} + detalles "
+                    f"{' + '.join(map(str, trazos_por_detalle))})"]
         problemas = []
-        inicio = trazos_base
-        for colocado, n in zip(colocados, trazos_por_detalle):
-            propios = trazos[inicio:inicio + n]
-            inicio += n
+        for colocado, propios in zip(colocados, grupos[1:]):
             # Su fondo blanco se reconoce por el TAMAÑO de la página (no por la posición
             # esperada): así, si el detalle quedó corrido, se mide su dibujo y no su fondo.
             # Con recorte, get_drawings() da los trazos sin recortar: la página entera.

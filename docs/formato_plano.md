@@ -835,7 +835,9 @@ El editor escribe siempre la versión 8 (pestañas, docs/editor.md).
 7. Crea la hoja con la plantilla, quita la rosa y la vuelve a dibujar donde corresponda, pone
    la ortofoto (si hay), inserta los detalles en orden (sin reescalar, como vector) y escribe
    los textos.
-8. Guarda en un archivo temporal y **verifica** el PDF: el dibujo de cada detalle está donde
+8. Guarda en un archivo temporal y **verifica** el PDF (los trazos se cuentan con el relleno y
+   el borde por separado: un trazo «relleno + borde» vale 2, en la hoja y en el PDF del detalle,
+   así no importa si PyMuPDF los junta al insertar la página): el dibujo de cada detalle está donde
    dice el plano (±0,1 mm: los trazos de la hoja, medidos con `get_drawings()` sin el fondo
    blanco, contra los trazos del PDF del propio detalle movidos a su posición; no contra la caja
    declarada `page_bounds_mm`, que puede ser hasta 0,5 mm mayor), el marco del

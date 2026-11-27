@@ -97,3 +97,37 @@ def limites_de_trazos(trazos: list[dict]) -> RectMM | None:
         pt_a_mm(max(r.x1 for r in rects)),
         pt_a_mm(max(r.y1 for r in rects)),
     )
+
+
+# --- Conteo de trazos por peso -----------------------------------------------------------
+# `get_drawings()` junta en UN trazo «fs» (relleno + borde) un relleno y un borde seguidos del
+# mismo camino. Si los dos caminos difieren en la última cifra (p. ej. 0,00002 pt), en la página
+# suelta salen separados («f» y «s») pero, al insertar la página en la hoja (otra transformación,
+# otra precisión), pueden salir juntos. Para que el conteo no dependa de eso, cada trazo pesa lo
+# que pinta: 1 por el relleno y 1 por el borde (un «fs» pesa 2). El dibujo no cambia.
+
+def peso_trazo(trazo: dict) -> int:
+    """1 por el relleno y 1 por el borde («f» o «s»: 1; «fs»: 2). Nunca menos de 1."""
+    tipo = trazo.get("type") or ""
+    return max(1, ("f" in tipo) + ("s" in tipo))
+
+
+def peso_trazos(trazos: list[dict]) -> int:
+    return sum(peso_trazo(t) for t in trazos)
+
+
+def cortar_por_peso(trazos: list[dict], pesos: list[int]) -> list[list[dict]] | None:
+    """Parte los trazos de la hoja (en orden de dibujo) en grupos de esos pesos (la hoja base y
+    luego cada detalle). None si no cuadran exactamente (un trazo perdido o de más)."""
+    grupos, i = [], 0
+    for objetivo in pesos:
+        grupo, acumulado = [], 0
+        while acumulado < objetivo and i < len(trazos):
+            grupo.append(trazos[i])
+            acumulado += peso_trazo(trazos[i])
+            i += 1
+        if acumulado != objetivo:
+            return None
+        grupos.append(grupo)
+    return grupos if i == len(trazos) else None
+
