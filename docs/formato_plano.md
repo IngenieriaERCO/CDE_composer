@@ -783,6 +783,37 @@ todas las hojas, una por página, en el orden del índice: `resultados/<proyecto
   `--codigo-avisos`, código 3 si alguna hoja avisó.
 - Una hoja suelta se compone igual que siempre (su propio PDF).
 
+## Proyecto de varias hojas en un solo archivo (versión 8)
+
+Como varios layouts en un DWG: un archivo con todas las hojas. Lo del proyecto va una vez; lo de
+cada hoja, en su entrada de `"hojas"`:
+
+```json
+{"version": 8, "formato": "../formatos/A1_ERCO.json", "plantilla": null,
+ "dxf": [{"id": "d1", "archivo": "...", "sha256": "…", "margen_mm": 5, "unidades": "m"}],
+ "ortofoto": {"archivo": "...", "...": "..."},
+ "hojas": [
+   {"nombre": "Planta", "detalles": [...], "zonas": [{"dxf": "d1", "nombre": "Zona_01", "...": "..."}],
+    "rosa_vientos": {...}, "rotulo": {...}},
+   {"nombre": "Perfil", "detalles": [], "rotulo": {...},
+    "copiado_de": {"hoja": "Planta", "revisar": ["notas"]}}]}
+```
+
+- `dxf` y `ortofoto` son del proyecto y se comparten.
+- Cada hoja es como un plano versión 7: `detalles` (puede ir vacía), `rosa_vientos`, `rotulo`,
+  `copiado_de`; sus zonas del Model Space van en `zonas`, cada una con `"dxf"` (el id del DXF) y
+  los campos de la versión 6. El `nombre` de cada hoja es único; el de cada zona, único en todo
+  el proyecto (cada zona da un paquete).
+- «Hoja», «de» y el número de plano salen solos de la **posición** de la hoja en la lista (lo
+  escrito a mano manda), como con el índice.
+- `componer <archivo>.json` (o arrastrarlo a `Componer.bat`) da **un PDF con todas las hojas**:
+  `resultados/<archivo>.pdf`, con el mismo motor que el índice (cada hoja verificada, unidas tal
+  cual, el PDF unido verificado; si una hoja falla no sale nada y se dicen todas). Cada hoja
+  guarda su copia reducida de la ortofoto en `<archivo>_hojaN_ortofoto/`.
+- Los planos 1 a 7 y el índice `.hojas.json` siguen igual.
+
+(El editor todavía no escribe la versión 8: llega en la subfase 8b.)
+
 ## Qué hace `componer` con el plano
 
 1. Lee y valida el plano.json. Si es versión 3 y tiene bloques sin exportar, se detiene y dice

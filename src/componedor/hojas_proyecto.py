@@ -125,7 +125,15 @@ def valores_automaticos(plano: Path | str, campos: dict[str, str],
         return {}
     _, hojas = encontrado
     posicion = [h.casefold() for h in hojas].index(plano.name.casefold())
-    actual = rotulo_actual if rotulo_actual is not None else _rotulo_de(plano)
+    rotulos = [_rotulo_de(plano.parent / h) for h in hojas]
+    return automaticos_de_lista(rotulos, posicion, campos, rotulo_actual)
+
+
+def automaticos_de_lista(rotulos: list[dict], posicion: int, campos: dict[str, str],
+                         rotulo_actual: dict | None = None) -> dict[str, str]:
+    """Lo mismo, a partir de los rótulos de todas las hojas en orden (un proyecto de varias
+    hojas en un solo archivo, versión 8) y la posición de esta (0, 1, …)."""
+    actual = rotulo_actual if rotulo_actual is not None else (rotulos[posicion] or {})
     salida: dict[str, str] = {}
     for campo, tipo in campos.items():
         if _escrito(actual.get(campo)) is not None:
@@ -133,18 +141,18 @@ def valores_automaticos(plano: Path | str, campos: dict[str, str],
         if tipo == "hoja_actual":
             salida[campo] = str(posicion + 1)
         elif tipo == "total_hojas":
-            salida[campo] = str(len(hojas))
+            salida[campo] = str(len(rotulos))
         elif tipo == "numero_siguiente":
-            numero = _numero_anterior(plano.parent, hojas, posicion, campo)
+            numero = _numero_anterior(rotulos, posicion, campo)
             if numero is not None:
                 salida[campo] = numero
     return salida
 
 
-def _numero_anterior(carpeta: Path, hojas: list[str], posicion: int, campo: str) -> str | None:
+def _numero_anterior(rotulos: list[dict], posicion: int, campo: str) -> str | None:
     """El número de la hoja `posicion`, siguiendo desde la última hoja anterior que lo escribe."""
     for pasos, i in enumerate(range(posicion - 1, -1, -1), start=1):
-        escrito = _escrito(_rotulo_de(carpeta / hojas[i]).get(campo))
+        escrito = _escrito((rotulos[i] or {}).get(campo))
         if escrito is not None:
             numero = escrito
             for _ in range(pasos):

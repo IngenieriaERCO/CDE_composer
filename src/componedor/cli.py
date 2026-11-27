@@ -23,6 +23,7 @@ from componedor.comando_referencia import ejecutar_referencia
 from componedor.componer import ResultadoComposicion, componer_plano
 from componedor.componer_proyecto import (
     ResultadoProyecto,
+    componer_archivo_proyecto,
     componer_proyecto,
     es_indice,
     nombre_proyecto,
@@ -64,6 +65,7 @@ from componedor.paquete import (
     paquete_de_manifiesto,
 )
 from componedor.plano import Plano, leer_plano
+from componedor.plano_proyecto import es_proyecto
 from componedor.plantilla import (
     TOLERANCIA_MARCO_MM,
     TOLERANCIA_TAMANO_MM,
@@ -210,8 +212,10 @@ def opciones_componer(args, plano: Plano) -> tuple[Plano, Path | None, str | Non
 
 
 def componer_proyecto_cli(args) -> ResultadoProyecto | None:
-    """`componer <proyecto>.hojas.json`: con --config, el formato y la carpeta de resultados del
-    archivo (PDF <resultados>/<proyecto>_proyecto.pdf); sin --config, --salida."""
+    """`componer <proyecto>.hojas.json` o `componer <proyecto versión 8>.json`: con --config, el
+    formato y la carpeta de resultados del archivo (PDF <resultados>/<proyecto>_proyecto.pdf con
+    un índice, <resultados>/<archivo>.pdf con un proyecto versión 8); sin --config, --salida."""
+    indice = es_indice(args.plano)
     if args.config is None:
         if args.salida is None:
             print("Error: falta --salida (o use --config componedor.json).", file=sys.stderr)
@@ -225,11 +229,13 @@ def componer_proyecto_cli(args) -> ResultadoProyecto | None:
         config = leer_config_componer(args.config)  # ConfigInvalida es ValueError
         print(f"Configuración: {args.config.resolve()}")
         config.resultados.mkdir(parents=True, exist_ok=True)
-        salida = config.resultados / f"{nombre_proyecto(args.plano)}_proyecto.pdf"
+        salida = (config.resultados / f"{nombre_proyecto(args.plano)}_proyecto.pdf" if indice
+                  else config.resultados / f"{args.plano.stem}.pdf")
         formato, simbolos, margen = config.formato, config.simbolos, config.margen_detalle_mm
-    return componer_proyecto(args.plano, salida, args.sobrescribir,
-                             leer_config_ortofoto(args.config) if args.config else None,
-                             simbolos, margen, formato)
+    componer_todo = componer_proyecto if indice else componer_archivo_proyecto
+    return componer_todo(args.plano, salida, args.sobrescribir,
+                         leer_config_ortofoto(args.config) if args.config else None,
+                         simbolos, margen, formato)
 
 
 def texto_proyecto(r: ResultadoProyecto) -> str:
@@ -250,7 +256,7 @@ def texto_proyecto(r: ResultadoProyecto) -> str:
     con_avisos = sum(1 for h in r.hojas if h.resultado.advertencias)
     lineas += ["", (f"{total} hoja(s), {total} página(s); {con_avisos} con advertencias. Cada hoja "
                     f"se verificó como siempre, y el PDF del proyecto tiene una página por hoja, en "
-                    f"el orden del índice, igual a la de su hoja."),
+                    f"el orden del proyecto, igual a la de su hoja."),
                f"PDF: {r.ruta_pdf}"]
     return "\n".join(lineas)
 
@@ -1107,8 +1113,8 @@ def main(argv: list[str] | None = None) -> int:
             indice = args.indice or _indice_del_formato(formato)
             informe = extraer_simbolos(args.plano, formato, indice, args.pagina)
             print(texto_extraccion(informe))
-        elif args.subcomando == "componer" and es_indice(args.plano):
-            # El índice de un proyecto: todas sus hojas en UN PDF (componer_proyecto.py).
+        elif args.subcomando == "componer" and (es_indice(args.plano) or es_proyecto(args.plano)):
+            # Un proyecto (índice .hojas.json o un archivo versión 8): todas sus hojas en UN PDF.
             resultado = componer_proyecto_cli(args)
             if resultado is None:
                 return 2

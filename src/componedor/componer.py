@@ -89,7 +89,7 @@ from componedor.formato import (
     cargar_formato,
 )
 from componedor.fuente import Fuente, FuenteInvalida, cargar_fuente
-from componedor.hojas_proyecto import valores_automaticos
+from componedor.hojas_proyecto import automaticos_de_lista, valores_automaticos
 from componedor.importador import PaqueteAceptado, PaqueteRechazado, importar_paquete
 from componedor.localizacion import ImagenLocalizacion, LocalizacionInvalida
 from componedor.localizacion import insertar as insertar_localizacion
@@ -259,7 +259,7 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
     usan_ortofoto = [d for d in plano.detalles if d.ortofoto]
     if plano.ortofoto is not None and usan_ortofoto:
         try:
-            eleccion = elegir(plano.ortofoto, carpeta_copia(plano.ruta))
+            eleccion = elegir(plano.ortofoto, carpeta_copia(plano.ruta_copia))
         except OrtofotoNoUsable as e:
             raise PlanoNoComponible(f"No se compone el plano: {e}") from None
     destino_rosa = _destino_rosa(plano, formato)
@@ -301,7 +301,7 @@ def componer_plano(plano: Plano, salida: Path | str, sobrescribir: bool = False,
                 resultado.copia = _copia(plano, ortofoto)
             except (OSError, ValueError) as e:  # el PDF ya está: la copia no lo invalida
                 advertencias.append(f"No se pudo escribir la copia reducida de la ortofoto en "
-                                    f"«{carpeta_copia(plano.ruta)}»: {e}")
+                                    f"«{carpeta_copia(plano.ruta_copia)}»: {e}")
     resultado.advertencias = advertencias
     resultado.rotulo = valores
     resultado.etiquetas = [t.ruta.split(".", 1)[1] for t in textos.etiquetas]
@@ -375,7 +375,7 @@ def _copia(plano: Plano, o: _Ortofoto) -> InformeCopia:
     """La copia reducida en la carpeta del plano (o la que ya estaba, si está al día)."""
     e = o.eleccion
     with abrir_fuente(e.original, e.crs_ortofoto) as fuente:
-        return escribir_copia(carpeta_copia(plano.ruta), datos_del_archivo(e.original),
+        return escribir_copia(carpeta_copia(plano.ruta_copia), datos_del_archivo(e.original),
                               o.detalles, fuente, e.crs_dibujo, o.config.ppp,
                               o.config.calidad_jpeg)
 
@@ -570,7 +570,11 @@ def _rotulo_con_automaticos(plano: Plano, formato: Formato) -> dict | None:
     campos = {n: c.automatico for n, c in formato.rotulo.campos.items()
               if getattr(c, "automatico", None)}
     actual = plano.rotulo if isinstance(plano.rotulo, dict) else {}
-    automaticos = valores_automaticos(plano.ruta, campos, actual)
+    if plano.posicion is not None:  # una hoja de un proyecto versión 8: su lugar en la lista
+        automaticos = automaticos_de_lista(list(plano.rotulos_proyecto), plano.posicion, campos,
+                                           actual)
+    else:
+        automaticos = valores_automaticos(plano.ruta, campos, actual)
     if not automaticos:
         return plano.rotulo
     return {**actual, **automaticos}

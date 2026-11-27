@@ -390,6 +390,9 @@ vacía; el selector «Hoja N de M» pasa de una a otra. Hoja, De y No. PLANO sal
 `<proyecto>.hojas.json` (…-PL-106 → …-PL-107) y se pueden escribir a mano. Notas, convenciones y
 revisiones copiadas quedan en Advertencias «revíselo» hasta que se cambien. Plano versión 7: una
 hoja puede ir sin detalles (solo el rótulo). Ver [docs/editor.md](docs/editor.md).
+**Proyecto en un solo archivo** (plano versión 8): todas las hojas en un archivo, como layouts de
+un DWG; arrastrarlo a `Componer.bat` da `resultados/<archivo>.pdf` con todas las planchas (ver
+[docs/formato_plano.md](docs/formato_plano.md)). El editor lo escribirá en la subfase 8b.
 **Componer el proyecto**: arrastre el índice `<proyecto>.hojas.json` a `Componer.bat` y sale UN PDF
 con todas las hojas, una por página, en orden: `resultados/<proyecto>_proyecto.pdf`. Si una hoja
 falla no sale nada, y el mensaje dice todas las que fallaron. Ver

@@ -2,6 +2,7 @@
 rem Compone un plano.json con el formato de componedor.json y deja el PDF en
 rem resultados\<nombre del plano>.pdf. Con el índice de un proyecto (<proyecto>.hojas.json),
 rem todas sus hojas en UN PDF: resultados\<proyecto>_proyecto.pdf.
+rem Un proyecto de varias hojas en un solo archivo (plano versión 8): resultados\<archivo>.pdf.
 rem Arrastre un plano.json (o un .hojas.json) sobre este archivo, o haga
 rem doble clic y arrastre (o escriba) la ruta del plano en la ventana.
 chcp 65001 >nul

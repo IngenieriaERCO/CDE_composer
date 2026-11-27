@@ -3396,6 +3396,40 @@ siempre con una hoja.
 PDF de todas las hojas, si una falla no sale nada, la verificación ve el orden, la CLI. ruff: los
 mismos 173 hallazgos.
 
+### Proyecto en un solo archivo — subfase 8a: plano versión 8 y componerlo (2026-11-26)
+
+Plan (como layouts de un DWG): 8a formato y componer; 8b editor con pestañas y guardar/abrir la
+versión 8; 8c «Exportar todas las hojas»; 8d copia automática. Decisiones: A) el editor guardará
+siempre la versión 8; B) copia automática en `editor/<proyecto>.autoguardado.json`; C) exportar
+todas sigue si falla uno; D) una zona puede ir en dos hojas; E) ofrecer pasar un proyecto con
+índice a un solo archivo sin tocar los viejos; F) PDF `resultados/<archivo>.pdf`.
+
+**Qué se hizo (8a)**
+- `plano_proyecto.py` (nuevo): lee la versión 8 (`formato`, `plantilla`, `dxf`, `ortofoto` del
+  proyecto; `hojas` con `nombre`, `detalles`, `zonas` (con `"dxf"`), `rosa_vientos`, `rotulo`,
+  `copiado_de`). Cada hoja se valida con las reglas de siempre (`plano.plano_desde_datos`, que
+  se separó de `leer_plano`); los problemas de una hoja no impiden leer las otras; nombres de
+  hoja únicos y de zona únicos en todo el proyecto. `leer_plano` con un archivo versión 8 lo dice.
+- `hojas_proyecto.automaticos_de_lista`: hoja / de / número por la posición en la lista.
+- `componer`: automáticos por posición para las hojas de un proyecto y la copia reducida de la
+  ortofoto propia de cada hoja (`<archivo>_hojaN_ortofoto/`, `Plano.ruta_copia`).
+- `componer_proyecto`: un solo motor para el índice y la versión 8 (`componer_archivo_proyecto`).
+  CLI: un archivo versión 8 da `resultados/<archivo>.pdf` (con `--config`).
+
+**Cómo probarlo**: `.venv\Scripts\python data\verificacion\verificar_proyecto_v8.py` arma el
+proyecto de prueba; arrastrar `data\verificacion\proyecto_v8\Pruebadecambio_v8.json` a
+`Componer.bat` da `resultados\Pruebadecambio_v8.pdf` con 3 páginas.
+
+**Verificación** (`data/verificacion/verificar_proyecto_v8.py`, con una COPIA de Pruebadecambio
+convertida a versión 8 con 3 hojas; no se tocó `editor/` ni `resultados/`). **Todo OK**: PDF de 3
+páginas en orden (…-106, …-107, …-108; ortofoto en la hoja 1 y su copia en
+`Pruebadecambio_v8_hoja1_ortofoto`); solo queda el PDF; con dos hojas con problemas, código 1, sin
+PDF y las dos nombradas; un plano de una hoja y el índice `.hojas.json` siguen igual.
+
+**Pruebas**: **1572 pasan** y 1 se salta (antes 1562). `test_plano_proyecto` (10): leer, una hoja
+no se lee como proyecto, proyectos que no valen, problemas por hoja, componer el archivo entero,
+si una hoja falla no sale nada, CLI. ruff: los mismos 173 hallazgos.
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

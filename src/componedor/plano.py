@@ -111,6 +111,18 @@ class Plano:
     zonas: tuple[ZonaPlano, ...] = ()  # versión 6: las zonas del Model Space del plano
     copiado_de: str | None = None  # versión 7: el plano.json de la hoja de donde se copió
     revisar: tuple[str, ...] = ()  # versión 7: campos del rótulo copiados sin revisar
+    # Versión 8 (un proyecto de varias hojas en un archivo, plano_proyecto.py): el nombre de esta
+    # hoja, su posición (0, 1, …) y los rótulos de todas las hojas (para hoja, de y número).
+    hoja: str | None = None
+    posicion: int | None = None
+    rotulos_proyecto: tuple = ()
+
+    @property
+    def ruta_copia(self) -> Path:
+        """Para la copia reducida de la ortofoto: cada hoja de un proyecto, la suya."""
+        if self.posicion is None:
+            return self.ruta
+        return self.ruta.with_name(f"{self.ruta.stem}_hoja{self.posicion + 1}{self.ruta.suffix}")
 
     @property
     def carpeta(self) -> Path:
@@ -139,7 +151,15 @@ def leer_plano(ruta: Path | str) -> Plano:
         ) from e
     if not isinstance(datos, dict):
         raise PlanoInvalido(f"El plano '{ruta}' debe ser un objeto JSON {{...}}.")
+    if datos.get("version") == 8:
+        raise PlanoInvalido(f"'{ruta.name}' es un proyecto de varias hojas (versión 8): se lee con "
+                            f"plano_proyecto.leer_proyecto (componer lo reconoce solo).")
+    return plano_desde_datos(datos, ruta)
 
+
+def plano_desde_datos(datos: dict, ruta: Path) -> Plano:
+    """Valida los datos de un plano (versiones 1 a 7) como si vinieran del archivo `ruta` (las
+    rutas relativas son relativas a su carpeta). Lanza `PlanoInvalido`."""
     errores: list[str] = []
     carpeta = ruta.parent
     v7 = datos.get("version") == 7  # varias hojas: detalles vacíos y "copiado_de"
