@@ -3368,6 +3368,34 @@ y layout 97 ms en total para las 8 vistas).
 se preguntan cada 120 ms y la vista nítida se pide 200 ms después de parar (cancelando la
 anterior). ruff: los mismos 173 hallazgos.
 
+### Componer el proyecto entero (2026-11-26)
+
+Decisiones aprobadas: A) solo el PDF del proyecto (los de cada hoja, temporales); una hoja suelta
+sigue dando su PDF; B) `resultados/<proyecto>_proyecto.pdf`, que `Componer.bat` abre; C) si una
+hoja falla no sale nada, pero antes se revisan todas y se dicen todos los errores, cada uno con su
+hoja; D) el botón «Componer proyecto» en el editor, después.
+
+**Qué se hizo**
+- `componer_proyecto.py` (nuevo): compone cada hoja del índice (como siempre) en temporal, junta
+  los errores, une las páginas con `insert_pdf` y verifica el PDF unido (páginas = hojas, en
+  orden, cada página igual a la de su hoja: tamaño, trazos, textos e imágenes).
+- CLI `componer`: con un `.hojas.json`, el modo proyecto (avisos con su hoja y resumen final);
+  con una hoja, igual que antes. `Componer.bat`: con un índice abre `<proyecto>_proyecto.pdf`.
+
+**Cómo probarlo**: arrastrar `editor/Pruebadecambio.hojas.json` (el del proyecto de prueba) a
+`Componer.bat`: se abre `resultados/Pruebadecambio_proyecto.pdf` con una página por hoja.
+
+**Verificación** (`data/verificacion/verificar_proyecto.py`, con una COPIA de Pruebadecambio.json
+en 3 hojas en `data/verificacion/proyecto_prueba/`; no se tocó `editor/` ni `resultados/`).
+**Todo OK**: PDF de 3 páginas en orden (…-106, …-107, …-108; la ortofoto solo en la hoja 1); solo
+queda el PDF del proyecto; con una hoja rota y otra que falta, código 1, sin PDF y las dos en el
+mensaje; la línea de `Componer.bat` da «Pruebadecambio_proyecto» con el índice y el nombre de
+siempre con una hoja.
+
+**Pruebas**: **1562 pasan** y 1 se salta (antes 1557). `test_componer_proyecto` (5): nombres, el
+PDF de todas las hojas, si una falla no sale nada, la verificación ve el orden, la CLI. ruff: los
+mismos 173 hallazgos.
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

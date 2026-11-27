@@ -127,7 +127,7 @@ papel (origen en la esquina inferior izquierda de la hoja, Y hacia arriba).
 | `paquetes` | Localiza los paquetes del exportador en una carpeta y dice si están completos; con `--verificar`, agrega integridad (bytes, SHA-256, que abra, una página) y coherencia (geometría del manifiesto contra el PDF, escala física garantizada). |
 | `verificar-paquete` | Muestra todas las comprobaciones de integridad y coherencia de un paquete y «RESULTADO: PASA / FALLA». |
 | `inventario` | Lista los detalles de una carpeta: aceptados o rechazados (con motivos), tamaños, si caben en la zona y escala sugerida. |
-| `componer` | Compone un plano con varios detalles a partir de un `plano.json`: detalles, textos del rótulo, etiquetas «ESC: 1:N» y rosa de los vientos (ver [docs/formato_plano.md](docs/formato_plano.md)). Con `--config componedor.json`, usa ese formato y deja el PDF en `resultados/`; con `--codigo-avisos`, termina con código 3 si hubo advertencias. |
+| `componer` | Compone un plano con varios detalles a partir de un `plano.json` (o, con el índice `<proyecto>.hojas.json`, todas las hojas en un PDF): detalles, textos del rótulo, etiquetas «ESC: 1:N» y rosa de los vientos (ver [docs/formato_plano.md](docs/formato_plano.md)). Con `--config componedor.json`, usa ese formato y deja el PDF en `resultados/`; con `--codigo-avisos`, termina con código 3 si hubo advertencias. |
 | `editor` | Genera `editor.html`, un editor visual de planos de un solo archivo (arrastrar detalles y la rosa, y guardar el plano.json). Con `--config componedor.json` toma todas las rutas del archivo. Ver [docs/editor.md](docs/editor.md). |
 | `servidor` | Abre ese `editor.html` desde un servidor local (solo `127.0.0.1`, con token) que habilita «Cargar DXF» con el trabajador del exportador (`cde-exporter worker`). Solo `--config componedor.json`; `--no-abrir`, `--puerto`, `--inactividad-min`. Lo usa `Abrir editor.bat`. Ver [docs/servidor_editor.md](docs/servidor_editor.md). |
 | `preparar-editor` | Deja por separado los datos e imágenes que el editor lleva incrustados (`editor_datos.json`, `plantilla.png`, `plantilla.svg`, `rosa.png`, miniaturas y símbolos), para revisarlos (ver [docs/formato_editor_datos.md](docs/formato_editor_datos.md)). |
@@ -390,6 +390,10 @@ vacía; el selector «Hoja N de M» pasa de una a otra. Hoja, De y No. PLANO sal
 `<proyecto>.hojas.json` (…-PL-106 → …-PL-107) y se pueden escribir a mano. Notas, convenciones y
 revisiones copiadas quedan en Advertencias «revíselo» hasta que se cambien. Plano versión 7: una
 hoja puede ir sin detalles (solo el rótulo). Ver [docs/editor.md](docs/editor.md).
+**Componer el proyecto**: arrastre el índice `<proyecto>.hojas.json` a `Componer.bat` y sale UN PDF
+con todas las hojas, una por página, en orden: `resultados/<proyecto>_proyecto.pdf`. Si una hoja
+falla no sale nada, y el mensaje dice todas las que fallaron. Ver
+[docs/formato_plano.md](docs/formato_plano.md#componer-el-proyecto-entero).
 
 **Mostrar escala**: en el panel Selección, cada detalle tiene el casillero «Mostrar escala»; desmarcado, no se escribe su «ESC: 1:N» (ni en el editor ni en el PDF), para los dibujos que ya traen su escala escrita. Una zona con su «ESC 1:N» leído, exportada a esa escala, empieza desmarcada.
 

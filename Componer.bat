@@ -1,6 +1,8 @@
 @echo off
 rem Compone un plano.json con el formato de componedor.json y deja el PDF en
-rem resultados\<nombre del plano>.pdf. Arrastre un plano.json sobre este archivo, o haga
+rem resultados\<nombre del plano>.pdf. Con el índice de un proyecto (<proyecto>.hojas.json),
+rem todas sus hojas en UN PDF: resultados\<proyecto>_proyecto.pdf.
+rem Arrastre un plano.json (o un .hojas.json) sobre este archivo, o haga
 rem doble clic y arrastre (o escriba) la ruta del plano en la ventana.
 chcp 65001 >nul
 setlocal
@@ -14,6 +16,8 @@ set "PLANO=%PLANO:"=%"
 if not defined PLANO goto :sin_plano
 for %%F in ("%PLANO%") do set "PLANO=%%~fF" & set "NOMBRE=%%~nF"
 if not exist "%PLANO%" goto :no_existe
+rem El índice de un proyecto (<proyecto>.hojas.json): todas las hojas en <proyecto>_proyecto.pdf.
+if /i "%NOMBRE:~-6%"==".hojas" set "NOMBRE=%NOMBRE:~0,-6%_proyecto"
 cd /d "%~dp0"
 set "PYTHONIOENCODING=utf-8"
 rem Con el python del sistema, el paquete se toma de src\ aunque no esté instalado.

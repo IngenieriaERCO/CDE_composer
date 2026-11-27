@@ -765,6 +765,24 @@ sugerencia «… (automático)»):
 Lo escrito a mano siempre manda. Una hoja que no está en ningún índice se compone como siempre
 (sin automáticos). Los planos de versiones 1 a 6 no cambian.
 
+### Componer el proyecto entero
+
+`componer <proyecto>.hojas.json` (o arrastrar el índice a `Componer.bat`) da **un solo PDF** con
+todas las hojas, una por página, en el orden del índice: `resultados/<proyecto>_proyecto.pdf`
+(con `--config`; sin él, `--salida`).
+
+- Cada hoja se compone como siempre (su verificación, sus automáticos, su ortofoto) en un PDF
+  temporal; las páginas se unen tal cual (`insert_pdf`: lo vectorial sigue siendo vector) y se
+  verifica el PDF unido: tantas páginas como hojas, en orden, y cada página igual a la de su
+  hoja. Los PDF de cada hoja se borran.
+- Si alguna hoja no se puede componer (falta un paquete, la hoja no está, falla su
+  verificación…), **no sale el PDF**: antes se intentan todas y el error las junta, cada una con
+  su hoja («Hoja 3 de 4 (Obra_03.json): …»).
+- Las advertencias salen con su hoja delante («Hoja 2 de 3 (Obra_02.json) · La hoja no tiene
+  detalles…») y al final un resumen («3 hoja(s), 3 página(s); 1 con advertencias»). Con
+  `--codigo-avisos`, código 3 si alguna hoja avisó.
+- Una hoja suelta se compone igual que siempre (su propio PDF).
+
 ## Qué hace `componer` con el plano
 
 1. Lee y valida el plano.json. Si es versión 3 y tiene bloques sin exportar, se detiene y dice

@@ -21,6 +21,12 @@ from componedor.colocar import (
 )
 from componedor.comando_referencia import ejecutar_referencia
 from componedor.componer import ResultadoComposicion, componer_plano
+from componedor.componer_proyecto import (
+    ResultadoProyecto,
+    componer_proyecto,
+    es_indice,
+    nombre_proyecto,
+)
 from componedor.composicion import hoja_base
 from componedor.configuracion import (
     ConfigEditor,
@@ -201,6 +207,52 @@ def opciones_componer(args, plano: Plano) -> tuple[Plano, Path | None, str | Non
     config.resultados.mkdir(parents=True, exist_ok=True)
     return (replace(plano, formato=config.formato),
             config.resultados / f"{args.plano.stem}.pdf", None)
+
+
+def componer_proyecto_cli(args) -> ResultadoProyecto | None:
+    """`componer <proyecto>.hojas.json`: con --config, el formato y la carpeta de resultados del
+    archivo (PDF <resultados>/<proyecto>_proyecto.pdf); sin --config, --salida."""
+    if args.config is None:
+        if args.salida is None:
+            print("Error: falta --salida (o use --config componedor.json).", file=sys.stderr)
+            return None
+        salida, formato, simbolos, margen = args.salida, None, None, MARGEN_POR_DEFECTO_MM
+    else:
+        if args.salida is not None:
+            print("Error: con --config el PDF va a la carpeta de resultados del archivo; quite "
+                  "--salida o no use --config.", file=sys.stderr)
+            return None
+        config = leer_config_componer(args.config)  # ConfigInvalida es ValueError
+        print(f"Configuración: {args.config.resolve()}")
+        config.resultados.mkdir(parents=True, exist_ok=True)
+        salida = config.resultados / f"{nombre_proyecto(args.plano)}_proyecto.pdf"
+        formato, simbolos, margen = config.formato, config.simbolos, config.margen_detalle_mm
+    return componer_proyecto(args.plano, salida, args.sobrescribir,
+                             leer_config_ortofoto(args.config) if args.config else None,
+                             simbolos, margen, formato)
+
+
+def texto_proyecto(r: ResultadoProyecto) -> str:
+    """Resumen de `componer` con un índice: cada hoja, los avisos (con su hoja) y el total."""
+    total = len(r.hojas)
+    lineas = [f"Proyecto: {r.indice} ({total} hoja(s))", ""]
+    for h in r.hojas:
+        rot = h.resultado.rotulo
+        numero = rot.get("no_plano") or "sin número"
+        lineas.append(f"  Hoja {h.numero} de {total}: {h.archivo} · {len(h.resultado.detalles)} "
+                      f"detalle(s) · No. PLANO {numero} · HOJA {rot.get('hoja', '-')} DE "
+                      f"{rot.get('de', '-')}")
+    avisos = r.advertencias
+    if avisos:
+        lineas += ["", f"Advertencias ({len(avisos)}):"] + [f"  - {a}" for a in avisos]
+    else:
+        lineas += ["", "Advertencias: ninguna."]
+    con_avisos = sum(1 for h in r.hojas if h.resultado.advertencias)
+    lineas += ["", (f"{total} hoja(s), {total} página(s); {con_avisos} con advertencias. Cada hoja "
+                    f"se verificó como siempre, y el PDF del proyecto tiene una página por hoja, en "
+                    f"el orden del índice, igual a la de su hoja."),
+               f"PDF: {r.ruta_pdf}"]
+    return "\n".join(lineas)
 
 
 def _validar_opciones_colocar(args) -> str | None:
@@ -1055,6 +1107,14 @@ def main(argv: list[str] | None = None) -> int:
             indice = args.indice or _indice_del_formato(formato)
             informe = extraer_simbolos(args.plano, formato, indice, args.pagina)
             print(texto_extraccion(informe))
+        elif args.subcomando == "componer" and es_indice(args.plano):
+            # El índice de un proyecto: todas sus hojas en UN PDF (componer_proyecto.py).
+            resultado = componer_proyecto_cli(args)
+            if resultado is None:
+                return 2
+            print(texto_proyecto(resultado))
+            if args.codigo_avisos and resultado.advertencias:
+                return CODIGO_AVISOS
         elif args.subcomando == "componer":
             plano = leer_plano(args.plano)
             plano, salida, error = opciones_componer(args, plano)
