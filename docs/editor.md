@@ -805,6 +805,12 @@ arriba, una **pestaña por hoja** (con cuántas advertencias tiene) y «+»:
   queda como borrador. No guarda solo: avisa que hay cambios.
 - **«Volver a exportar zonas de todas las hojas (N)»**: lo mismo que «Volver a exportar zonas»,
   para las zonas de todas las hojas (cuando cambió el DXF).
+- **Copia automática** (con el servidor local): cada minuto, si hay cambios sin guardar, el editor
+  escribe `editor/<proyecto>.autoguardado.json` (sin nombre todavía: `sin_nombre.autoguardado.json`).
+  Nunca pisa el archivo real y **se borra sola al guardar**. Si el editor se cierra o se cae, al
+  abrirlo de nuevo ofrece recuperarla (solo si es más nueva que el archivo guardado): se abre con
+  el nombre del archivo real y con cambios por guardar (un plano viejo sigue proponiendo
+  `<nombre>_proyecto.json`). Si no se recupera, ofrece borrarla.
 
 ## 7. Limitaciones
 

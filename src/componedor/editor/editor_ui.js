@@ -1666,6 +1666,7 @@
         estado.archivo = archivo.name;
         estado.viejo = false; // ya está en la versión 8, con su nombre
         guardado(archivo.name, false);
+        if (window.EditorAutoguardado) window.EditorAutoguardado.alGuardar(); // la copia automática ya no hace falta
         return;
       } catch (error) {
         if (error && error.name === "AbortError") return; // el usuario canceló: nada que hacer
@@ -1675,6 +1676,7 @@
     const nombre = P8.nombreParaGuardar(estado.archivo, estado.viejo);
     descargar(texto, nombre);
     guardado(nombre, true);
+    if (window.EditorAutoguardado) window.EditorAutoguardado.alGuardar();
   }
 
   /** plano.json con los detalles, la rosa y (si se abrió un plano que lo traía) el rótulo.
@@ -2106,6 +2108,16 @@
     // nombre, si hay cambios, el rótulo y los valores automáticos (hoja, de, número de plano).
     textoPlano, abrirTexto: abrir, archivo: () => estado.archivo, hayCambios: () => !!estado.cambios,
     hojasParaExportar,
+    // Copia automática (8d): abrir lo recuperado con el nombre del archivo real (y si era un plano
+    // viejo), con cambios por guardar: el archivo real no se toca hasta guardar.
+    abrirRecuperado: (texto, archivo, viejo) => {
+      if (!abrir(texto, archivo)) return false;
+      estado.viejo = !!viejo;
+      estado.cambios = true;
+      mensaje("Recuperado de la copia automática: " + estado.hojas.length + " hoja(s). Guarde el proyecto para no " +
+        "perderlo" + (viejo ? " (se propone «" + P8.nombreParaGuardar(archivo, true) + "»; el original no se pisa)." : "."), "aviso");
+      return true;
+    },
     mensaje, viejo: () => estado.viejo,
     // Un proyecto con índice (.hojas.json) en pestañas: [{nombre, texto}] de sus hojas.
     abrirIndice: (hojas, indice) => {

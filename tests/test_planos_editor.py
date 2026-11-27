@@ -55,3 +55,37 @@ def test_hojas_y_automaticos(tmp_path):
     # El rótulo que manda el editor (sin guardar) manda: «hoja» escrita a mano no se pisa.
     assert p.hojas("A_02.json", {"hoja": "X"}, CAMPOS)["automaticos"] == {"de": "2", "no_plano": "ERCO-PL-107"}
     assert p.hojas("A.json", campos={"hoja": "otra_cosa"})["automaticos"] == {}
+
+
+def test_copia_automatica(tmp_path):
+    """8d: <proyecto>.autoguardado.json nunca pisa el real; se lista con «más nueva»; se lee, y
+    se borra; no se lista como plano."""
+    import os
+
+    p = PlanosEditor(tmp_path)
+    p.guardar("Obra.json", _texto(titulo="GUARDADO"))
+    real = (tmp_path / "Obra.json").read_bytes()
+    os.utime(tmp_path / "Obra.json", (1_000_000, 1_000_000))  # el real, más viejo
+    p.guardar_autoguardado("Obra", "Obra.json", False, _texto(titulo="SIN GUARDAR"))
+    assert (tmp_path / "Obra.json").read_bytes() == real  # el real no se toca
+    assert p.listar()["planos"] == ["Obra.json"]  # la copia no es un plano
+    (copia,) = p.autoguardados()["autoguardados"]
+    assert (copia["base"], copia["archivo"], copia["viejo"], copia["mas_nueva"]) == ("Obra", "Obra.json", False, True)
+    r = p.leer_autoguardado("Obra")
+    assert json.loads(r["texto"])["rotulo"] == {"titulo": "SIN GUARDAR"} and r["archivo"] == "Obra.json"
+    # Una copia de un plano viejo recuerda que lo era; una sin archivo (nunca guardado), también se ofrece.
+    p.guardar_autoguardado("sin_nombre", None, True, _texto())
+    nuevas = {c["base"]: c for c in p.autoguardados()["autoguardados"]}
+    assert nuevas["sin_nombre"]["mas_nueva"] is True and nuevas["sin_nombre"]["viejo"] is True
+    # Si el real es más nuevo que la copia, no se ofrece.
+    os.utime(tmp_path / "Obra.json", None)
+    os.utime(tmp_path / "Obra.autoguardado.json", (1_000_000, 1_000_000))
+    assert {c["base"]: c["mas_nueva"] for c in p.autoguardados()["autoguardados"]}["Obra"] is False
+    assert p.borrar_autoguardado("Obra") == {"borrado": True} and not (tmp_path / "Obra.autoguardado.json").exists()
+    assert p.borrar_autoguardado("Obra") == {"borrado": False}
+    for malo in ("../x", "a/b", ""):
+        with pytest.raises(ErrorAplicacion):
+            p.guardar_autoguardado(malo, None, False, _texto())
+    with pytest.raises(ErrorAplicacion) as e:
+        p.leer_autoguardado("Obra")
+    assert e.value.estado_http == 404

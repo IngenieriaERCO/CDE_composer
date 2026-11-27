@@ -7,6 +7,7 @@ otra ruta. Un plano se escribe en UTF-8 con saltos LF; uno nuevo no pisa uno que
 """
 
 import json
+import os
 from pathlib import Path
 
 from componedor.aplicacion_editor import ErrorAplicacion
@@ -22,6 +23,9 @@ from componedor.hojas_proyecto import (
 )
 
 TAMANO_MAXIMO = 20 * 1024 * 1024  # un plano.json grande (rótulo, notas) cabe holgado
+# Copia automática del trabajo sin guardar (subfase 8d): <proyecto>.autoguardado.json, en la
+# carpeta del editor. Nunca pisa el archivo real; se borra al guardar el proyecto.
+AUTOGUARDADO = ".autoguardado.json"
 
 
 class PlanosEditor:
@@ -37,7 +41,8 @@ class PlanosEditor:
     def listar(self) -> dict:
         """Los plano.json de la carpeta del editor y los índices de hojas con sus hojas."""
         planos = sorted(p.name for p in self.carpeta.glob("*.json")
-                        if not p.name.lower().endswith(SUFIJO) and nombre_valido(p.name))
+                        if not p.name.lower().endswith((SUFIJO, AUTOGUARDADO))
+                        and nombre_valido(p.name))
         indices = {}
         for ruta in sorted(self.carpeta.glob(f"*{SUFIJO}")):
             try:
@@ -98,3 +103,65 @@ class PlanosEditor:
         except IndiceInvalido as e:
             raise ErrorAplicacion(400, str(e)) from None
         return {"indice": ruta.name[:-len(SUFIJO)], "hojas": hojas}
+
+    # --- copia automática (8d) -------------------------------------------------------------
+
+    def _ruta_copia(self, base) -> Path:
+        if not (isinstance(base, str) and nombre_valido(base + ".json")):
+            raise ErrorAplicacion(400, f"«{base}» no es un nombre de proyecto válido.")
+        return self.carpeta / f"{base}{AUTOGUARDADO}"
+
+    def guardar_autoguardado(self, base, archivo, viejo, texto) -> dict:
+        """Escribe <base>.autoguardado.json: {"autoguardado": 1, "archivo": <el real o null>,
+        "viejo": bool, "plano": {…}}. El archivo real no se toca."""
+        ruta = self._ruta_copia(base)
+        if archivo is not None and not nombre_valido(archivo):
+            raise ErrorAplicacion(400, f"«{archivo}» no es un nombre de plano.json válido.")
+        if not isinstance(texto, str) or len(texto) > TAMANO_MAXIMO:
+            raise ErrorAplicacion(400, "Falta el texto del plano.")
+        try:
+            plano = json.loads(texto)
+        except json.JSONDecodeError as e:
+            raise ErrorAplicacion(400, f"El plano no es un JSON válido: {e}.") from None
+        datos = {"autoguardado": 1, "archivo": archivo, "viejo": bool(viejo), "plano": plano}
+        temporal = ruta.with_name(ruta.name + ".tmp")
+        temporal.write_text(json.dumps(datos, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
+                            newline="\n")
+        os.replace(temporal, ruta)  # nunca queda una copia a medias
+        return {"autoguardado": ruta.name}
+
+    def autoguardados(self) -> dict:
+        """Las copias automáticas de la carpeta, cada una con si es más nueva que su archivo."""
+        copias = []
+        for ruta in sorted(self.carpeta.glob(f"*{AUTOGUARDADO}")):
+            try:
+                datos = json.loads(ruta.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            if not isinstance(datos, dict) or datos.get("autoguardado") != 1:
+                continue
+            archivo = datos.get("archivo") if nombre_valido(datos.get("archivo")) else None
+            real = self.carpeta / archivo if archivo else None
+            momento = ruta.stat().st_mtime
+            momento_real = real.stat().st_mtime if real and real.is_file() else None
+            copias.append({"base": ruta.name[:-len(AUTOGUARDADO)], "archivo": archivo,
+                           "viejo": bool(datos.get("viejo")), "modificado": momento,
+                           "archivo_modificado": momento_real,
+                           "mas_nueva": momento_real is None or momento > momento_real})
+        return {"autoguardados": copias}
+
+    def leer_autoguardado(self, base) -> dict:
+        ruta = self._ruta_copia(base)
+        if not ruta.is_file():
+            raise ErrorAplicacion(404, f"No hay copia automática de «{base}».")
+        datos = json.loads(ruta.read_text(encoding="utf-8"))
+        return {"base": base, "archivo": datos.get("archivo"), "viejo": bool(datos.get("viejo")),
+                "texto": json.dumps(datos.get("plano"), ensure_ascii=False, indent=2) + "\n"}
+
+    def borrar_autoguardado(self, base) -> dict:
+        """La borra (se pidió así: es una copia de trabajo que ya no hace falta al guardar)."""
+        ruta = self._ruta_copia(base)
+        existia = ruta.is_file()
+        if existia:
+            ruta.unlink()
+        return {"borrado": existia}

@@ -48,13 +48,14 @@ RUTA_CANCELAR = re.compile(r"^/api/tareas/(t-\d+)/cancelar$")
 RUTA_PNG = re.compile(r"^/api/previas/(t-\d+)$")
 RUTA_PNG_ORTOFOTO = re.compile(r"^/api/ortofoto/previas/(o-\d+)$")
 RUTAS_GET = ("/", "/api/estado", "/api/exportados", "/api/ortofoto", "/api/localizacion",
-              "/api/localizacion/imagen", "/api/estilos", "/api/planos")
+              "/api/localizacion/imagen", "/api/estilos", "/api/planos", "/api/autoguardados")
 RUTAS_POST = ("/api/dxf/elegir", "/api/dxf/recargar", "/api/previa", "/api/previa/zona",
               "/api/exportar", "/api/exportar/zona", "/api/zonas/nombre", "/api/textos/zona",
               "/api/trabajador/reiniciar", "/api/trabajador/detener", "/api/latido",
               "/api/ortofoto/elegir", "/api/ortofoto/quitar", "/api/ortofoto/previa",
               "/api/localizacion/elegir", "/api/localizacion/quitar",
-              "/api/planos/leer", "/api/planos/guardar", "/api/hojas", "/api/hojas/indice")
+              "/api/planos/leer", "/api/planos/guardar", "/api/hojas", "/api/hojas/indice",
+              "/api/autoguardado/guardar", "/api/autoguardado/leer", "/api/autoguardado/borrar")
 
 
 def ruta_conocida(metodo: str, ruta: str) -> bool:
@@ -277,6 +278,16 @@ def _manejador(servidor: ServidorEditor):
                                         cuerpo.get("campos"))
             if ruta == "/api/hojas/indice":
                 return app.planos.guardar_indice(cuerpo.get("indice"), cuerpo.get("hojas"))
+            # Copia automática del trabajo sin guardar (8d).
+            if metodo == "GET" and ruta == "/api/autoguardados":
+                return app.planos.autoguardados()
+            if ruta == "/api/autoguardado/guardar":
+                return app.planos.guardar_autoguardado(cuerpo.get("base"), cuerpo.get("archivo"),
+                                                       cuerpo.get("viejo") is True, cuerpo.get("texto"))
+            if ruta == "/api/autoguardado/leer":
+                return app.planos.leer_autoguardado(cuerpo.get("base"))
+            if ruta == "/api/autoguardado/borrar":
+                return app.planos.borrar_autoguardado(cuerpo.get("base"))
             m = RUTA_CANCELAR.match(ruta)
             return app.cancelar(m.group(1))
 

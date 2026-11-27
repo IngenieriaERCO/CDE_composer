@@ -62,7 +62,8 @@ MARCADORES = {
     "/*@@JS_PANEL_ZONAS@@*/": "editor_panel_zonas.js",  # el diálogo «Zonas del modelo»
     "/*@@JS_PANEL_ORTOFOTO@@*/": "editor_panel_ortofoto.js",
     "/*@@JS_PANEL_LOCALIZACION@@*/": "editor_panel_localizacion.js",
-    "/*@@JS_PANEL_HOJAS@@*/": "editor_panel_hojas.js",  # «Hoja N de M» y «Nueva hoja…»
+    "/*@@JS_PANEL_HOJAS@@*/": "editor_panel_hojas.js",  # proyectos con índice en pestañas
+    "/*@@JS_AUTOGUARDADO@@*/": "editor_autoguardado.js",  # copia automática (8d)
 }
 MARCADOR_DATOS = "@@DATOS_EDITOR@@"
 # Lo que dejaban versiones anteriores junto a editor.html; se quita al regenerar.

@@ -3492,6 +3492,30 @@ errores de JavaScript.
 **Pruebas**: **1576 pasan** y 1 se salta (antes 1575): `test_editor_proyecto_js` (la cola de todas
 las hojas). ruff: los mismos 173 hallazgos.
 
+### Proyecto en un solo archivo — subfase 8d: copia automática (2026-11-27)
+
+**Qué se hizo**
+- `planos_editor.py` y rutas del servidor: escribir (de una vez: temporal y reemplazo), listar (con
+  «más nueva que su archivo»), leer y borrar `editor/<proyecto>.autoguardado.json`
+  (`{autoguardado: 1, archivo, viejo, plano}`). No se listan como planos.
+- `editor_autoguardado.js` (nuevo): cada minuto, si hay cambios y el proyecto cambió desde la
+  última copia, la escribe; al guardar (con el cuadro o descargando) la borra; al abrir el editor
+  ofrece recuperar las copias más nuevas que su archivo (o de un proyecto sin guardar) y, si no,
+  borrarlas. `EditorUI.abrirRecuperado`: con el nombre del archivo real, si era un plano viejo, y
+  con cambios por guardar.
+
+**Cómo probarlo**: ver docs/editor.md (Copia automática).
+
+**Verificación en Edge** (`data/verificacion/verificar_autoguardado.mjs`, editor aparte en
+`data/verificacion/autoguardado_editor/` con una COPIA de Pruebadecambio; no se tocó `editor/`).
+**Todo OK**, sin errores de JavaScript: cambios sin guardar (título, un detalle movido, una hoja
+nueva) → a los ~60 s apareció la copia (versión 8, 2 hojas) y el archivo real no se tocó → Edge
+cerrado a la fuerza (`taskkill /F`) → al abrir otra vez ofreció recuperarla → recuperado (2 hojas,
+el título, el detalle movido, con su nombre y cambios por guardar) → guardar: «Pruebadecambio_
+proyecto.json» y la copia se borró → recargar: no ofrece nada.
+
+**Pruebas**: **1577 pasan** y 1 se salta (antes 1576); `test_planos_editor` (la copia automática). ruff: los mismos 173 hallazgos.
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

@@ -113,6 +113,11 @@
       guardarPlano: (archivo, texto, nuevo) => pedir("POST", "/api/planos/guardar", { archivo, texto, nuevo: !!nuevo }),
       hojas: (cuerpo) => pedir("POST", "/api/hojas", cuerpo),
       guardarIndice: (indice, hojas) => pedir("POST", "/api/hojas/indice", { indice, hojas }),
+      // Copia automática (8d): {base, archivo, viejo, texto}; la lista, leer y borrar por base.
+      guardarAutoguardado: (cuerpo) => pedir("POST", "/api/autoguardado/guardar", cuerpo),
+      autoguardados: () => pedir("GET", "/api/autoguardados"),
+      leerAutoguardado: (base) => pedir("POST", "/api/autoguardado/leer", { base }),
+      borrarAutoguardado: (base) => pedir("POST", "/api/autoguardado/borrar", { base }),
     };
   }
 
