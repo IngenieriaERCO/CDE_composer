@@ -55,11 +55,26 @@
     archivo: null,
     copiado: null,
     automaticos: {},
+    // Proyecto de varias hojas (plano versión 8, subfase 8b): cada pestaña guarda lo suyo
+    // (CAMPOS_HOJA) y el editor trabaja siempre sobre la activa, en estos mismos campos de
+    // `estado`. El DXF, la ortofoto y las vistas previas son del proyecto. `viejo`: se abrió un
+    // plano de las versiones 1 a 7 (o un índice): al guardar se propone otro nombre.
+    hojas: null,
+    activa: 0,
+    viejo: false,
     paso: 1,
     cambios: false,
     vista: { x: 0, y: 0, ancho: ANCHO_PX, alto: ALTO_PX },
   };
   R.prellenar(estado.rotulo, PRELLENADO); // plano nuevo: los datos del proyecto quedan copiados
+  const P8 = window.EditorProyecto;
+  const CAMPOS_HOJA = ["colocaciones", "seleccion", "rosa", "rosaSeleccionada", "rotulo", "original", "copiado"];
+  function hojaDesdeEstado(nombre) {
+    const h = { nombre, avisos: 0 };
+    for (const k of CAMPOS_HOJA) h[k] = estado[k];
+    return h;
+  }
+  estado.hojas = [hojaDesdeEstado("Hoja 1")];
   let arrastre = null; // {c, dx, dy} en mm (c: detalle o bloque), {rosa: true, dx, dy} o {c, tirador: true}
   let paneo = null; // {x, y, vista} en px de pantalla
   let ultimasAdvertencias = [];
@@ -144,6 +159,7 @@
 
   function marcarCambios() {
     estado.cambios = true;
+    calcularAutomaticos(); // hoja, de y número de plano dependen de los rótulos de las hojas
     if (estado.copiado) { // un campo copiado de otra hoja que se cambió ya está revisado
       estado.copiado.revisar = window.EditorHojas.porRevisar(estado.copiado.revisar, estado.copiado.valores,
         (campo) => R.valor(estado.rotulo, campo));
@@ -589,6 +605,10 @@
     etiquetasActuales = calcularEtiquetas(elementos);
     for (const aviso of etiquetasActuales.avisos) lista.push({ nivel: "aviso", texto: aviso, ids: [] });
     ultimasAdvertencias = lista;
+    if (estado.hojas[estado.activa].avisos !== lista.length) {
+      estado.hojas[estado.activa].avisos = lista.length;
+      pintarPestanas();
+    }
     const niveles = new Map();
     const tapados = new Set();
     for (const a of lista) {
@@ -1637,32 +1657,34 @@
     if (window.showSaveFilePicker) {
       try {
         const archivo = await window.showSaveFilePicker({
-          suggestedName: "plano.json",
+          suggestedName: P8.nombreParaGuardar(estado.archivo, estado.viejo),
           types: [{ description: "Plano (JSON)", accept: { "application/json": [".json"] } }],
         });
         const escritor = await archivo.createWritable();
         await escritor.write(new Blob([texto], { type: "application/json" }));
         await escritor.close();
         estado.archivo = archivo.name;
+        estado.viejo = false; // ya está en la versión 8, con su nombre
         guardado(archivo.name, false);
-        if (window.EditorPanelHojas) window.EditorPanelHojas.refrescar();
         return;
       } catch (error) {
         if (error && error.name === "AbortError") return; // el usuario canceló: nada que hacer
         // Otro error (permisos, página abierta desde file://…): se usa la descarga normal.
       }
     }
-    descargar(texto, "plano.json");
-    guardado("plano.json", true);
+    const nombre = P8.nombreParaGuardar(estado.archivo, estado.viejo);
+    descargar(texto, nombre);
+    guardado(nombre, true);
   }
 
   /** plano.json con los detalles, la rosa y (si se abrió un plano que lo traía) el rótulo.
    *  Sin los campos retirados del rótulo (disenador, revisor): R.paraGuardar los quita. */
   function textoPlano() {
-    // Versión 6: las zonas (borradores y exportadas) van en la lista "dxf" del plano.
-    return L.serializarPlano(estado.colocaciones, DATOS, {
-      rosa: estado.rosa, rotulo: R.paraGuardar(estado.rotulo), original: estado.original,
-      ortofoto: estado.ortofoto, copiado: estado.copiado });
+    // Versión 8: todas las hojas en un archivo; cada una se escribe como siempre (objetoPlano).
+    guardarActiva();
+    return P8.serializarProyecto(estado.hojas.map((h) => ({ nombre: h.nombre, colocaciones: h.colocaciones,
+      extra: { rosa: h.rosa, rotulo: R.paraGuardar(h.rotulo), original: h.original, copiado: h.copiado } })),
+    DATOS, { ortofoto: estado.ortofoto });
   }
 
   function guardado(nombre, descargado) {
@@ -1680,40 +1702,248 @@
     }
   }
 
+  /** Abre un plano.json: un proyecto versión 8 (una pestaña por hoja) o un plano de las
+   *  versiones 1 a 7 (una sola hoja; al guardar se propone otro nombre). */
   function abrir(texto, archivo) {
-    const resultado = L.leerPlano(texto, DATOS);
-    if (resultado.errores.length) {
-      mensaje("No se pudo abrir el plano:\n- " + resultado.errores.join("\n- "), "error");
+    const l = P8.leerProyecto(texto, DATOS);
+    if (l.errores.length) {
+      mensaje("No se pudo abrir el plano:\n- " + l.errores.join("\n- "), "error");
       return false; // el plano de antes sigue abierto, con su nombre
     }
-    estado.colocaciones = resultado.colocaciones;
-    for (const c of estado.colocaciones) { // un DXF = una entrada (por sha256), como al agregar
-      const dueño = esBloque(c) ? c.bloque : c.zona || null; // c.zona: exportado desde una zona
-      if (!dueño) continue;
-      if (!dxfsPorSha.has(dueño.dxf.sha256)) dxfsPorSha.set(dueño.dxf.sha256, dueño.dxf);
-      dueño.dxf = dxfsPorSha.get(dueño.dxf.sha256);
-      if (esBloque(c) && c.bloque.zona) c.bloque.dxf = dueño.dxf;
-    }
-    estado.seleccion = null;
-    estado.rosaSeleccionada = false;
-    // Sin "rosa_vientos" en el plano: visible y en su sitio (lo mismo que hace componer).
-    if (ROSA) estado.rosa = resultado.rosa || { visible: true, pos: ROSA_ORIGEN.slice() };
-    estado.rotulo = R.crearModelo(resultado.rotulo, DEFINICION_ROTULO); // se conserva al guardar
-    estado.original = resultado.original;
-    estado.ortofoto = resultado.ortofoto || null;
+    return abrirHojas(l.hojas, archivo, l.version !== P8.VERSION);
+  }
+
+  /** Varias hojas ya leídas ([{nombre, resultado}] de EditorLogica.leerPlano) como el proyecto
+   *  abierto. `viejo`: no venían de un archivo versión 8 (al guardar, otro nombre). */
+  function abrirHojas(hojas, archivo, viejo) {
+    const avisos = [];
+    estado.hojas = hojas.map(({ nombre, resultado }) => {
+      for (const c of resultado.colocaciones) { // un DXF = una entrada (por sha256), como al agregar
+        const dueño = esBloque(c) ? c.bloque : c.zona || null; // c.zona: exportado desde una zona
+        if (!dueño) continue;
+        if (!dxfsPorSha.has(dueño.dxf.sha256)) dxfsPorSha.set(dueño.dxf.sha256, dueño.dxf);
+        dueño.dxf = dxfsPorSha.get(dueño.dxf.sha256);
+        if (esBloque(c) && c.bloque.zona) c.bloque.dxf = dueño.dxf;
+      }
+      for (const a of resultado.avisos) avisos.push((hojas.length > 1 ? nombre + ": " : "") + a);
+      const rotulo = R.crearModelo(resultado.rotulo, DEFINICION_ROTULO); // se conserva al guardar
+      const copiado = resultado.copiado ? Object.assign({}, resultado.copiado, { valores: Object.fromEntries(
+        resultado.copiado.revisar.map((c) => [c, R.valor(rotulo, c)])) }) : null;
+      return { nombre, avisos: 0, colocaciones: resultado.colocaciones, seleccion: null,
+        // Sin "rosa_vientos" en el plano: visible y en su sitio (lo mismo que hace componer).
+        rosa: ROSA ? resultado.rosa || { visible: true, pos: ROSA_ORIGEN.slice() } : null,
+        rosaSeleccionada: false, rotulo, original: resultado.original, copiado };
+    });
+    estado.activa = 0;
+    cargarActiva();
+    estado.ortofoto = (hojas.find((h) => h.resultado.ortofoto) || { resultado: {} }).resultado.ortofoto || null;
     estado.archivo = archivo || null;
-    estado.copiado = resultado.copiado ? Object.assign({}, resultado.copiado, { valores: Object.fromEntries(
-      resultado.copiado.revisar.map((c) => [c, R.valor(estado.rotulo, c)])) }) : null;
-    estado.automaticos = {};
+    estado.viejo = !!viejo;
+    calcularAutomaticos();
     if (PO() && PO().repintar) PO().repintar();
     if (window.EditorPanelLocalizacion) window.EditorPanelLocalizacion.repintar();
     pintarRotulo();
-    estado.cambios = resultado.avisos.length > 0; // si se ajustó algo, hay cambios por guardar
+    estado.cambios = avisos.length > 0; // si se ajustó algo, hay cambios por guardar
     actualizar();
-    const resumen = "Plano abierto: " + resultado.colocaciones.length + " detalle(s).";
-    if (resultado.avisos.length) mensaje(resumen + "\n- " + resultado.avisos.join("\n- "), "");
-    else mensaje(resumen, "ok");
+    pintarPestanas();
+    const detalles = estado.hojas.reduce((s, h) => s + h.colocaciones.length, 0);
+    const resumen = estado.hojas.length > 1 ? "Proyecto abierto: " + estado.hojas.length + " hojas, " + detalles +
+      " detalle(s)." : "Plano abierto: " + detalles + " detalle(s).";
+    const extra = viejo ? "\nAl guardar se escribe un proyecto (versión 8) con otro nombre: «" +
+      P8.nombreParaGuardar(archivo, true) + "» (el archivo original no se toca)." : "";
+    if (avisos.length) mensaje(resumen + extra + "\n- " + avisos.join("\n- "), "");
+    else mensaje(resumen + extra, "ok");
     return true;
+  }
+
+  // ---------------------------------------------------------------------------------------
+  // Hojas del proyecto (pestañas, versión 8)
+  // ---------------------------------------------------------------------------------------
+
+  function guardarActiva() {
+    const h = estado.hojas[estado.activa];
+    for (const k of CAMPOS_HOJA) h[k] = estado[k];
+  }
+
+  function cargarActiva() {
+    const h = estado.hojas[estado.activa];
+    for (const k of CAMPOS_HOJA) estado[k] = h[k];
+  }
+
+  /** Hoja, de y número de plano de la hoja activa, por su posición (lo escrito manda). */
+  function calcularAutomaticos() {
+    if (!estado.hojas) return;
+    guardarActiva();
+    const rotulos = estado.hojas.map((h) => R.serializar(h.rotulo) || {});
+    estado.automaticos = P8.automaticosDeLista(rotulos, estado.activa,
+      window.EditorHojas.camposAutomaticos(DEFINICION_ROTULO));
+  }
+
+  /** Repinta todo lo de la hoja activa (al cambiar de pestaña o reordenar). */
+  function repintarHoja() {
+    arrastre = null;
+    calcularAutomaticos();
+    if (window.EditorPanelLocalizacion) window.EditorPanelLocalizacion.repintar();
+    pintarRotulo();
+    actualizar();
+    pintarPestanas();
+  }
+
+  /** Cambia de hoja al instante: sin guardar ni preguntar (todo queda en memoria). */
+  function activar(i) {
+    if (i === estado.activa || !estado.hojas[i]) return;
+    guardarActiva();
+    estado.activa = i;
+    cargarActiva();
+    repintarHoja();
+  }
+
+  const nombresHojas = (salvo) => estado.hojas.filter((h, i) => i !== salvo).map((h) => h.nombre);
+
+  /** «+»: hoja nueva después de la activa, con el rótulo copiado sin título ni automáticos;
+   *  notas, convenciones y revisiones quedan «por revisar» (como «Nueva hoja a partir de esta»). */
+  function nuevaHoja() {
+    guardarActiva();
+    const fuente = estado.hojas[estado.activa];
+    const { plano, revisar } = window.EditorHojas.planoNuevaHoja({ formato: "", rotulo: R.serializar(fuente.rotulo) || {} },
+      fuente.nombre, DEFINICION_ROTULO);
+    const rotulo = R.crearModelo(plano.rotulo, DEFINICION_ROTULO);
+    const hoja = { nombre: P8.nombreHojaNueva(nombresHojas()), avisos: 0, colocaciones: [], seleccion: null,
+      rosa: fuente.rosa ? JSON.parse(JSON.stringify(fuente.rosa)) : null, rosaSeleccionada: false, rotulo, original: null,
+      copiado: revisar.length ? { hoja: fuente.nombre, revisar: revisar.slice(),
+        valores: Object.fromEntries(revisar.map((c) => [c, R.valor(rotulo, c)])) } : null };
+    estado.hojas.splice(estado.activa + 1, 0, hoja);
+    estado.activa += 1;
+    cargarActiva();
+    estado.cambios = true;
+    repintarHoja();
+    mensaje("Hoja nueva «" + hoja.nombre + "»: el rótulo se copió sin el título" +
+      (revisar.length ? "; revise " + revisar.join(", ") + " (están en Advertencias)." : "."), "ok");
+  }
+
+  /** Los nombres de zona de todo el proyecto (cada zona da un paquete: no se repiten). */
+  function zonasDelProyecto() {
+    guardarActiva();
+    const usados = new Set();
+    for (const h of estado.hojas) {
+      for (const c of h.colocaciones) {
+        if (esZona(c)) usados.add(c.bloque.nombre);
+        else if (c.zona) usados.add(c.zona.nombre);
+      }
+    }
+    return usados;
+  }
+
+  /** Duplica la hoja activa (detalles, bloques y zonas en el mismo sitio; las zonas con otro
+   *  nombre, para que cada una dé su paquete). */
+  function duplicarHoja() {
+    const usados = zonasDelProyecto();
+    const fuente = estado.hojas[estado.activa];
+    const colocaciones = fuente.colocaciones.map((c) => {
+      const copia = Object.assign({}, c, { original: null, posOriginal: null, centroOriginal: null });
+      if (c.pos) copia.pos = c.pos.slice();
+      if (c.centro) copia.centro = c.centro.slice();
+      if (esZona(c)) {
+        const nombre = P8.nombreZonaLibre(c.bloque.nombre, usados);
+        usados.add(nombre);
+        copia.bloque = Object.assign({}, c.bloque, { nombre, etiqueta: nombre, zona: Object.assign({}, c.bloque.zona) });
+        copia.id = nombre;
+      } else if (c.zona) {
+        const nombre = P8.nombreZonaLibre(c.zona.nombre, usados);
+        usados.add(nombre);
+        copia.zona = Object.assign({}, c.zona, { nombre });
+      }
+      return copia;
+    });
+    let nombre = fuente.nombre + " (copia)";
+    const otros = new Set(nombresHojas().map((n) => n.toLowerCase()));
+    for (let n = 2; otros.has(nombre.toLowerCase()); n++) nombre = fuente.nombre + " (copia " + n + ")";
+    const hoja = { nombre, avisos: 0, colocaciones, seleccion: null,
+      rosa: fuente.rosa ? JSON.parse(JSON.stringify(fuente.rosa)) : null, rosaSeleccionada: false,
+      rotulo: R.crearModelo(R.serializar(fuente.rotulo) || null, DEFINICION_ROTULO), original: null, copiado: null };
+    estado.hojas.splice(estado.activa + 1, 0, hoja);
+    estado.activa += 1;
+    cargarActiva();
+    estado.cambios = true;
+    repintarHoja();
+    mensaje("Hoja «" + nombre + "» duplicada." + (colocaciones.some((c) => esZona(c) || c.zona)
+      ? " Sus zonas llevan otro nombre (cada zona da un paquete)." : ""), "ok");
+  }
+
+  function borrarHoja() {
+    if (estado.hojas.length === 1) {
+      mensaje("El proyecto tiene una sola hoja: no se puede borrar.", "error");
+      return;
+    }
+    const h = estado.hojas[estado.activa];
+    if (!confirm("¿Borrar la hoja «" + h.nombre + "» con sus " + h.colocaciones.length + " detalle(s)? " +
+      "(Se pierde al guardar; si no guarda, el archivo sigue como estaba.)")) return;
+    estado.hojas.splice(estado.activa, 1);
+    estado.activa = Math.min(estado.activa, estado.hojas.length - 1);
+    cargarActiva();
+    estado.cambios = true;
+    repintarHoja();
+  }
+
+  /** Mueve la hoja activa a la izquierda (-1) o a la derecha (+1): hoja / de / número se reordenan. */
+  function moverHoja(paso) {
+    const j = estado.activa + paso;
+    if (j < 0 || j >= estado.hojas.length) return;
+    guardarActiva();
+    const [h] = estado.hojas.splice(estado.activa, 1);
+    estado.hojas.splice(j, 0, h);
+    estado.activa = j;
+    estado.cambios = true;
+    repintarHoja();
+  }
+
+  /** Renombra una hoja (nombre único, no vacío); las hojas copiadas de ella la siguen nombrando. */
+  function renombrarHoja(i, texto) {
+    const h = estado.hojas[i];
+    const nombre = typeof texto === "string" ? texto.trim() : "";
+    if (!h || !nombre || nombre === h.nombre) return false;
+    if (nombresHojas(i).some((n) => n.toLowerCase() === nombre.toLowerCase())) {
+      mensaje("Ya hay una hoja «" + nombre + "»: elija otro nombre.", "error");
+      return false;
+    }
+    guardarActiva();
+    for (const otra of estado.hojas) if (otra.copiado && otra.copiado.hoja === h.nombre) otra.copiado.hoja = nombre;
+    h.nombre = nombre;
+    estado.cambios = true;
+    pintarPestanas();
+    actualizar();
+    return true;
+  }
+
+  function pintarPestanas() {
+    const barra = document.getElementById("pestanas-hojas");
+    if (!barra || !estado.hojas) return;
+    const hijos = estado.hojas.map((h, i) => {
+      const b = nodo("button", { type: "button", class: "pestana" + (i === estado.activa ? " activa" : ""),
+        "data-indice": String(i), title: "Doble clic para cambiarle el nombre" }, h.nombre);
+      if (h.avisos) b.appendChild(nodo("span", { class: "pestana-avisos", title: h.avisos + " advertencia(s)" }, " " + h.avisos));
+      b.addEventListener("click", () => activar(i));
+      b.addEventListener("dblclick", () => {
+        const nuevo = prompt("Nombre de la hoja:", h.nombre);
+        if (nuevo !== null) renombrarHoja(i, nuevo);
+      });
+      return b;
+    });
+    const mas = nodo("button", { type: "button", class: "pestana-mas", id: "btn-hoja-nueva",
+      title: "Hoja nueva con el mismo rótulo (sin título) y el área de dibujo vacía" }, "+");
+    mas.addEventListener("click", nuevaHoja);
+    const acciones = nodo("span", { class: "pestanas-acciones" });
+    for (const [id, texto, titulo, accion, activo] of [
+      ["btn-hoja-izq", "◀", "Mover la hoja a la izquierda", () => moverHoja(-1), estado.activa > 0],
+      ["btn-hoja-der", "▶", "Mover la hoja a la derecha", () => moverHoja(+1), estado.activa < estado.hojas.length - 1],
+      ["btn-hoja-duplicar", "Duplicar", "Duplicar esta hoja", duplicarHoja, true],
+      ["btn-hoja-borrar", "Borrar", "Borrar esta hoja", borrarHoja, estado.hojas.length > 1]]) {
+      const b = nodo("button", { type: "button", id, title: titulo }, texto);
+      b.disabled = !activo;
+      b.addEventListener("click", accion);
+      acciones.appendChild(b);
+    }
+    barra.replaceChildren(...hijos, mas, acciones);
   }
 
   document.getElementById("btn-guardar").addEventListener("click", guardar);
@@ -1726,8 +1956,7 @@
     ev.target.value = "";
     if (!archivo) return;
     archivo.text().then((texto) => {
-      abrir(texto, archivo.name);
-      if (window.EditorPanelHojas) window.EditorPanelHojas.refrescar();
+      if (abrir(texto, archivo.name) && estado.viejo && window.EditorPanelHojas) window.EditorPanelHojas.ofrecerIndice();
     }, (e) => mensaje("No se pudo leer el archivo: " + e.message, "error"));
   });
   document.getElementById("btn-copiar").addEventListener("click", () => {
@@ -1868,23 +2097,29 @@
     // Varias hojas (editor_panel_hojas.js): el plano como texto y objeto, abrir otro con su
     // nombre, si hay cambios, el rótulo y los valores automáticos (hoja, de, número de plano).
     textoPlano, abrirTexto: abrir, archivo: () => estado.archivo, hayCambios: () => !!estado.cambios,
-    guardadoEn: (nombre) => { estado.archivo = nombre; estado.cambios = false; mostrarComando(nombre); },
-    mensaje, definicionRotulo: () => DEFINICION_ROTULO, rotulo: () => R.serializar(estado.rotulo),
-    quitarHojaYDe: () => {
-      const H = window.EditorHojas;
-      for (const [campo, tipo] of Object.entries(H.camposAutomaticos(DEFINICION_ROTULO))) {
-        if (tipo !== "numero_siguiente") R.cambiar(estado.rotulo, campo, undefined);
+    mensaje, viejo: () => estado.viejo,
+    // Un proyecto con índice (.hojas.json) en pestañas: [{nombre, texto}] de sus hojas.
+    abrirIndice: (hojas, indice) => {
+      const leidas = [];
+      const errores = [];
+      for (const h of hojas) {
+        const r = L.leerPlano(h.texto, DATOS);
+        if (r.errores.length) errores.push(h.nombre + ": " + r.errores.join("; "));
+        if (r.copiado) r.copiado.hoja = r.copiado.hoja.replace(/\.json$/i, "");
+        leidas.push({ nombre: h.nombre, resultado: r });
       }
-    },
-    fijarAutomaticos: (valores) => {
-      estado.automaticos = valores || {};
-      panelRotulo.pintar();
-      programarVistaPrevia();
+      if (errores.length) {
+        mensaje("No se pudo abrir el proyecto:\n- " + errores.join("\n- "), "error");
+        return false;
+      }
+      return abrirHojas(leidas, indice, true);
     },
     colocaciones: () => estado.colocaciones, zona: () => ZONA, aplicarExportado, registrarDetalles,
     // Zonas borrador (Fase 10e): agregar desde el cuadro «Zonas del modelo», cambiarla al editarla,
     // y los nombres que ya usa el plano (para pedir el siguiente Zona_NN).
-    agregarZona, actualizarZona, nombresEnUso: () => estado.colocaciones.map((c) => c.id),
+    // Los nombres de todo el proyecto (las zonas no se repiten entre hojas: cada una, un paquete).
+    agregarZona, actualizarZona, nombresEnUso: () => [...new Set(estado.colocaciones.map((c) => c.id)
+      .concat([...zonasDelProyecto()]))],
     ortofoto: () => estado.ortofoto, fijarOrtofoto, cajasOrtofoto,
     marcadosOrtofoto: () => marcados().length, extendida, cuadriculas: () => ultimasCuadriculas,
     // Imagen de localización (y su escala): valores del rótulo que no edita el formulario.
@@ -1903,6 +2138,9 @@
     moverCentro: (id, centro) => moverCentro(estado.colocaciones.find((c) => c.id === id), centro),
     usarOrtofoto: (id, si) => usarOrtofoto(estado.colocaciones.find((c) => c.id === id), si),
     mostrarEscala: (id, si) => mostrarEscala(estado.colocaciones.find((c) => c.id === id), si),
+    // Hojas (versión 8): las mismas acciones que las pestañas, sin cuadros de diálogo.
+    activar, nuevaHoja, duplicarHoja, moverHoja, renombrarHoja,
+    borrarHojaSinPreguntar: () => { const c = window.confirm; window.confirm = () => true; try { borrarHoja(); } finally { window.confirm = c; } },
     seleccionar, caja: (id) => paginaDe(estado.colocaciones.find((c) => c.id === id)),
     previa: (id) => previaDe(estado.colocaciones.find((c) => c.id === id)),
     mover: (id, pos) => mover(estado.colocaciones.find((c) => c.id === id), pos),
@@ -1937,7 +2175,9 @@
     }
   }
   pintarCatalogo();
+  calcularAutomaticos();
   pintarRotulo();
+  pintarPestanas();
   pintarDondeGuardar();
   ajustarVista();
   actualizar();

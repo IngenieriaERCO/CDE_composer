@@ -3430,6 +3430,37 @@ PDF y las dos nombradas; un plano de una hoja y el índice `.hojas.json` siguen 
 no se lee como proyecto, proyectos que no valen, problemas por hoja, componer el archivo entero,
 si una hoja falla no sale nada, CLI. ruff: los mismos 173 hallazgos.
 
+### Proyecto en un solo archivo — subfase 8b: el editor con pestañas (2026-11-26)
+
+Decisiones: A) un plano viejo (1 a 7) se guarda en versión 8 con otro nombre
+(`<nombre>_proyecto.json`), sin pisar el original; B) un proyecto con índice da
+`<proyecto>_proyecto.json`; C) se quitan el selector «Hoja N de M» y «Nueva hoja a partir de
+esta» (lo creado con ellos se sigue abriendo y componiendo); D) hojas nuevas «Hoja 2», «Hoja 3»…
+
+**Qué se hizo**
+- `editor_proyecto.js` (nuevo, Node): leer la versión 8 (cada hoja con `leerPlano` de siempre),
+  escribirla (cada hoja con `objetoPlano`; el mismo id de DXF en todas), un plano viejo como una
+  hoja, automáticos por posición, nombres de hoja y de zona, nombre al guardar.
+- `editor_ui.js`: `estado.hojas` y `estado.activa` (cada hoja guarda sus detalles, borradores,
+  rosa, rótulo, selección y «revíselo»; el editor trabaja sobre la activa). Pestañas con «+»,
+  doble clic para renombrar, ◀ ▶, Duplicar (zonas con otro nombre) y Borrar; cambiar de hoja sin
+  diálogos; avisos por pestaña; guardar UN archivo versión 8; abrir versión 8 o viejo.
+- `editor_panel_hojas.js`: solo ofrece abrir en pestañas un proyecto con índice.
+
+**Cómo probarlo**: ver docs/editor.md («Varias hojas en un proyecto: pestañas»).
+
+**Verificación en Edge** (`data/verificacion/verificar_hojas_8b.mjs`, trabajador falso;
+Pruebadecambio.json solo se lee; lo guardado va a `data/verificacion/hojas8b_salida/`).
+**Todo OK**, sin errores de JavaScript: el plano viejo abre como «Hoja 1» y avisa el nombre
+nuevo; 3 hojas con borradores (5, 1 y 2); cambiar de hoja sin diálogos; renombrar, mover (los
+números se reordenan) y duplicar (zona `Zona_B_2`); guardar: versión 8, 4 hojas, 4 zonas sin
+repetir, el DXF una vez, Python lo lee sin problemas; abrir de nuevo: las 4 pestañas iguales y
+guardar sin tocar da el mismo archivo; exportar cada hoja y componer: PDF de 4 páginas, …-106 a
+…-109; un proyecto con índice abre en 2 pestañas.
+
+**Pruebas**: **1575 pasan** y 1 se salta (antes 1572). `test_editor_proyecto_js` (3). ruff: los
+mismos 173 hallazgos.
+
 ### Pendiente en la Fase 4 (al 2026-11-11)
 
 - **4.4 — en pausa, se va a redefinir.** El alcance anterior (tablas de cantidades de

@@ -53,6 +53,7 @@ MARCADORES = {
     "/*@@JS_VISTA_PREVIA@@*/": "editor_vista_previa.js",
     "/*@@JS_LIENZO_ROTULO@@*/": "editor_lienzo_rotulo.js",
     "/*@@JS_PANEL_CONVENCIONES@@*/": "editor_panel_convenciones.js",
+    "/*@@JS_PROYECTO@@*/": "editor_proyecto.js",  # varias hojas en un archivo (versión 8)
     "/*@@JS_UI@@*/": "editor_ui.js",
     "/*@@JS_SERVIDOR@@*/": "editor_servidor.js",
     "/*@@JS_DXF@@*/": "editor_dxf.js",

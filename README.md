@@ -384,15 +384,13 @@ Cada paquete se verifica (`importar_paquete` y que sea el pedido) y el bloque pa
 detalle normal, puesto por el centro CAD. Lo ya publicado se reutiliza; los paquetes viejos que
 se reemplazan se mueven a `_para_borrar/`.
 
-**Varias hojas** (con `Abrir editor.bat`): «Nueva hoja a partir de esta» guarda la hoja actual y
-crea la siguiente (`<proyecto>_02.json`) con el mismo rótulo (sin título) y el área de dibujo
-vacía; el selector «Hoja N de M» pasa de una a otra. Hoja, De y No. PLANO salen solos del índice
-`<proyecto>.hojas.json` (…-PL-106 → …-PL-107) y se pueden escribir a mano. Notas, convenciones y
-revisiones copiadas quedan en Advertencias «revíselo» hasta que se cambien. Plano versión 7: una
-hoja puede ir sin detalles (solo el rótulo). Ver [docs/editor.md](docs/editor.md).
-**Proyecto en un solo archivo** (plano versión 8): todas las hojas en un archivo, como layouts de
-un DWG; arrastrarlo a `Componer.bat` da `resultados/<archivo>.pdf` con todas las planchas (ver
-[docs/formato_plano.md](docs/formato_plano.md)). El editor lo escribirá en la subfase 8b.
+**Varias hojas en un proyecto** (plano versión 8, como layouts de un DWG): una pestaña por hoja
+bajo la barra del editor; se cambia de hoja al instante, sin guardar ni preguntar. «+» crea la
+hoja siguiente con el mismo rótulo (sin título); doble clic renombra; ◀ ▶ mueven; Duplicar y
+Borrar. Hoja, De y No. PLANO salen solos de la posición (…-PL-106 → …-PL-107). **Guardar plano**
+escribe un solo archivo con todas las hojas, y arrastrarlo a `Componer.bat` da
+`resultados/<archivo>.pdf` con todas las planchas. Un plano viejo se abre como una hoja y al
+guardar se propone `<nombre>_proyecto.json`. Ver [docs/editor.md](docs/editor.md).
 **Componer el proyecto**: arrastre el índice `<proyecto>.hojas.json` a `Componer.bat` y sale UN PDF
 con todas las hojas, una por página, en orden: `resultados/<proyecto>_proyecto.pdf`. Si una hoja
 falla no sale nada, y el mensaje dice todas las que fallaron. Ver

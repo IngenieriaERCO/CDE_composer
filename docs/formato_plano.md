@@ -812,7 +812,7 @@ cada hoja, en su entrada de `"hojas"`:
   guarda su copia reducida de la ortofoto en `<archivo>_hojaN_ortofoto/`.
 - Los planos 1 a 7 y el índice `.hojas.json` siguen igual.
 
-(El editor todavía no escribe la versión 8: llega en la subfase 8b.)
+El editor escribe siempre la versión 8 (pestañas, docs/editor.md).
 
 ## Qué hace `componer` con el plano
 

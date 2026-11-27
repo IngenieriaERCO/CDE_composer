@@ -14,8 +14,6 @@
   <button id="btn-abrir" type="button" title="Cargar un plano.json guardado">Abrir plano.json</button>
   <input id="archivo-plano" type="file" accept=".json,application/json" hidden>
   <button id="btn-guardar" type="button" class="principal" title="Guardar el plano (Ctrl+S)">Guardar plano</button>
-  <select id="selector-hoja" title="Hojas del proyecto"></select>
-  <button id="btn-nueva-hoja" type="button">Nueva hoja a partir de esta</button>
   <button id="btn-cargar-dxf" type="button" disabled>Cargar DXF</button>
   <button id="btn-cargar-ortofoto" type="button" disabled>Cargar ortofoto</button>
   <span class="separador"></span>
@@ -37,6 +35,7 @@
   <span class="separador"></span>
   <span id="cursor" class="lectura">Cursor: —</span>
 </header>
+<nav id="pestanas-hojas" class="pestanas" aria-label="Hojas del proyecto"></nav>
 
 <main>
   <aside class="panel izquierda">
@@ -151,6 +150,9 @@
 </script>
 <script>
 /*@@JS_PANEL_CONVENCIONES@@*/
+</script>
+<script>
+/*@@JS_PROYECTO@@*/
 </script>
 <script>
 /*@@JS_UI@@*/

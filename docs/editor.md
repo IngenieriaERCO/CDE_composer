@@ -772,30 +772,30 @@ fondo que está debajo no tapa al de encima.
   queda visible y en su lugar original.
 - Si cierra o recarga la página con cambios sin guardar, el navegador pide confirmación.
 
-### Varias hojas: «Nueva hoja a partir de esta» (plano versión 7)
+### Varias hojas en un proyecto: pestañas (plano versión 8)
 
-Con el servidor local (`Abrir editor.bat`), en la barra de arriba:
+Como los layouts de un DWG: todas las hojas del proyecto en un solo archivo. Bajo la barra de
+arriba, una **pestaña por hoja** (con cuántas advertencias tiene) y «+»:
 
-- **Selector «Hoja N de M»**: las hojas del proyecto (el índice `<proyecto>.hojas.json` de la
-  carpeta del editor). Al elegir otra, si hay cambios, se pregunta y se **guarda** la actual
-  antes de abrir la otra. Si una hoja no abre (por ejemplo, falta un paquete), sigue abierta la
-  de antes y nada se pisa.
-- **«Nueva hoja a partir de esta»**: guarda la hoja actual (tiene que estar guardada en la
-  carpeta del editor) y crea `<proyecto>_02.json`, `_03`… al lado, con:
-  - el área de dibujo **vacía** (sin detalles, bloques ni zonas);
-  - **todo el rótulo copiado y editable**, menos el título (vacío) y los automáticos;
-  - notas, convenciones y revisiones marcadas en Advertencias «copiado de la hoja N, revíselo»
-    hasta que se cambien;
-  - la ortofoto del plano (ningún detalle la usa hasta marcar «Usar ortofoto»). El DXF sigue
-    cargado: no hay que volver a cargarlo.
-- **Hoja, De y No. PLANO** salen solos del índice (el formulario los muestra como «2
-  (automático)»); se pueden escribir a mano. Al crear el índice, «hoja» y «de» de la primera hoja
-  pasan a ser automáticos (si no, diría «1 de 1»); su número de plano se conserva.
-- Una hoja vacía se guarda y se compone (solo el rótulo), con aviso.
-
-Sin servidor, el selector y el botón quedan desactivados (el navegador solo no puede escribir
-varios archivos). Componer todas las hojas de una vez queda para después: cada hoja se compone
-con `Componer.bat`, como siempre.
+- **Clic** en una pestaña: cambia de hoja **al instante**, sin guardar ni preguntar (todas viven
+  en la memoria del editor). Cada hoja tiene sus detalles, sus bloques y zonas borrador, su rosa
+  y su rótulo; el DXF cargado, la ortofoto y las vistas previas son del proyecto.
+- **«+»**: hoja nueva («Hoja 2», «Hoja 3»…) después de la activa, con el área de dibujo vacía y
+  el rótulo copiado sin título; notas, convenciones y revisiones quedan en Advertencias
+  «copiado de la hoja N, revíselo» hasta que se cambien.
+- **Doble clic** en una pestaña: cambiarle el nombre (único).
+- **◀ ▶**: mover la hoja activa; **Duplicar**: la copia, con sus detalles y borradores en el mismo
+  sitio (sus zonas con otro nombre: cada zona da un paquete); **Borrar** (con confirmación).
+- **Hoja, De y No. PLANO** salen solos de la posición de la pestaña (mover una hoja los reordena);
+  se pueden escribir a mano.
+- **Guardar plano** escribe **un solo archivo** (versión 8) con todas las hojas. Un plano viejo
+  (versiones 1 a 7) abre como un proyecto de una hoja y, al guardar, se propone
+  `<nombre>_proyecto.json`: el original no se pisa.
+- Al abrir una hoja de un proyecto con índice (`.hojas.json`, con el servidor), el editor ofrece
+  abrir el proyecto completo, una pestaña por hoja; los archivos viejos no se tocan y al guardar
+  se propone `<proyecto>_proyecto.json`.
+- «Exportar bloques y zonas» exporta los de la **hoja activa** (exportar todas las hojas de una
+  vez llega en la subfase 8c).
 
 ## 7. Limitaciones
 

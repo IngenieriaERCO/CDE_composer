@@ -426,4 +426,14 @@ main { flex: 1; display: flex; min-height: 0; }
 .linea-escala.ambar { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; font-weight: 600; }
 .escalas-dibujo .escala-candidata.elegida { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
 .lamina-zonas .marca-texto { fill: none; stroke: #16a34a; stroke-width: 2.5; vector-effect: non-scaling-stroke; }
-#selector-hoja { max-width: 280px; }
+
+/* Hojas del proyecto (versión 8): una pestaña por hoja, «+» y las acciones de la activa. */
+.pestanas { flex: none; display: flex; align-items: center; gap: 4px; padding: 4px 12px 0; border-bottom: 1px solid #cbd5e1;
+  background: #f1f5f9; overflow-x: auto; }
+.pestana { border: 1px solid #cbd5e1; border-bottom: none; border-radius: 6px 6px 0 0; padding: 4px 12px;
+  background: #e2e8f0; cursor: pointer; white-space: nowrap; }
+.pestana.activa { background: #fff; font-weight: 600; position: relative; top: 1px; }
+.pestana-avisos { color: #b45309; font-size: 0.8em; }
+.pestana-mas { border: 1px dashed #94a3b8; border-radius: 6px; padding: 2px 10px; background: transparent; cursor: pointer; }
+.pestanas-acciones { margin-left: auto; display: flex; gap: 4px; }
+.pestanas-acciones button { font-size: 0.85em; padding: 2px 8px; }
